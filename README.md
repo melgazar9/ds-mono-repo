@@ -3,23 +3,25 @@
 
 
 ### Setup
-- `git clone https://github.com/melgazar9/ds-mono-repo.git`
+- `git clone https://github.com/melgazar9/ds-mono-repo.git && cd ds-mono-repo`
+- `python -m venv venv && source activate venv/bin/activate`
+- `python setup.py install` to access all modules regardless of the working directory.
 - Set up a virtual environment and install requirements.txt with respect to your system
   - For Ubuntu users, run `pip install -r requirements_ubuntu.txt`
   - For macOS silicon users, run `pip install -r requirements_m1.txt`
+    - To save `requirements.txt`, run `pip list --format=freeze > requirements_m1.txt`
   - For Windows users, run `pip install -r requirements_windows.txt`
 - For macOS silicon users, it's likely you'll need to follow the below instructions
   - `vi venv/lib/python3.8/site-packages/IPython/core/interactiveshell.py`
     - Change `p.readlink()` to `p._from_parts(os.readlink(p,))`
+  - Run `python setup.py install` to access all modules regardless of the working directory.
   - If you encounter `ImportError` even after installing and you're on macOS silicon, try the below fix
-    - `pip3 install <package_name> && python3 -c "import <package_name>; print('ok')"`   
+    - `python -m pip install <package_name> && python -c "import <package_name>; print('ok')"`
 - **Handing credentials**
-  - It is best practice to leave credentials files outside of the repository directory. By default credentials will be accessed in the previous directory from the cloned repository (e.g. credentials directory = `<cloned_repository>/../credentials/`.
-    - Example
-      - `mkdir credentials && cd credentials/;`
-      - `vi <my_db_credentials.yaml>` - create a yaml credentials file
-      - `cd ../ && git clone https://github.com/melgazar9/ds-mono-repo.git` - By default the code base will access `../credentials/` as the credentials directory.
-      - If there is a problem with auto-reading the credentials files you can always specificy the location directly.
-    - If using pycharm you'll need to specify the working directories for each project directly
-      - Example
-        - When running code in pycharm, set the working directory to the project directory. Similarly when debugging, set the directory for debugging to the project directory.
+  - Access credentials via system environment or in the `~/.credentials` location.
+  - When running code in pycharm, set the working directory to the project directory. Similarly when debugging, set the directory for debugging to the project directory.
+
+Influences
+
+- https://github.com/mlflow/mlflow/tree/master/mlflow
+- https://github.com/pyparakeets/budgies/blob/main/threshold_optimizer/threshold_optimizer.py

@@ -1,22 +1,2 @@
-**.git_credentials
-**.DS_store
-**zip
-venv
-**credentials
-**__pycache__
-.ipynb_checkpoints
-**.csv#
-**.zip
-**.html
-**.dill
-**.pickle
-**.pkl
-**.csv
-**.feather
-**.pq
-**.parquet
-**.png
-**.jpeg
-**.jpg
-**.idea
-**.gzip
+# created by virtualenv automatically
+*
