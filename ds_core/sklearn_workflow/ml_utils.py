@@ -8,7 +8,7 @@ Created on Sat Jan 30 10:57:45 2021
 from ds_core.ds_imports import *
 from ds_core.sklearn_workflow.ml_imports import *
 
-class SklearnMLflow:
+class SklearnMLFlow:
 
     def __init__(self,
                  df,

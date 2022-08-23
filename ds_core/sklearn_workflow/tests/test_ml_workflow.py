@@ -22,7 +22,7 @@ df = pd.concat([
     ],
     axis=1)
 
-mlf = SklearnMLflow(df=df,
+mlf = SklearnMLFlow(df=df,
                     target='target',
                     input_features=data['feature_names'],
                     algorithms=[XGBClassifier(), LGBMClassifier()])
