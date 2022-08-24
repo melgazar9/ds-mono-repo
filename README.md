@@ -14,12 +14,17 @@
 - For macOS silicon users, it's likely you'll need to follow the below instructions
   - `vi venv/lib/python3.8/site-packages/IPython/core/interactiveshell.py`
     - Change `p.readlink()` to `p._from_parts(os.readlink(p,))`
-  - Run `python setup.py install` to access all modules regardless of the working directory.
+  - Run `python setup.py install` to access all modules.
   - If you encounter `ImportError` even after installing and you're on macOS silicon, try the below fix
-    - `python -m pip install <package_name> && python -c "import <package_name>; print('ok')"`
+    - Make sure pip is sourcing the virtual environment.
+      - If it's not, try setting the alias in `~/.bash_profile` to be `alias pip=pip3`
+      - If issues persist, try `python -m pip install <package_name> && python -c "import <package_name>"`
 - **Handing credentials**
-  - Access credentials via system environment or in the `~/.credentials` location.
-  - When running code in pycharm, set the working directory to the project directory. Similarly when debugging, set the directory for debugging to the project directory.
+  - Access credentials through the global system environment.
+  - When running code in pycharm
+    - Set the working directory to the project directory.
+    - Set the environment variables needed to run the project.
+    - Similarly when debugging, set the directory for debugging to the project directory.
 
 Influences
 
