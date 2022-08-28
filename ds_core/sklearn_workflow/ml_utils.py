@@ -6,6 +6,7 @@ Created on Sat Jan 30 10:57:45 2021
 """
 
 from ds_core.ds_imports import *
+from ds_core.ds_utils import *
 from ds_core.sklearn_workflow.ml_imports import *
 
 class SklearnMLFlow:
@@ -13,8 +14,9 @@ class SklearnMLFlow:
     def __init__(self,
                  df,
                  input_features,
-                 target=None,
+                 target_name=None,
                  preserve_vars=None,
+                 clean_column_names=True,
                  feature_creator=None,
                  feature_transformer=None,
                  resampler=None,
@@ -24,13 +26,14 @@ class SklearnMLFlow:
 
         self.df_input = df.copy()
         self.df_out = df.copy()
-        self.target = target
+        self.target_name = target_name
+        self.clean_column_names = clean_column_names
 
         if input_features is None:
-            if self.target is not None:
-                # supervised learning set all columns != self.target as input features
-                self.input_features = list(self.df_input.drop(self.target, axis=1).columns)
-            elif self.target is None:
+            if self.target_name is not None:
+                # supervised learning set all columns != self.target_name as input features
+                self.input_features = list(self.df_input.drop(self.target_name, axis=1).columns)
+            elif self.target_name is None:
                 # unsupervised learning set all columns as input features
                 self.input_features = list(self.df_input.columns)
         else:
@@ -39,12 +42,19 @@ class SklearnMLFlow:
         self.output_features = input_features.copy()
 
         self.preserve_vars = preserve_vars if preserve_vars is not None \
-            else [i for i in self.df_input.columns if i not in self.input_features + [self.target]]
+            else [i for i in self.df_input.columns if i not in self.input_features + [self.target_name]]
+
+        if self.clean_column_names:
+            self.df_out = clean_columns(self.df_out)
+            self.input_features = clean_columns(pd.DataFrame(columns=self.input_features)).columns.tolist()
+            self.output_features = clean_columns(pd.DataFrame(columns=self.output_features)).columns.tolist()
+            self.preserve_vars = clean_columns(pd.DataFrame(columns=self.preserve_vars)).columns.tolist()
+            self.target_name = clean_columns(pd.DataFrame(columns=[self.target_name])).columns[0]
 
         self.feature_creator = feature_creator
 
         self.feature_transformer = feature_transformer if feature_transformer is not None \
-            else FeatureTransformer(target=self.target, preserve_vars=self.preserve_vars)
+            else FeatureTransformer(target_name=self.target_name, preserve_vars=self.preserve_vars)
 
         self.resampler = resampler
         self.split_colname = split_colname
@@ -53,11 +63,12 @@ class SklearnMLFlow:
 
         self.input_cols = self.input_features + self.preserve_vars
 
-        if self.target not in self.input_cols:
-            self.input_cols.append(self.target)
+        if self.target_name not in self.input_cols:
+            self.input_cols.append(self.target_name)
 
         assert len(self.input_cols) == len(set(self.input_cols)), \
-            "Not all features were considered! Check your inputs: input_features, preserve_vars, target"
+            "Not all features were considered! Check your inputs: input_features, preserve_vars, target_name"
+
 
     def create_features(self):
 
@@ -71,7 +82,7 @@ class SklearnMLFlow:
         """
 
         self.df_out = self.feature_creator.fit_transform(self.df_out)
-        self.output_features = [i for i in self.df_out.columns if i not in self.preserve_vars + [self.target]]
+        self.output_features = [i for i in self.df_out.columns if i not in self.preserve_vars + [self.target_name]]
         self.new_features = list(set(self.output_features) - set(self.input_features))
 
         return self
@@ -97,14 +108,17 @@ class SklearnMLFlow:
 
             self.feature_transformer.instantiate_column_transformer(
                 self.df_out[self.df_out[self.split_colname] == 'train'],
-                self.df_out[self.df_out[self.split_colname] == 'train'][self.target]
+                self.df_out[self.df_out[self.split_colname] == 'train'][self.target_name]
             )
 
             ### Assign feature groups ###
 
             if feature_groups is None:
                 # assign new features to feature groups
-                self.new_feature_groups = FeatureTransformer().detect_feature_groups(self.df_out[self.new_features])
+                self.new_feature_groups = \
+                    FeatureTransformer(target_name=self.target_name,
+                                       preserve_vars=self.preserve_vars)\
+                        .detect_feature_groups(self.df_out[self.new_features])
 
                 # append the existing feature groups with the new features
                 for fg in self.new_feature_groups.keys():
@@ -118,9 +132,12 @@ class SklearnMLFlow:
             assert (len(find_list_duplicates(self.feature_transformer.output_features)) == 0), \
                 "Failed to find new features."
 
+        self.feature_transformer.target_name = self.target_name
+        self.feature_transformer.preserve_vars = self.preserve_vars
+
         self.feature_transformer.fit(
             self.df_out[self.df_out[self.split_colname] == 'train'],
-            self.df_out[self.df_out[self.split_colname] == 'train'][self.target]
+            self.df_out[self.df_out[self.split_colname] == 'train'][self.target_name]
         )
 
         self.df_out = self.feature_transformer.transform(self.df_out)
@@ -135,14 +152,14 @@ class SklearnMLFlow:
                 self.df_train_resampled = \
                     self.resampler.fit_resample(
                         self.df_out[self.df_out[self.split_colname] == 'train'],
-                        self.df_out[self.df_out[self.split_colname] == 'train'][self.target]
+                        self.df_out[self.df_out[self.split_colname] == 'train'][self.target_name]
                     )
             except:
                 try:
                     self.df_train_resampled = \
                         self.resampler.fit_transform(
                             self.df_out[self.df_out[self.split_colname] == 'train'],
-                            self.df_out[self.df_out[self.split_colname] == 'train'][self.target]
+                            self.df_out[self.df_out[self.split_colname] == 'train'][self.target_name]
                         )
                 except:
                     raise ValueError("Could not fit the resampler.")
@@ -152,11 +169,11 @@ class SklearnMLFlow:
     def train_models(self, **fit_params):
 
         if hasattr(self, 'df_train_resampled'):
-            X_train = self.df_train_resampled.drop(self.target, axis=1)
-            y_train = self.df_train_resampled[self.target]
+            X_train = self.df_train_resampled.drop(self.target_name, axis=1)
+            y_train = self.df_train_resampled[self.target_name]
         else:
             X_train = self.df_out[self.df_out[self.split_colname] == 'train'][self.output_features]
-            y_train = self.df_out[self.df_out[self.split_colname] == 'train'][self.target]
+            y_train = self.df_out[self.df_out[self.split_colname] == 'train'][self.target_name]
 
         if hasattr(self.algorithms, 'fit'):
             print(f"Running {type(self.algorithms).__name__}...\n")
@@ -204,7 +221,7 @@ class SklearnMLFlow:
                 fits.append('dummy')
 
             self.evaluator.df = self.df_out
-            self.evaluator.target = self.target
+            self.evaluator.target_name = self.target_name
             self.evaluator.fits = fits
 
         self.evaluator.evaluate(**kwargs)
@@ -413,7 +430,7 @@ class FeatureTransformer(TransformerMixin):
         Parameters
         ----------
         preserve_vars : A list of variables that won't be fitted or transformed by any sort of feature engineering
-        target : A string - the name of the target variable.
+        target_name : A string - the name of the target variable.
         remainder : A string that gets passed to the column transformer whether to
                     drop preserve_vars or keep them in the final dataset
                     options are 'drop' or 'passthrough'
@@ -441,7 +458,7 @@ class FeatureTransformer(TransformerMixin):
     """
 
     def __init__(self,
-                 target=None,
+                 target_name=None,
                  preserve_vars=None,
                  FE_pipeline_dict=None,
                  remainder='passthrough',
@@ -457,7 +474,7 @@ class FeatureTransformer(TransformerMixin):
                  verbose=True):
 
         self.preserve_vars =preserve_vars
-        self.target = target
+        self.target_name = target_name
         self.FE_pipeline_dict = FE_pipeline_dict
         self.remainder = remainder
         self.max_lc_cardinality = max_lc_cardinality
@@ -506,13 +523,13 @@ class FeatureTransformer(TransformerMixin):
         detected_numeric_vars = make_column_selector(dtype_include=np.number)(
             X[[i for i in X.columns \
                if i not in self.preserve_vars + \
-               [self.target] + \
+               [self.target_name] + \
                custom_features]])
 
         detected_lc_vars = [i for i in X.loc[:, (X.nunique(dropna=False) <= self.max_lc_cardinality) & \
                                                 (X.nunique(dropna=False) > 1)].columns \
                             if i not in self.preserve_vars + \
-                            [self.target] + \
+                            [self.target_name] + \
                             custom_features]
 
         detected_hc_vars = X[[i for i in X.columns \
@@ -608,7 +625,7 @@ class FeatureTransformer(TransformerMixin):
         all_features_debug = set(all_features) - \
                              set([i for i in X.columns \
                                   if i not in \
-                                  self.preserve_vars + [self.target]])
+                                  self.preserve_vars + [self.target_name]])
 
         if len(all_features_debug) > 0:
             print('\n{}\n'.format(all_features_debug))
@@ -632,10 +649,10 @@ class FeatureTransformer(TransformerMixin):
 
     def instantiate_column_transformer(self, X, y=None):
 
-        if self.target is None and y is not None:
-            self.target = y.name
+        if self.target_name is None and y is not None:
+            self.target_name = y.name
 
-        assert y is not None or self.target is not None, '\n Both self.target and y cannot be None!'
+        assert y is not None or self.target_name is not None, '\n Both self.target_name and y cannot be None!'
 
         self.feature_groups = self.detect_feature_groups(X)
 
@@ -1157,49 +1174,46 @@ class ScoreThresholdOptimizer(ThresholdOptimizer):
 
         assert str(type(self.optimization_func)) == "<class 'function'>", 'optimization_func must be a function!'
 
-        thresholds = np.arange(0, 100) / 100 if thresholds is None else thresholds
-
+        self.thresholds = np.arange(0, 100) / 100 if thresholds is None else thresholds
         score_df = pd.DataFrame({'y_pred': self.y_pred, 'y_true': self.y_true})
 
         if num_threads == 1:
-
-            scores = {}
-            for thres in thresholds:
+            self.scores = {}
+            for thres in self.thresholds:
                 score_df.loc[:, 'pred_class'] = 0
                 score_df.loc[score_df['y_pred'] >= thres, 'pred_class'] = 1
-                scores[thres] = self.optimization_func(y_pred=score_df['pred_class'], y_true=score_df['y_true'])
+                self.scores[thres] = self.optimization_func(y_pred=score_df['pred_class'], y_true=score_df['y_true'])
 
-            threshold_df = pd.DataFrame.from_dict(scores, orient='index').reset_index()
-            threshold_df.columns = ['threshold', 'score']
+            self.threshold_df = pd.DataFrame.from_dict(self.scores, orient='index').reset_index()
+            self.threshold_df.columns = ['threshold', 'score']
         else:
             raise NotImplementedError('Multi-threading not implemented yet.')
 
-        return threshold_df
+        return self
 
-    @staticmethod
-    def best_scores(threshold_df, minimize_or_maximize):
+    def best_scores(self, minimize_or_maximize, threshold_df=None):
 
         """
         Description: Pull the best scores from the output of self.optimize_score.
 
         Parameters
         ----------
-        threshold_df: output of self.optimize_score
         minimize_or_maximize: str whether we want to minimize or maximize the output of self.optimize_score.
             This will determine how we decide the best thresholds. Valid values are only 'minimize' or 'maximize'
+        threshold_df: output of self.optimize_score
         """
 
-        if isinstance(threshold_df.index, pd.MultiIndex):
+        self.threshold_df = self.threshold_df if threshold_df is None else threshold_df
 
-            groupby_cols = [i for i in threshold_df.index.names if i != 'threshold']
-
+        if isinstance(self.threshold_df.index, pd.MultiIndex):
+            groupby_cols = [i for i in self.threshold_df.index.names if i != 'threshold']
             if minimize_or_maximize.lower() == 'maximize':
-                best_score = threshold_df.groupby(groupby_cols).apply(
+                best_score = self.threshold_df.groupby(groupby_cols).apply(
                     lambda x: x[x['score'] == x['score'].max()]
                 )
 
             elif minimize_or_maximize.lower() == 'maximize':
-                best_score = threshold_df.groupby(groupby_cols).apply(
+                best_score = self.threshold_df.groupby(groupby_cols).apply(
                     lambda x: x[x['score'] == x['score'].max()]
                 )
 
@@ -1207,13 +1221,16 @@ class ScoreThresholdOptimizer(ThresholdOptimizer):
                 raise ValueError("maximize_or_minimize must be set to 'maximize' or 'minimize'")
 
             indices = np.flatnonzero(pd.Index(best_score.index.names).duplicated()).tolist()
-
             best_score.reset_index(indices, drop=True, inplace=True)
-
         else:
             if minimize_or_maximize.lower() == 'maximize':
-                best_score = threshold_df[threshold_df['score'] == threshold_df['score'].max()]
+                self.best_score = self.threshold_df[self.threshold_df['score'] == self.threshold_df['score'].max()]
             elif minimize_or_maximize.lower() == 'minimize':
-                best_score = threshold_df[threshold_df['score'] == threshold_df['score'].min()]
+                self.best_score = self.threshold_df[self.threshold_df['score'] == self.threshold_df['score'].min()]
 
-        return best_score
+        return self
+
+    def run_optimization(self, maximize_or_minimize):
+        self.optimize()
+        self.best_scores(maximize_or_minimize)
+        return self
