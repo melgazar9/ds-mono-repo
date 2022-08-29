@@ -6,8 +6,8 @@ from ds_core.sklearn_workflow.ml_utils import *
 
 ### global variables ###
 
-TRAIN_LOC = '/Users/melgazar9/Downloads/titanic/train.csv'
-TEST_LOC = '/Users/melgazar9/Downloads/titanic/test.csv'
+TRAIN_LOC = '~/.kaggle/titanic/train.csv'
+TEST_LOC = '~/.kaggle/titanic/test.csv'
 TARGET_NAME = 'Survived'
 
 ### load dfs ###
