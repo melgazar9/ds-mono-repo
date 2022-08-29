@@ -38,33 +38,36 @@ ft = FeatureTransformer(target_name=TARGET_NAME, preserve_vars=['PassengerId', '
 
 ### train a model ###
 
-mlf = SklearnMLFlow(df=df,
-                    input_features=[i for i in df.columns if i not in ['dataset_split', 'PassengerId', TARGET_NAME]],
-                    target_name=TARGET_NAME,
-                    preserve_vars=['PassengerId', 'dataset_split'],
-                    feature_transformer=ft,
-                    algorithms=[CatBoostClassifier(iterations=300),
-                                XGBClassifier()])
+mlf = \
+    SklearnMLFlow(
+        df=df,
+        input_features=[i for i in df.columns if i not in ['dataset_split', 'PassengerId', TARGET_NAME]],
+        target_name=TARGET_NAME,
+        preserve_vars=['PassengerId', 'dataset_split'],
+        feature_transformer=ft,
+        algorithms=[CatBoostClassifier(iterations=300), XGBClassifier()],
+        optimizer=ScoreThresholdOptimizer(optimization_func=accuracy_score)
+    )
 
 mlf.transform_features()
 mlf.train_models()
 mlf.predict_models()
-
+mlf.optimize_models('maximize')
 ### optimizate predicted classes ###
 
 # use accuracy here since that's what the evaluation function is on kaggle
-optimizer =\
-    ScoreThresholdOptimizer(accuracy_score,
-                            mlf.df_out[mlf.df_out['dataset_split'] != 'test']['CatBoostClassifier_pred'],
-                            mlf.df_out[mlf.df_out['dataset_split'] != 'test'][mlf.target_name])
-
-optimizer.run_optimization('maximize')
+# optimizer =\
+#     ScoreThresholdOptimizer(accuracy_score,
+#                             mlf.df_out[mlf.df_out['dataset_split'] != 'test']['CatBoostClassifier_pred'],
+#                             mlf.df_out[mlf.df_out['dataset_split'] != 'test'][mlf.target_name])
+#
+# optimizer.run_optimization('maximize')
 
 ### assign predicted class based on optimized threshold ###
 
-for pred in [i for i in mlf.df_out.columns if i.endswith('_pred')]:
-    mlf.df_out.loc[:, pred + '_class'] = 0
-    mlf.df_out.loc[mlf.df_out[pred] >= optimizer.best_score['threshold'].iloc[0], pred + '_class'] = 1
+# for pred in [i for i in mlf.df_out.columns if i.endswith('_pred')]:
+#     mlf.df_out.loc[:, pred + '_class'] = 0
+#     mlf.df_out.loc[mlf.df_out[pred] >= optimizer.best_score['threshold'].iloc[0], pred + '_class'] = 1
 
 
 ### save output ###
