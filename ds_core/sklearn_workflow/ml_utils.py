@@ -181,7 +181,6 @@ class SklearnMLFlow:
             return self
 
     def train_models(self, **fit_params):
-
         if hasattr(self, 'df_train_resampled'):
             X_train = self.df_train_resampled.drop(self.target_name, axis=1)
             y_train = self.df_train_resampled[self.target_name]
@@ -201,6 +200,7 @@ class SklearnMLFlow:
 
         print("\nModel training done!\n")
         return self
+
 
     def predict_models(self):
         if hasattr(self.algorithms, 'predict_proba'):
@@ -273,6 +273,7 @@ class SklearnMLFlow:
             thres_opt.assign_positive_class(self.optimizer.best_thresholds[fit])
 
         return self
+
     def evaluate_models(self, **kwargs):
 
         ### set a default evaluator for the Amex competition ###
@@ -356,6 +357,7 @@ class SklearnMLFlow:
             raise NotFittedError('Not all algorithms have been fit!')
 
         return self
+
 
 def get_column_names_from_ColumnTransformer(column_transformer, clean_column_names=True, verbose=False):
     """
@@ -478,6 +480,7 @@ def get_column_names_from_ColumnTransformer(column_transformer, clean_column_nam
         new_column_names = list(clean_columns(pd.DataFrame(columns=new_column_names)).columns)
 
     return new_column_names
+
 
 class FeatureTransformer(TransformerMixin):
     """
@@ -818,7 +821,6 @@ class FeatureTransformer(TransformerMixin):
             return pd.DataFrame(list(X_out), columns=self.output_cols)
         else:
             return X_out
-
 
 
 class FeatureImportance:
