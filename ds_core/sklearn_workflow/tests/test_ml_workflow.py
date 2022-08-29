@@ -30,4 +30,4 @@ mlf = SklearnMLFlow(df=df,
 mlf.transform_features()
 mlf.train_models()
 mlf.predict_models()
-mlf.df_out
+display(mlf.df_out)

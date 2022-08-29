@@ -9,24 +9,33 @@ from ds_core.ds_imports import *
 from ds_core.ds_utils import *
 from ds_core.sklearn_workflow.ml_imports import *
 
+
 class SklearnMLFlow:
 
+    """
+    Description
+    -----------
+    Automated machine learning workflow pipeline that runs ML steps in the proper sequence
+    """
     def __init__(self,
                  df,
                  input_features,
                  target_name=None,
+                 split_colname='dataset_split',
                  preserve_vars=None,
                  clean_column_names=True,
+                 splitter=None,
                  feature_creator=None,
                  feature_transformer=None,
                  resampler=None,
                  algorithms=(),
-                 split_colname='dataset_split',
+                 optimizer=None,
                  evaluator=None):
 
         self.df_input = df.copy()
         self.df_out = df.copy()
         self.target_name = target_name
+        self.split_colname = split_colname
         self.clean_column_names = clean_column_names
 
         if input_features is None:
@@ -51,14 +60,15 @@ class SklearnMLFlow:
             self.preserve_vars = clean_columns(pd.DataFrame(columns=self.preserve_vars)).columns.tolist()
             self.target_name = clean_columns(pd.DataFrame(columns=[self.target_name])).columns[0]
 
+        self.splitter = splitter
         self.feature_creator = feature_creator
 
         self.feature_transformer = feature_transformer if feature_transformer is not None \
             else FeatureTransformer(target_name=self.target_name, preserve_vars=self.preserve_vars)
 
         self.resampler = resampler
-        self.split_colname = split_colname
         self.algorithms = algorithms
+        self.optimizer = optimizer
         self.evaluator = evaluator
 
         self.input_cols = self.input_features + self.preserve_vars
@@ -69,6 +79,10 @@ class SklearnMLFlow:
         assert len(self.input_cols) == len(set(self.input_cols)), \
             "Not all features were considered! Check your inputs: input_features, preserve_vars, target_name"
 
+
+    def split(self):
+        self.df_out = self.splitter.split(self.df_out)
+        return self
 
     def create_features(self):
 
@@ -210,6 +224,55 @@ class SklearnMLFlow:
 
         return self
 
+    def assign_threshold_opt_rows(self,
+                                  pct_train_for_opt=0.25,
+                                  pct_val_for_opt=1,
+                                  threshold_opt_name='use_for_threshold_opt'):
+        self.threshold_opt_name = threshold_opt_name
+
+        self.df_out.loc[:, threshold_opt_name] = False
+
+        ### assign the train rows to be used for threshold optimization ###
+
+        # pct_train_of_val ex) val set has 100 rows, then train_set_for_opt should be 10 rows, but this is not
+        # how it currently works. Based on past experience, models have performed much worse.
+        # n_train_values = int(self.df_out[self.df_out[self.split_colname] == 'val'].shape[0] * pct_train_for_opt)
+
+        n_train_values = int(self.df_out[self.df_out[self.split_colname] == 'train'].shape[0] * pct_train_for_opt)
+        # tail might not be a good way to choose the rows, but in case the data is sorted it makes sense as a default
+        opt_train_indices = self.df_out[self.df_out[self.split_colname] == 'train'].tail(n_train_values).index
+        self.df_out.loc[opt_train_indices, threshold_opt_name] = True
+
+        ### assign the val rows to be used for threshold optimization ###
+
+        n_val_values = int(self.df_out[self.df_out[self.split_colname] == 'val'].shape[0] * pct_val_for_opt)
+
+        # tail might not be a good way to choose the rows, but in case the data is sorted it makes sense as a default
+        opt_val_indices = self.df_out[self.df_out[self.split_colname] == 'val'].tail(n_val_values).index
+
+        self.df_out.loc[opt_val_indices, threshold_opt_name] = True
+
+        return self
+
+    def optimize_models(self, minimize_or_maximize, **assign_threshold_opt_rows_params):
+        self.assign_threshold_opt_rows(**assign_threshold_opt_rows_params)
+        fits = [i for i in self.df_out.columns if i.endswith('_pred')]
+        self.optimizer.run_optimization(fits=fits,
+                                        minimize_or_maximize=minimize_or_maximize,
+                                        df=self.df_out[self.df_out[self.threshold_opt_name]],
+                                        target_name=self.target_name)
+
+        ### assign the positive class based on the optimal threshold ###
+
+        for fit in self.optimizer.best_thresholds.keys():
+            thres_opt = \
+                ThresholdOptimizer(df=self.df_out, pred_column=fit, pred_class_col=fit + '_class', make_copy=False)
+
+            if self.optimizer.best_thresholds[fit].index.name != 'threshold':
+                self.optimizer.best_thresholds[fit].set_index('threshold', inplace=True)
+            thres_opt.assign_positive_class(self.optimizer.best_thresholds[fit])
+
+        return self
     def evaluate_models(self, **kwargs):
 
         ### set a default evaluator for the Amex competition ###
@@ -229,47 +292,39 @@ class SklearnMLFlow:
         return self
 
     def run_ml_workflow(self,
+                        split_params=None,
                         create_features_params=None,
                         transform_features_params=None,
                         resampler_params=None,
                         train_model_params=None,
                         predict_model_params=None,
+                        optimize_models_params=None,
                         evaluate_model_params=None):
+
+        ### split data ###
+
+        if self.splitter is not None:
+            self.split() if split_params is None else self.split(**split_params)
 
         ### create features ###
 
         if self.feature_creator is not None:
-            if create_features_params is None:
-                self.create_features()
-            else:
-                self.create_features(**create_features_params)
-
+            self.create_features() if create_features_params is None else self.create_features(**create_features_params)
 
         ### transform features ###
 
         if self.feature_transformer is not None:
-            if transform_features_params is None:
-                self.transform_features()
-            else:
-                self.transform_features(**transform_features_params)
-
+            self.transform_features() if transform_features_params is None \
+                else self.transform_features(**transform_features_params)
 
         ### resample data ###
 
         if self.resampler is not None:
-            if resampler_params is None:
-                self.resample()
-            else:
-                self.resample(**resampler_params)
-
+            self.resample() if resampler_params is None else self.resample(**resampler_params)
 
         ### train models ###
 
-        if train_model_params is None:
-            self.train_models()
-        else:
-            self.train_models(**train_model_params)
-
+        self.train_models() if train_model_params is None else self.train_models(**train_model_params)
 
         ### sanity check that all algorithms are fitted ###
 
@@ -281,23 +336,22 @@ class SklearnMLFlow:
             except NotFittedError:
                 pass
 
-
         ### predict models ###
 
         if len(fitted_algorithms) == len(self.algorithms):
+            self.predict_models() if predict_model_params is None else self.predict_models(**predict_model_params)
 
-            if predict_model_params is None:
-                self.predict_models()
-            else:
-                self.predict_models(**predict_model_params)
+            ### optimize models ###
 
+            if self.optimizer is not None:
+                self.optimize_models() if optimize_models_params is None \
+                    else self.optimize_models(**optimize_models_params)
 
             ### evaluate models ###
 
-            if evaluate_model_params is None:
-                self.evaluate_models()
-            else:
-                self.evaluate_models(**evaluate_model_params)
+            if self.evaluator is not None:
+                self.evaluate_models() if evaluate_model_params is None \
+                    else self.evaluate_models(**evaluate_model_params)
         else:
             raise NotFittedError('Not all algorithms have been fit!')
 
@@ -1065,7 +1119,7 @@ class ThresholdOptimizer:
         raise ValueError("The optimize method must be overriden.")
 
     @staticmethod
-    def best_scores(threshold_df):
+    def get_best_thresholds(threshold_df):
 
         """
         Description
@@ -1085,11 +1139,11 @@ class ThresholdOptimizer:
     def assign_positive_class(self, best_threshold_df):
 
         """
-        Description: Assign a positive predicted class based on the output of best_scores
+        Description: Assign a positive predicted class based on the output of get_best_thresholds
 
         Parameters
         ----------
-        best_threshold_df: pandas dataframe output from self.best_scores
+        best_threshold_df: pandas dataframe output from self.get_best_thresholds
 
         Returns
         -------
@@ -1149,7 +1203,7 @@ class ScoreThresholdOptimizer(ThresholdOptimizer):
     y_true: pandas Series of the true value
     """
 
-    def __init__(self, optimization_func, y_pred, y_true):
+    def __init__(self, optimization_func, y_pred=None, y_true=None):
 
         self.optimization_func = optimization_func
         self.y_pred = y_pred
@@ -1191,7 +1245,7 @@ class ScoreThresholdOptimizer(ThresholdOptimizer):
 
         return self
 
-    def best_scores(self, minimize_or_maximize, threshold_df=None):
+    def get_best_thresholds(self, minimize_or_maximize, threshold_df=None):
 
         """
         Description: Pull the best scores from the output of self.optimize_score.
@@ -1218,7 +1272,7 @@ class ScoreThresholdOptimizer(ThresholdOptimizer):
                 )
 
             else:
-                raise ValueError("maximize_or_minimize must be set to 'maximize' or 'minimize'")
+                raise ValueError("minimize_or_maximize must be set to 'maximize' or 'minimize'")
 
             indices = np.flatnonzero(pd.Index(best_score.index.names).duplicated()).tolist()
             best_score.reset_index(indices, drop=True, inplace=True)
@@ -1230,7 +1284,63 @@ class ScoreThresholdOptimizer(ThresholdOptimizer):
 
         return self
 
-    def run_optimization(self, maximize_or_minimize):
-        self.optimize()
-        self.best_scores(maximize_or_minimize)
+    def run_optimization(self, fits, minimize_or_maximize, df=None, target_name=None, num_threads=1):
+        """
+        Description
+        -----------
+        Runs the full optimization pipeline by calling methods in the proper sequence.
+        Note that if multiple fits are passed, self.best_score will return the most recent best threshold df
+            and self.best_thresholds is a dictionary containing the best thresholds for each fit
+
+        :param fits: list or tuple of fits to optimize
+        :param minimize_or_maximize: bool whether to minimize or maximize the optimization function
+        :param df: optional pandas df consisting of the fit columns
+        :param target_name: str of the target name
+        :param num_threads: int of number of threads to use
+        :return: self
+        """
+
+        fits = [fits] if isinstance(fits, str) else fits
+
+        ### sanity checks ###
+        
+        if df is None and len(fits) > 1:
+            raise AssertionError('The parameter df must be specified (with fit columns present) len(fits) > 1.')
+
+        if num_threads > 1:
+            raise NotImplementedError("Multi-threading not implemented yet!")
+
+
+        ### run the optimization ###
+        
+        if len(fits) == 1:
+            self.optimize()
+            self.get_best_thresholds()
+        else:
+            self.y_true = df[target_name].copy() if self.y_true is None else self.y_true
+
+            self.best_thresholds = {}
+            for fit in fits:
+                self.y_pred = df[fit].copy()
+                self.optimize()
+                self.get_best_thresholds(minimize_or_maximize)
+                self.best_thresholds[fit] = self.best_score
+
         return self
+
+class SimpleSplitter:
+
+    def __init__(self, split_colname='dataset_split', train_pct=0.7, val_pct=0.15):
+        self.split_colname = split_colname
+        self.train_pct = train_pct
+        self.val_pct = val_pct
+    def split(self, df):
+        df.reset_index(drop=True, inplace=True)
+        df.loc[0: int(df.shape[0] * self.train_pct), self.split_colname] = 'train'
+
+        df.loc[int(df.shape[0] * self.train_pct):
+               int(df.shape[0] * self.train_pct) + int(df.shape[0] * self.val_pct),
+            self.split_colname] = 'val'
+
+        df.loc[int(df.shape[0] * self.train_pct) + int(df.shape[0] * self.val_pct): , self.split_colname] = 'test'
+        return df
