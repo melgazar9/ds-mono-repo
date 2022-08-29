@@ -45,14 +45,28 @@ mlf = \
         target_name=TARGET_NAME,
         preserve_vars=['PassengerId', 'dataset_split'],
         feature_transformer=ft,
-        algorithms=[CatBoostClassifier(iterations=300), XGBClassifier()],
+        algorithms=[CatBoostClassifier(iterations=300),
+                    XGBClassifier()],
         optimizer=ScoreThresholdOptimizer(optimization_func=accuracy_score)
     )
 
 mlf.transform_features()
+
+# eval_set = [
+#     (
+#         mlf.df_out[mlf.df_out[mlf.split_colname] == 'train'][mlf.output_features],
+#         mlf.df_out[mlf.df_out[mlf.split_colname] == 'train'][mlf.target_name]
+#     ),
+#
+#     (
+#         mlf.df_out[mlf.df_out[mlf.split_colname] == 'val'][mlf.output_features],
+#         mlf.df_out[mlf.df_out[mlf.split_colname] == 'val'][mlf.target_name]
+#     )
+#     ]
+
 mlf.train_models()
 mlf.predict_models()
-mlf.optimize_models('maximize')
+mlf.optimize_models('maximize', pct_train_for_opt=1, pct_val_for_opt=1)
 
 ### save output ###
 

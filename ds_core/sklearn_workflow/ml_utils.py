@@ -221,7 +221,7 @@ class SklearnMLFlow:
         return self
 
     def assign_threshold_opt_rows(self,
-                                  pct_train_for_opt=0.10,
+                                  pct_train_for_opt=0.25,
                                   pct_val_for_opt=1,
                                   threshold_opt_name='use_for_threshold_opt'):
         self.threshold_opt_name = threshold_opt_name
@@ -230,8 +230,11 @@ class SklearnMLFlow:
 
         ### assign the train rows to be used for threshold optimization ###
 
-        n_train_values = int(self.df_out[self.df_out[self.split_colname] == 'val'].shape[0] * pct_train_for_opt)
+        # pct_train_of_val ex) val set has 100 rows, then train_set_for_opt should be 10 rows, but this is not
+        # how it currently works. Based on past experience, models have performed much worse.
+        # n_train_values = int(self.df_out[self.df_out[self.split_colname] == 'val'].shape[0] * pct_train_for_opt)
 
+        n_train_values = int(self.df_out[self.df_out[self.split_colname] == 'train'].shape[0] * pct_train_for_opt)
         # tail might not be a good way to choose the rows, but in case the data is sorted it makes sense as a default
         opt_train_indices = self.df_out[self.df_out[self.split_colname] == 'train'].tail(n_train_values).index
         self.df_out.loc[opt_train_indices, threshold_opt_name] = True
@@ -245,29 +248,30 @@ class SklearnMLFlow:
         opt_val_indices = self.df_out[self.df_out[self.split_colname] == 'val'].tail(n_val_values).index
 
         self.df_out.loc[opt_val_indices, threshold_opt_name] = True
+
         return self
 
-    def optimize_models(self, maximize_or_minimize):
+    def optimize_models(self, maximize_or_minimize, **assign_threshold_opt_rows_params):
         if self.df_out[self.target_name].nunique() > 2:
             raise NotImplementedError('Threshold optimization currently only implemented for binary classification.')
 
-        self.assign_threshold_opt_rows()
+        self.assign_threshold_opt_rows(**assign_threshold_opt_rows_params)
 
         if self.optimizer.y_true is None:
             self.optimizer.y_true = self.df_out[self.df_out[self.threshold_opt_name]][self.target_name]
 
-        self.optimized_fits = {}
+        self.optimizer.optimized_fits = {}
         for pred_col in [i for i in self.df_out.columns if i.endswith('_pred')]:
             self.optimizer.y_pred = self.df_out[self.df_out[self.threshold_opt_name]][pred_col]
             self.optimizer.run_optimization(maximize_or_minimize)
-            self.optimized_fits[pred_col] = self.optimizer.best_score
+            self.optimizer.optimized_fits[pred_col] = self.optimizer.best_score
 
             # assign the positive predicted class based on the chosen optimal threshold
             self.optimizer.df = self.df_out
             self.optimizer.pred_column = pred_col
             self.optimizer.pred_class_col = pred_col + '_class'
             self.optimizer.make_copy = False
-            self.optimizer.assign_positive_class(self.optimized_fits[pred_col])
+            self.optimizer.assign_positive_class(self.optimizer.optimized_fits[pred_col])
 
         return self
     def evaluate_models(self, **kwargs):
