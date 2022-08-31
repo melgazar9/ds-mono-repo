@@ -13,12 +13,18 @@ from sklearn.metrics import (
     f1_score,
     precision_score,
     recall_score,
+    precision_recall_curve,
+    roc_curve,
+    roc_auc_score,
+    log_loss,
+    average_precision_score,
 
     # regression metrics
     mean_squared_error,
     mean_absolute_error,
     mean_squared_log_error
     )
+
 
 from sklearn.preprocessing import (
     OneHotEncoder,

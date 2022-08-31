@@ -39,6 +39,7 @@ requests==2.28.1
 scikit-build==0.15.0
 scikit-learn==1.1.2
 scipy==1.9.0
+seaborn==0.11.2
 skimpy==0.0.6
 snowflake-connector-python==2.7.11
 statsmodels==0.13.2

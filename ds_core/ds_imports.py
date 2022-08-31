@@ -17,3 +17,12 @@ import pandas as pd
 import numpy as np
 from pandas import json_normalize
 from skimpy import clean_columns
+
+
+
+### plotting ###
+
+import matplotlib.pyplot as plt
+import plotly
+import plotly.express as px
+import seaborn as sns

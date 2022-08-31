@@ -53,7 +53,13 @@ mlf.predict_models()
 mlf.optimize_models('maximize')
 
 ### save output ###
-
+CalcMLMetrics().plot_metrics(
+    df=mlf.df_out.dropna(),
+    fits=['XGBClassifier_pred', 'CatBoostClassifier_pred'],
+    target_name='survived',
+    classification_or_regression='classification',
+    groupby_cols='dataset_split'
+    )
 df_catboost = \
     mlf.df_out[mlf.df_out['dataset_split'] == 'test']\
         [['passenger_id', 'CatBoostClassifier_pred_class']]\

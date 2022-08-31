@@ -1076,6 +1076,230 @@ def timeseries_split(df,
         return X_train, y_train, X_val, y_val, X_test, y_test
 
 
+def r_squared(y_true, y_pred):
+    return np.corrcoef(y_true, y_pred)[0, 1] ** 2
+
+
+class CalcMLMetrics:
+    """
+    Description
+    -----------
+
+    Calculate standard ML metrics for regression or classification.
+    For regression: RMSE, MAE, and R2
+    For classification: accuracy, precision, recall, F1
+
+    Parameters
+    ----------
+    round_importance_decimals: int to round the output feature importance text for easier reading
+    """
+
+    def __init__(self, round_importance_decimals=3):
+        self.round_importance_decimals = round_importance_decimals
+
+    @staticmethod
+    def calc_regression_metrics(y_true=None, y_pred=None):
+        """
+        Parameters
+        ----------
+        y_true: actual y value
+        y_pred: predicted y_value
+
+        Returns
+        -------
+        dictionary of regression scores
+        """
+
+        output_dict = dict(  # R2=r2_score(y_true, y_pred),
+            r2=r_squared(y_true, y_pred),
+            rmse=np.sqrt(mean_squared_error(y_true, y_pred)),
+            mae=mean_absolute_error(y_true, y_pred))
+        return output_dict
+
+    @staticmethod
+    def calc_classification_metrics(y_true, y_pred, threshold=.5):
+
+        """
+        Parameters
+        ----------
+        y_true: pd.Series of actual y value
+        y_pred: pd.Series of predicted y_value score (not the predicted class)
+        threshold: float value - if pred score is > than the threshold, flag prediction to be 1
+        ----------
+
+        Returns
+        dictionary of classification scores
+        -------
+        """
+
+        assert not y_true.isnull().any(), 'y_true cannot have NAs!'
+        assert not y_pred.isnull().any(), 'y_pred cannot have NAs!'
+
+        output_dict = dict(accuracy=accuracy_score(y_true, y_pred > threshold),
+                           precision=precision_score(y_true, y_pred > threshold),
+                           recall=recall_score(y_true, y_pred > threshold),
+                           f1=f1_score(y_true, y_pred > threshold),
+                           roc_auc=roc_auc_score(y_true, y_pred),
+                           pr_auc=average_precision_score(y_true, y_pred, average='weighted'),
+                           logloss=log_loss(y_true, y_pred))
+        return output_dict
+
+    def calc_ml_metrics(self,
+                        df,
+                        target_name,
+                        fits,
+                        classification_or_regression=None,
+                        groupby_cols=None,
+                        clf_threshold=0.5,
+                        drop_nas=True,
+                        groupby_col_order=dict(dataset_split=('train', 'val', 'test')),
+                        num_threads=1):
+
+        """
+
+        Description
+        -----------
+        Select the datasets and needed columns
+        melt the multiple fit columns into long df w/ fit & fit_values columns
+        drop NAs if specified
+        groupby cols if specified
+        apply the metric fn to each group
+        cast the results to a dict and then df
+        sort the dataset values if specified
+        create a rounded column of the metric values for the plot's text
+
+        Parameters
+        ----------
+        df: pandas df witht he target_name and fits
+        target_name: str of the target name
+        fits: list or tuple of fits in the dataframe to evaluate
+        groupby_cols: list or tuple of cols to groupby when calculating the ML metrics
+        drop_nas: Bool to drop NA values before evaluation
+
+        Returns: pandas dataframe with calculated ML metrics
+
+        """
+        assert df[target_name].isnull().sum() == 0, 'There cannot be NAs in the target variable'
+
+        self.df = df[list(set(fits + [target_name]))] if groupby_cols is None \
+            else df[list(set(fits + [target_name] + [groupby_cols]))]
+
+        self.target_name = target_name
+        self.fits = fits
+        self.groupby_cols = groupby_cols
+
+        if classification_or_regression.lower().startswith('reg'):
+            self.metric_fn = self.calc_regression_metrics
+        else:
+            self.metric_fn = self.calc_classification_metrics
+            self.metric_fn.threshold = clf_threshold
+
+        if isinstance(self.fits, tuple):
+            self.fits = list(self.fits)
+        elif isinstance(self.fits, str):
+            self.fits = [self.fits]
+
+        if num_threads > 1:
+            raise NotImplementedError('Multi-threading not implemented yet!')
+
+        if self.groupby_cols is None:
+            self.metrics_df = pd.DataFrame()
+            for fit in self.fits:
+                _metrics_df = \
+                    pd.DataFrame.from_dict(self.metric_fn(df[self.target_name], df[fit]),
+                                           orient='index',
+                                           columns=[fit])
+
+                self.metrics_df = pd.concat([self.metrics_df, _metrics_df], axis=1)
+        else:
+            if isinstance(self.groupby_cols, str):
+                self.groupby_cols = [self.groupby_cols]
+            elif isinstance(self.groupby_cols, tuple):
+                self.groupby_cols = list(self.groupby_cols)
+
+            if len(self.fits) == 1:
+                self.metrics_df = \
+                    df.groupby(self.groupby_cols, dropna=drop_nas) \
+                        .apply(lambda x: self.metric_fn(x[self.target_name], x[self.fits[0]])) \
+                        .reset_index() \
+                        .pipe(lambda x: x[self.groupby_cols].join(json_normalize(x[0])))
+
+            else:
+                self.metrics_df = pd.DataFrame()
+                for fit in self.fits:
+                    _metrics_df = \
+                        df.groupby(self.groupby_cols, dropna=drop_nas) \
+                            .apply(lambda x: self.metric_fn(x[self.target_name], x[fit])) \
+                            .reset_index() \
+                            .pipe(lambda x: x[self.groupby_cols].join(json_normalize(x[0])))\
+                            .assign(fit=fit)
+
+                    self.metrics_df = pd.concat([self.metrics_df, _metrics_df])
+
+            if groupby_col_order is not None:
+                for col in groupby_col_order.keys():
+                    col_order = pd.CategoricalDtype(groupby_col_order[col], ordered=True)
+                    self.metrics_df[col] = self.metrics_df[col].astype(col_order)
+
+                self.metrics_df.sort_values(by=list(groupby_col_order.keys()), inplace=True)
+
+        return self.metrics_df
+
+    def plot_metrics(self,
+                     metrics_output=None,
+                     x='metric',
+                     y='value',
+                     facet_col='fit',
+                     barmode='group',
+                     facet_col_wrap=None,
+                     facet_row=None,
+                     height=None,
+                     width=None,
+                     text_position='outside',
+                     color=None,
+                     y_matches=None,
+                     save_plot_loc=None,
+                     title=None,
+                     **calc_ml_metrics_params):
+
+        metrics_output = self.calc_ml_metrics(**calc_ml_metrics_params) if metrics_output is None else metrics_output
+
+        if self.groupby_cols is None:
+            metrics_df = metrics_output.reset_index().melt(id_vars='index')
+            metrics_df.rename(columns={'index': 'metric', 'variable': 'fit'}, inplace=True)
+        else:
+            metrics_df = metrics_output.melt(id_vars=list(set(self.groupby_cols + ['fit'])))
+            metrics_df.rename(columns={'variable': 'metric'}, inplace=True)
+
+        metrics_df['text'] = \
+            (metrics_df['value'] * 100) \
+                .round(2) \
+                .astype(str) \
+                .pipe(lambda x: x + '%')
+
+        fig = px.bar(metrics_df,
+                     x=x,
+                     y=y,
+                     facet_col=facet_col,
+                     facet_row=facet_row,
+                     facet_col_wrap=facet_col_wrap,
+                     color=color,
+                     barmode=barmode,
+                     height=height,
+                     width=width,
+                     text='text',
+                     title=title)
+
+        fig.update_traces(textposition=text_position)
+        fig.update_yaxes(range=[metrics_df[y].min() - 0.05, metrics_df[y].max() + 0.1], matches=y_matches)
+
+        if width is None:
+            for data in fig.data:
+                data["width"] = 1
+
+        if save_plot_loc: plotly.offline.plot(fig, filename=save_plot_loc)
+        return fig
+
 class ThresholdOptimizer:
 
     """
