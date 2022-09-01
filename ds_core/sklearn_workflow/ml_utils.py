@@ -254,9 +254,16 @@ class SklearnMLFlow:
 
         return self
 
-    def optimize_models(self, minimize_or_maximize, **assign_threshold_opt_rows_params):
+
+    def optimize_models(self,
+                        minimize_or_maximize,
+                        splits_to_assess=('train', 'val', 'test'),
+                        **assign_threshold_opt_rows_params):
+
         self.assign_threshold_opt_rows(**assign_threshold_opt_rows_params)
+
         fits = [i for i in self.df_out.columns if i.endswith('_pred')]
+
         self.optimizer.run_optimization(fits=fits,
                                         minimize_or_maximize=minimize_or_maximize,
                                         df=self.df_out[self.df_out[self.threshold_opt_name]],
@@ -271,6 +278,26 @@ class SklearnMLFlow:
             if self.optimizer.best_thresholds[fit].index.name != 'threshold':
                 self.optimizer.best_thresholds[fit].set_index('threshold', inplace=True)
             thres_opt.assign_positive_class(self.optimizer.best_thresholds[fit])
+
+
+        ### assess the predicted class from the chosen optimized threshold(s) by split ###
+
+        if splits_to_assess is not None:
+            self.threshold_opt_results_by_split = pd.DataFrame()
+            for pred_class in [i + '_class' for i in fits]:
+                _threshold_results_by_split = \
+                    pd.DataFrame(
+                        self.df_out[self.df_out[self.split_colname].isin(splits_to_assess)] \
+                            .groupby(self.split_colname) \
+                            .apply(lambda x: self.optimizer.optimization_func(x[self.target_name], x[pred_class])),
+                     columns=[pred_class])
+
+                self.threshold_opt_results_by_split = \
+                    pd.concat([self.threshold_opt_results_by_split, _threshold_results_by_split], axis=1)
+
+            self.threshold_opt_results_by_split.index =\
+                self.threshold_opt_results_by_split.index.astype(pd.CategoricalDtype(splits_to_assess, ordered=True))
+            self.threshold_opt_results_by_split.sort_index(inplace=True)
 
         return self
 
@@ -735,11 +762,14 @@ class FeatureTransformer(TransformerMixin):
             hc_pipe = make_pipeline(
                 na_replacer,
                 FunctionTransformer(lambda x: x.astype(str), feature_names_out='one-to-one'),
-                TargetEncoder(cols=self.hc_features,
+                # MeanEncoder()
+                TargetEncoder(cols=self.feature_groups['hc_features'],
+                              drop_invariant=True,
                               return_df=True,
                               handle_missing='value',
                               handle_unknown='value',
-                              min_samples_leaf=10)
+                              min_samples_leaf=1,
+                              smoothing=10)
             )
 
             lc_pipe = make_pipeline(
@@ -987,94 +1017,6 @@ class ImbResampler():
         ds_print('Running {}'.format(type(self.algorithm).__name__))
         df_resampled = self.algorithm.fit_resample(X, y)
         return df_resampled
-
-
-def timeseries_split(df,
-                     datetime_col='date',
-                     split_by_datetime_col=True,
-                     train_prop=0.7,
-                     val_prop=0.15,
-                     target_name='target',
-                     return_single_df=True,
-                     split_colname='dataset_split',
-                     sort_df_params={},
-                     reset_datetime_index=True,
-                     make_copy=True):
-    """
-    Get the column names from the a ColumnTransformer containing transformers & pipelines
-    Parameters
-    ----------
-    df: a pandas (compatible) dataframe
-    datetime_col: str date column to run the timeseries split on
-    train_prop: float - proportion of train orders assuming the data is sorted in ascending order
-        example: 0.7 means 70% of the df will train orders
-    val_prop: float - proportion of val orders
-        e.g. 0.1 means 10% of the df will be val orders, where the val orders come after the train orders
-    target_name: str - name of the target variable
-    return_single_df: If true then a new column <split_colname> will be concatenated to the df with 'train', 'val', or 'test'
-    split_colname: If return_single_df is True, then this is the name of the new split col
-    sort_df_params: Set to False or empty dict to not sort the df by any column.
-        To sort, specify as dict the input params to either df.sort_index or df.sort_values.
-    reset_datetime_index: Bool to reset the datetime index if splitting by datetime_col
-    Returns
-    -------
-    Either a tuple of dataframes: X_train, y_train, X_val, y_val, X_test, y_test
-      Or the same df with a new <split_colname> having ['train', 'val', 'test'] or 'None' populated
-    """
-
-    if make_copy: df = df.copy()
-
-    if len(df.index) != df.index[-1] - df.index[0]:
-        df.reset_index(inplace=True)
-
-    nrows = len(df)
-
-    if sort_df_params:
-        if list(sort_df_params.keys())[0].lower() == 'index' and 'index' not in df.columns:
-            df.sort_index(**sort_df_params)
-        else:
-            df.sort_values(**sort_df_params)
-
-    elif datetime_col in df.columns:
-        df.set_index(datetime_col, inplace=True)
-        if reset_datetime_index:
-            df.reset_index(datetime_col, inplace=True)
-
-    if 'index' in df.columns:
-        df.drop('index', axis=1, inplace=True)
-
-    if return_single_df:
-
-        if split_by_datetime_col:
-            # max_train_date = df.iloc[0:int(np.floor(nrows*train_prop))][datetime_col].max()
-            # max_val_date = df.iloc[int(np.floor(nrows*train_prop)): int(np.floor(nrows*(1 - val_prop)))][datetime_col].max()
-
-            dates = np.unique(df['date'].sort_values())
-            max_train_date = dates[int(len(dates) * train_prop)]
-            max_val_date = dates[int(len(dates) * (1 - val_prop))]
-
-            df.loc[df[datetime_col] < max_train_date, split_colname] = 'train'
-            df.loc[(df[datetime_col] >= max_train_date) & (df[datetime_col] < max_val_date), split_colname] = 'val'
-            df.loc[df[datetime_col] >= max_val_date, split_colname] = 'test'
-
-        else:
-            df.loc[0:int(np.floor(nrows * train_prop)), split_colname] = 'train'
-            df.loc[int(np.floor(nrows * train_prop)): int(np.floor(nrows * (1 - val_prop))), split_colname] = 'val'
-            df.loc[int(np.floor(nrows * (1 - val_prop))):, split_colname] = 'test'
-
-        return df
-
-    else:
-        X_train = df.iloc[0:int(np.floor(nrows * train_prop))][feature_list]
-        y_train = df.iloc[0:int(np.floor(nrows * train_prop))][target_name]
-
-        X_val = df.iloc[int(np.floor(nrows * train_prop)):int(np.floor(nrows * (1 - val_prop)))][feature_list]
-        y_val = df.iloc[int(np.floor(nrows * train_prop)):int(np.floor(nrows * (1 - val_prop)))][target_name]
-
-        X_test = df.iloc[int(np.floor(nrows * (1 - val_prop))):][feature_list]
-        y_test = df.iloc[int(np.floor(nrows * (1 - val_prop))):][target_name]
-        return X_train, y_train, X_val, y_val, X_test, y_test
-
 
 def r_squared(y_true, y_pred):
     return np.corrcoef(y_true, y_pred)[0, 1] ** 2
@@ -1471,6 +1413,7 @@ class ScoreThresholdOptimizer(ThresholdOptimizer):
 
         return self
 
+
     def get_best_thresholds(self, minimize_or_maximize, threshold_df=None):
 
         """
@@ -1509,6 +1452,7 @@ class ScoreThresholdOptimizer(ThresholdOptimizer):
                 self.best_score = self.threshold_df[self.threshold_df['score'] == self.threshold_df['score'].min()]
 
         return self
+
 
     def run_optimization(self, fits, minimize_or_maximize, df=None, target_name=None, num_threads=1):
         """
@@ -1554,10 +1498,18 @@ class ScoreThresholdOptimizer(ThresholdOptimizer):
 
         return self
 
-class SimpleSplitter:
 
-    def __init__(self, split_colname='dataset_split', train_pct=0.7, val_pct=0.15):
+class AbstractSplitter:
+
+    def __init__(self, split_colname='dataset_split'):
         self.split_colname = split_colname
+
+    def split(self):
+        raise ValueError('The split method must be overridden.')
+
+class SimpleSplitter(AbstractSplitter):
+
+    def __init__(self, train_pct=0.7, val_pct=0.15):
         self.train_pct = train_pct
         self.val_pct = val_pct
     def split(self, df):

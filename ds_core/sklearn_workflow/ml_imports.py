@@ -18,6 +18,7 @@ from sklearn.metrics import (
     roc_auc_score,
     log_loss,
     average_precision_score,
+    classification_report,
 
     # regression metrics
     mean_squared_error,
@@ -58,6 +59,7 @@ from sklearn.model_selection import (
     StratifiedGroupKFold
 )
 
+
 from sklearn.impute import SimpleImputer
 
 from sklearn.pipeline import (
@@ -69,6 +71,9 @@ from catboost import CatBoostClassifier, CatBoostRegressor, Pool
 from lightgbm import LGBMClassifier, LGBMRegressor
 
 from category_encoders.target_encoder import TargetEncoder
+
+from feature_engine.encoding import MeanEncoder
+from feature_engine.outliers import Winsorizer, OutlierTrimmer, ArbitraryOutlierCapper
 
 ### dask imports ###
 
