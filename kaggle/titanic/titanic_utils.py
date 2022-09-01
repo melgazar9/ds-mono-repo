@@ -25,7 +25,7 @@ class TitanicFeatureCreator:
         for key, d in self.survival_categories.items():
             for k, v in d.items():
                 df.loc[df[key] == k, key + '_survived'] = max(d[k], 0)
-            df[key + '_survived'].fillna(0, inplace=True)
+            df[key + '_survived'].fillna(2, inplace=True)
 
         return df
 
@@ -49,31 +49,3 @@ class TitanicSplitter(AbstractSplitter):
         df.loc[df['survived'].isnull(), self.split_colname] = 'submission'
 
         return df
-
-class TitanicOptimizer(ScoreThresholdOptimizer):
-
-    def __init__(self):
-        super().__init__()
-
-    def run_optimization(self):
-
-        self.optimize()
-        ### assess the predicted class from the chosen optimized threshold(s) by split ###
-
-        if splits_to_assess is not None:
-            self.threshold_opt_results_by_split = pd.DataFrame()
-            for pred_class in [i + '_class' for i in fits]:
-                _threshold_results_by_split = \
-                    pd.DataFrame(
-                        self.df_out[self.df_out[self.split_colname].isin(splits_to_assess)] \
-                            .groupby(self.split_colname) \
-                            .apply(lambda x: self.optimizer.optimization_func(x[self.target_name], x[pred_class])),
-                        columns=[pred_class])
-
-                self.threshold_opt_results_by_split = \
-                    pd.concat([self.threshold_opt_results_by_split, _threshold_results_by_split], axis=1)
-
-            self.threshold_opt_results_by_split.index = \
-                self.threshold_opt_results_by_split.index.astype(pd.CategoricalDtype(splits_to_assess, ordered=True))
-            self.threshold_opt_results_by_split.sort_index(inplace=True)
-        return self

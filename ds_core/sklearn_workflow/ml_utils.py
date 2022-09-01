@@ -49,7 +49,6 @@ class SklearnMLFlow:
             self.input_features = input_features
 
         self.output_features = input_features.copy()
-
         self.preserve_vars = preserve_vars if preserve_vars is not None \
             else [i for i in self.df_input.columns if i not in self.input_features + [self.target_name]]
 
@@ -62,15 +61,12 @@ class SklearnMLFlow:
 
         self.splitter = splitter
         self.feature_creator = feature_creator
-
         self.feature_transformer = feature_transformer if feature_transformer is not None \
             else FeatureTransformer(target_name=self.target_name, preserve_vars=self.preserve_vars)
-
         self.resampler = resampler
         self.algorithms = algorithms
         self.optimizer = optimizer
         self.evaluator = evaluator
-
         self.input_cols = self.input_features + self.preserve_vars
 
         if self.target_name not in self.input_cols:
@@ -101,7 +97,6 @@ class SklearnMLFlow:
 
         return self
 
-
     def transform_features(self, feature_groups=None):
         """
         Description
@@ -123,7 +118,7 @@ class SklearnMLFlow:
             self.feature_transformer.instantiate_column_transformer(
                 self.df_out[self.df_out[self.split_colname] == 'train'],
                 self.df_out[self.df_out[self.split_colname] == 'train'][self.target_name]
-            )
+                )
 
             ### Assign feature groups ###
 
@@ -195,7 +190,6 @@ class SklearnMLFlow:
         print("\nModel training done!\n")
         return self
 
-
     def predict_models(self):
         print(f"Predicting models...\n")
 
@@ -250,7 +244,6 @@ class SklearnMLFlow:
 
         return self
 
-
     def optimize_models(self,
                         minimize_or_maximize,
                         splits_to_assess=('train', 'val', 'test'),
@@ -278,22 +271,31 @@ class SklearnMLFlow:
 
         return self
 
-    def evaluate_models(self, **kwargs):
 
-        ### set a default evaluator for the Amex competition ###
+    def evaluate_models(self, splits_to_evaluate=('train', 'val', 'test'), **kwargs):
+        evaluator_params = {}
+        for param in [i for i in inspect.getfullargspec(self.evaluator.__init__).args if i != 'self']:
+            evaluator_params[param] = getattr(self.evaluator, param)
+        for k in kwargs.keys():
+            evaluator_params[k] = kwargs[k]
 
-        if self.evaluator is None:
-            # fits = [type(a).__name__ + '_pred' for a in self.algorithms]
-            fits = [f for f in self.df_out.columns if 'pred' in f]
-            if 'dummy' in self.df_out.columns and 'dummy' not in fits:
-                fits.append('dummy')
+        splits_to_evaluate = [splits_to_evaluate] if isinstance(splits_to_evaluate, str) else splits_to_evaluate
+        splits_to_evaluate = list(splits_to_evaluate) if isinstance(splits_to_evaluate, tuple) else splits_to_evaluate
+        assert isinstance(splits_to_evaluate, list), 'could not convert splits_to_evaluate to a list'
 
-            self.evaluator.df = self.df_out
-            self.evaluator.target_name = self.target_name
-            self.evaluator.fits = fits
+        self.evaluator.df = self.df_out[self.df_out[self.split_colname].isin(splits_to_evaluate)].copy()
+        self.evaluator.target_name = self.target_name
+        # self.evaluator.fits = [i for i in self.df_out.columns if i.endswith('_pred_class')]
 
-        self.evaluator.evaluate(**kwargs)
+        self.evaluator.evaluate(**evaluator_params)
+        return self
 
+    def get_feature_importances(self):
+        self.feature_importances = {}
+        for algo in self.algorithms:
+            self.feature_importances[type(algo).__name__] = \
+                FeatureImportance(model=algo, df=self.df_out, input_features=self.output_features)\
+                    .get_feature_importance()
         return self
 
     def run_ml_workflow(self,
@@ -357,6 +359,11 @@ class SklearnMLFlow:
             if self.evaluator is not None:
                 self.evaluate_models() if evaluate_model_params is None \
                     else self.evaluate_models(**evaluate_model_params)
+
+            ### get feature importances ###
+
+            self.get_feature_importances()
+
         else:
             raise NotFittedError('Not all algorithms have been fit!')
 
@@ -1010,11 +1017,11 @@ class CalcMLMetrics:
 
     Parameters
     ----------
-    round_importance_decimals: int to round the output feature importance text for easier reading
+    round_decimals: int to round the output feature importance text for easier reading
     """
 
-    def __init__(self, round_importance_decimals=3):
-        self.round_importance_decimals = round_importance_decimals
+    def __init__(self, round_decimals=3):
+        self.round_decimals = round_decimals
 
     @staticmethod
     def calc_regression_metrics(y_true=None, y_pred=None):
@@ -1253,7 +1260,7 @@ class ThresholdOptimizer:
 
         Parameters
         ----------
-        thresholds: array of thresholds to test (if None use default value in overriden method)
+        thresholds: array of thresholds to test (if None use default value in overridden method)
 
         Returns
         -------
@@ -1261,7 +1268,7 @@ class ThresholdOptimizer:
 
         """
 
-        raise ValueError("The optimize method must be overriden.")
+        raise ValueError("The optimize method must be overridden.")
 
     @staticmethod
     def get_best_thresholds(threshold_df):
@@ -1349,7 +1356,6 @@ class ScoreThresholdOptimizer(ThresholdOptimizer):
     """
 
     def __init__(self, optimization_func, y_pred=None, y_true=None):
-
         self.optimization_func = optimization_func
         self.y_pred = y_pred
         self.y_true = y_true
@@ -1448,6 +1454,7 @@ class ScoreThresholdOptimizer(ThresholdOptimizer):
         """
 
         fits = [fits] if isinstance(fits, str) else fits
+        df = df[fits + [target_name]]
 
         ### sanity checks ###
         
@@ -1475,7 +1482,6 @@ class ScoreThresholdOptimizer(ThresholdOptimizer):
 
         return self
 
-
 class AbstractSplitter:
 
     def __init__(self, split_colname='dataset_split'):
@@ -1499,3 +1505,53 @@ class SimpleSplitter(AbstractSplitter):
 
         df.loc[int(df.shape[0] * self.train_pct) + int(df.shape[0] * self.val_pct): , self.split_colname] = 'test'
         return df
+
+class AbstractEvaluator:
+
+    def evaluate(self):
+        raise ValueError('The evaluate method must be overridden.')
+class GenericMLEvaluator(AbstractEvaluator):
+
+    def __init__(self,
+                 df=None,
+                 target_name=None,
+                 fits=None,
+                 classification_or_regression=None,
+                 groupby_cols=None,
+                 clf_threshold=0.5,
+                 drop_nas=True,
+                 groupby_col_order=dict(dataset_split=('train', 'val', 'test')),
+                 num_threads=1,
+                 round_decimals=3):
+        self.df = df
+        self.target_name = target_name
+        self.fits = fits
+        self.classification_or_regression = classification_or_regression
+        self.groupby_cols = groupby_cols
+        self.clf_threshold = clf_threshold
+        self.drop_nas = drop_nas
+        self.groupby_col_order = groupby_col_order
+        self.num_threads = num_threads
+        self.round_decimals = round_decimals
+    def evaluate(self, **calc_ml_metrics_params):
+        evaluator = CalcMLMetrics(round_decimals=self.round_decimals)
+
+        if self.classification_or_regression.lower() == 'classification':
+            self.fits = [i for i in self.df.columns if i.endswith('_pred_class')]
+        else:
+            self.fits = [i for i in self.df.columns if i.endswith('_pred')]
+
+        self.evaluation_output = \
+            evaluator.calc_ml_metrics(
+                df=self.df,
+                target_name=self.target_name,
+                fits=self.fits,
+                classification_or_regression=self.classification_or_regression,
+                groupby_cols=self.groupby_cols,
+                clf_threshold=self.clf_threshold,
+                drop_nas=self.drop_nas,
+                groupby_col_order=self.groupby_col_order,
+                num_threads=self.num_threads
+            )
+
+        return self

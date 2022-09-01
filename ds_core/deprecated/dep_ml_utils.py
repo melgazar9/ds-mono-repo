@@ -197,3 +197,64 @@ class RunModel():
         run_model_dict['df_pred'] = self.predict_model(model=run_model_dict['model'])
 
         return run_model_dict
+
+### thinking about how to integrate split optimization ###
+class SplitOptimizer(ScoreThresholdOptimizer):
+
+    """
+    The goal of this class is to optimize the predicted class decision by capturing the maximum score value from
+        self.optimize, while minimumizing the distance across the train, val, and test to reduce over-fitting.
+    """
+
+    def __init__(self, split_colname='dataset_split'):
+        self.split_colname = split_colname
+
+    def run_split_optimization(self,
+                               df,
+                               fits,
+                               minimize_or_maximize,
+                               split_colname='dataset_split',
+                               target_name=None,
+                               num_threads=1):
+        """
+        Description
+        -----------
+        Like ScoreThresholdOptimizer, this method runs the optimization pipeline, calling methods in the proper sequence.
+        Note that if multiple fits are passed, self.best_score will return the most recent best threshold df
+            and self.best_thresholds is a dictionary containing the best thresholds for each fit
+
+        :param df: optional pandas df consisting of the fit columns
+        :param fits: list or tuple of fits to optimize
+        :param minimize_or_maximize: bool whether to minimize or maximize the optimization function
+        :param split_colname: str of the split column that must contain values 'train', 'val', and 'test'
+        :param target_name: str of the target name
+        :param num_threads: int of number of threads to use
+        :return: self
+        """
+
+        self.run_score_optimization(df=df,
+                                    fits=fits,
+                                    minimize_or_maximize=minimize_or_maximize,
+                                    target_name=target_name,
+                                    splits_to_assess=('train', 'val'),
+                                    num_threads=num_threads)
+
+        ### assess the predicted class from the chosen optimized threshold(s) by split ###
+
+        if splits_to_assess is not None:
+            self.threshold_opt_results_by_split = pd.DataFrame()
+            for fit in fits:
+                _threshold_results_by_split = \
+                    pd.DataFrame(
+                        df[df[self.split_colname].isin(splits_to_assess)] \
+                            .groupby(self.split_colname) \
+                            .apply(lambda x: self.optimization_func(x[target_name], x[pred_class])),
+                        columns=[pred_class])
+
+                self.threshold_opt_results_by_split = \
+                    pd.concat([self.threshold_opt_results_by_split, _threshold_results_by_split], axis=1)
+
+            self.threshold_opt_results_by_split.index = \
+                self.threshold_opt_results_by_split.index.astype(pd.CategoricalDtype(splits_to_assess, ordered=True))
+            self.threshold_opt_results_by_split.sort_index(inplace=True)
+        return self
