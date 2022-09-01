@@ -138,13 +138,9 @@ class SklearnMLFlow:
                 for fg in self.new_feature_groups.keys():
                     if len(self.new_feature_groups[fg]) > 0:
                         self.feature_transformer.feature_groups[fg] = \
-                            self.feature_transformer.feature_groups[fg] + \
-                            self.new_feature_groups[fg]
+                            list(set(self.feature_transformer.feature_groups[fg] + self.new_feature_groups[fg]))
             else:
                 self.feature_groups = feature_groups
-
-            assert (len(find_list_duplicates(self.feature_transformer.output_features)) == 0), \
-                "Failed to find new features."
 
         self.feature_transformer.target_name = self.target_name
         self.feature_transformer.preserve_vars = self.preserve_vars
@@ -157,7 +153,6 @@ class SklearnMLFlow:
         self.df_out = self.feature_transformer.transform(self.df_out)
         self.output_cols = self.feature_transformer.output_cols
         self.output_features = self.feature_transformer.output_features
-
         return self
 
     def resample(self):
@@ -190,8 +185,7 @@ class SklearnMLFlow:
 
         if hasattr(self.algorithms, 'fit'):
             print(f"Running {type(self.algorithms).__name__}...\n")
-            self.algorithms\
-                .fit(X_train, y_train, **fit_params)
+            self.algorithms.fit(X_train, y_train, **fit_params)
         else:
             assert isinstance(self.algorithms, (tuple, list))
             for algo in self.algorithms:
@@ -203,6 +197,8 @@ class SklearnMLFlow:
 
 
     def predict_models(self):
+        print(f"Predicting models...\n")
+
         if hasattr(self.algorithms, 'predict_proba'):
             self.df_out[type(self.algorithms).__name__ + '_pred'] = \
                 self.algorithms.predict_proba(self.df_out[self.output_features])[:, 1]
@@ -277,27 +273,8 @@ class SklearnMLFlow:
 
             if self.optimizer.best_thresholds[fit].index.name != 'threshold':
                 self.optimizer.best_thresholds[fit].set_index('threshold', inplace=True)
-            thres_opt.assign_positive_class(self.optimizer.best_thresholds[fit])
 
-
-        ### assess the predicted class from the chosen optimized threshold(s) by split ###
-
-        if splits_to_assess is not None:
-            self.threshold_opt_results_by_split = pd.DataFrame()
-            for pred_class in [i + '_class' for i in fits]:
-                _threshold_results_by_split = \
-                    pd.DataFrame(
-                        self.df_out[self.df_out[self.split_colname].isin(splits_to_assess)] \
-                            .groupby(self.split_colname) \
-                            .apply(lambda x: self.optimizer.optimization_func(x[self.target_name], x[pred_class])),
-                     columns=[pred_class])
-
-                self.threshold_opt_results_by_split = \
-                    pd.concat([self.threshold_opt_results_by_split, _threshold_results_by_split], axis=1)
-
-            self.threshold_opt_results_by_split.index =\
-                self.threshold_opt_results_by_split.index.astype(pd.CategoricalDtype(splits_to_assess, ordered=True))
-            self.threshold_opt_results_by_split.sort_index(inplace=True)
+            thres_opt.assign_predicted_class(self.optimizer.best_thresholds[fit])
 
         return self
 
@@ -764,7 +741,7 @@ class FeatureTransformer(TransformerMixin):
                 FunctionTransformer(lambda x: x.astype(str), feature_names_out='one-to-one'),
                 # MeanEncoder()
                 TargetEncoder(cols=self.feature_groups['hc_features'],
-                              drop_invariant=True,
+                              drop_invariant=False,
                               return_df=True,
                               handle_missing='value',
                               handle_unknown='value',
@@ -832,13 +809,13 @@ class FeatureTransformer(TransformerMixin):
 
         if len(self.preserve_vars):
             self.preserve_vars_orig = self.preserve_vars.copy()
-            self.preserve_vars = list(clean_columns(pd.DataFrame(columns=self.output_cols[len(input_features): ])).columns)
+            self.preserve_vars = self.preserve_vars_orig + self.feature_groups['discarded_features']
 
         setattr(self, 'output_features',
                 [i for i in self.output_cols
-                 if i not in self.preserve_vars])
+                 if i not in self.preserve_vars + [self.target_name]])
 
-        assert len(self.output_features + self.preserve_vars) == len(self.output_cols)
+        assert len(list(set(self.output_features + self.preserve_vars + [self.target_name]))) == len(self.output_cols)
         assert len(set(self.output_cols)) == len(self.output_cols)
 
         return self
@@ -1304,7 +1281,7 @@ class ThresholdOptimizer:
         """
         return
 
-    def assign_positive_class(self, best_threshold_df):
+    def assign_predicted_class(self, best_threshold_df):
 
         """
         Description: Assign a positive predicted class based on the output of get_best_thresholds
@@ -1319,7 +1296,7 @@ class ThresholdOptimizer:
         """
 
         assert (self.df is not None) and (self.pred_column is not None), \
-            "Both self.df and self.pred_column must be provided when calling self.assign_positive_class."
+            "Both self.df and self.pred_column must be provided when calling self.assign_predicted_class."
 
         if (self.pred_class_col in self.df.columns):
             warnings.warn(f"pred_class_col {self.pred_class_col} is in self.df. \

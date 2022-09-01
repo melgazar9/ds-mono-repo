@@ -42,18 +42,19 @@ mlf = SklearnMLFlow(df=df,
                     input_features=[i for i in df.columns if i not in ['dataset_split', 'PassengerId', TARGET_NAME]],
                     target_name=TARGET_NAME,
                     preserve_vars=['PassengerId', 'dataset_split'],
-                    splitter=KaggleTitanicSplitter(train_pct=0.80, val_pct=0.20),
+                    feature_creator=TitanicFeatureCreator(),
+                    splitter=TitanicSplitter(train_pct=0.80, val_pct=0.20),
                     feature_transformer=ft,
                     algorithms=[CatBoostClassifier(iterations=300, learning_rate=0.02, random_state=9),
                                 XGBClassifier(learning_rate=0.05, max_depth=3, random_state=9)],
                     optimizer=ScoreThresholdOptimizer(accuracy_score))
 
 mlf.split()
+mlf.create_features()
 mlf.transform_features()
 mlf.train_models()
 mlf.predict_models()
 mlf.optimize_models('maximize') # should be custom optimization method
-survived_categories = get_survived_categories(mlf.df_input, ['Name', 'Cabin'])
 print(mlf.threshold_opt_results_by_split)
 
 ### save output ###
