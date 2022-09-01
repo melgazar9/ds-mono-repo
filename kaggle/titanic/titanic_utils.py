@@ -50,7 +50,7 @@ class TitanicSplitter(AbstractSplitter):
 
         return df
 
-class TitanicOptimizer(ThresholdOptimizer, ScoreThresholdOptimizer):
+class TitanicOptimizer(ScoreThresholdOptimizer):
 
     def __init__(self):
         super().__init__()
