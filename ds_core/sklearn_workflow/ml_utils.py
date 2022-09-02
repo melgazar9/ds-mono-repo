@@ -495,33 +495,32 @@ def get_column_names_from_ColumnTransformer(column_transformer, clean_column_nam
 
 class FeatureTransformer(TransformerMixin):
     """
-        Parameters
-        ----------
-        preserve_vars : A list of variables that won't be fitted or transformed by any sort of feature engineering
-        target_name : A string - the name of the target variable.
-        remainder : A string that gets passed to the column transformer whether to
-                    drop preserve_vars or keep them in the final dataset
-                    options are 'drop' or 'passthrough'
-        max_lc_cardinality : A natural number - one-hot encode all features with unique categories <= to this value
-        FE_pipeline_dict : Set to None to use "standard" feature engineering pipeline.
-            Otherwise, supply a dictionary of pipelines to hc_pipe, lc_pipe, numeric_pipe, and custom_pipe
-                numeric_pipe: numeric pipeline
-                hc_pipe: high-cardinal pipeline
-                lc_pipe: low-cardinal pipe
-        n_jobs : An int - the number of threads to use
-        make_copy : boolean to make_copy X_train and X_test while preprocessing
+    Parameters
+    ----------
+    preserve_vars : A list of variables that won't be fitted or transformed by any sort of feature engineering
+    target_name : A string - the name of the target variable.
+    remainder : A string that gets passed to the column transformer whether to
+                drop preserve_vars or keep them in the final dataset
+                options are 'drop' or 'passthrough'
+    max_lc_cardinality : A natural number - one-hot encode all features with unique categories <= to this value
+    FE_pipeline_dict : Set to None to use "standard" feature engineering pipeline.
+        Otherwise, supply a dictionary of pipelines to hc_pipe, lc_pipe, numeric_pipe, and custom_pipe
+            numeric_pipe: numeric pipeline
+            hc_pipe: high-cardinal pipeline
+            lc_pipe: low-cardinal pipe
+    n_jobs : An int - the number of threads to use
+    make_copy : boolean to make_copy X_train and X_test while preprocessing
 
-        Attributes
-        ----------
-        detect_feature_groups attributes are dictionary attributes
-        fit attributes are sklearn ColumnTransformer attributes
+    Attributes
+    ----------
+    detect_feature_groups attributes are dictionary attributes
+    fit attributes are sklearn ColumnTransformer attributes
 
-        Returns
-        -------
-        Method detect_features returns a dictionary
-        Method fit returns a ColumnTransformer object
-
-        We can call fit_transform because we inherited the sklearn base TransformerMixin class
+    Returns
+    -------
+    Method detect_features returns a dictionary
+    Method fit returns a ColumnTransformer object
+    We can call fit_transform because we inherited the sklearn base TransformerMixin class
 
     """
 
@@ -716,7 +715,6 @@ class FeatureTransformer(TransformerMixin):
         return feature_dict
 
     def instantiate_column_transformer(self, X, y=None):
-
         if self.target_name is None and y is not None:
             self.target_name = y.name
 
@@ -741,7 +739,7 @@ class FeatureTransformer(TransformerMixin):
                 # Winsorizer(distribution='gaussian', tail='both', fold=3, missing_values = 'ignore'),
                 MinMaxScaler(feature_range=(0, 1)),
                 SimpleImputer(strategy='median', add_indicator=True)
-            )
+                )
 
             hc_pipe = make_pipeline(
                 na_replacer,
@@ -754,12 +752,12 @@ class FeatureTransformer(TransformerMixin):
                               handle_unknown='value',
                               min_samples_leaf=1,
                               smoothing=10)
-            )
+                )
 
             lc_pipe = make_pipeline(
                 na_replacer,
                 OneHotEncoder(handle_unknown='ignore', sparse=False)
-            )
+                )
 
             custom_pipe = None
 
@@ -855,7 +853,6 @@ class FeatureImportance:
     """
 
     def __init__(self, model=None, df=None, input_features=None, round_decimals=3, verbose=False):
-
         self.model = model
         self.df = df
         self.input_features = input_features
@@ -971,9 +968,7 @@ class FeatureImportance:
             fig.update_layout(title_text=title_text, title_x=0.5)
             fig.update(layout_showlegend=False)
             fig.update_yaxes(tickfont=dict(family=yaxes_tickfont_family, size=yaxes_tickfont_size))
-
             return fig
-
         else:
             return
 
@@ -1004,7 +999,6 @@ class ImbResampler():
 
 def r_squared(y_true, y_pred):
     return np.corrcoef(y_true, y_pred)[0, 1] ** 2
-
 
 class CalcMLMetrics:
     """
@@ -1396,7 +1390,6 @@ class ScoreThresholdOptimizer(ThresholdOptimizer):
 
         return self
 
-
     def get_best_thresholds(self, minimize_or_maximize, threshold_df=None):
 
         """
@@ -1505,6 +1498,7 @@ class SimpleSplitter(AbstractSplitter):
 
         df.loc[int(df.shape[0] * self.train_pct) + int(df.shape[0] * self.val_pct): , self.split_colname] = 'test'
         return df
+
 
 class AbstractEvaluator:
 

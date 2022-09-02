@@ -5,4 +5,3 @@ setup(name='ds_core',
       packages=find_packages(),
       author='Matt Elgazar',
       include_package_data=True)
-

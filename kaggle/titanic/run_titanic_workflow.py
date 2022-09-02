@@ -31,13 +31,10 @@ df_test = df_test[[i for i in keep_cols if i != TARGET_NAME]]
 
 df_test.loc[:, TARGET_NAME] = np.nan
 df = pd.concat([df_train, df_test])
-del df_train, df_test
 
+del df_train, df_test
 gc.collect()
 
-### initialize feature transformer ###
-
-ft = FeatureTransformer(target_name=TARGET_NAME, preserve_vars=PRESERVE_VARS)
 
 ### train a model ###
 
@@ -46,8 +43,8 @@ mlf = SklearnMLFlow(df=df,
                     target_name=TARGET_NAME,
                     preserve_vars=PRESERVE_VARS,
                     feature_creator=TitanicFeatureCreator(),
-                    splitter=TitanicSplitter(train_pct=0.70, val_pct=0.15),
-                    feature_transformer=ft,
+                    splitter=TitanicSplitter(train_pct=1, val_pct=0),
+                    feature_transformer=FeatureTransformer(target_name=TARGET_NAME, preserve_vars=PRESERVE_VARS),
                     algorithms=[CatBoostClassifier(iterations=300, learning_rate=0.02, random_state=9),
                                 XGBClassifier(learning_rate=0.05, max_depth=3, random_state=9)],
                     optimizer=ScoreThresholdOptimizer(accuracy_score),
@@ -62,8 +59,11 @@ mlf.create_features()
 mlf.transform_features()
 mlf.train_models()
 mlf.predict_models()
+mlf.assign_threshold_opt_rows(pct_train_for_opt=0.90, pct_val_for_opt=1)
 mlf.optimize_models('maximize') # should be custom optimization method
+
 mlf.get_feature_importances()
+print(mlf.feature_importances)
 
 for pred in [i for i in mlf.df_out.columns if i.endswith('_pred_class')]:
     duplicate_name_indices = \
@@ -72,13 +72,11 @@ for pred in [i for i in mlf.df_out.columns if i.endswith('_pred_class')]:
     duplicate_name_indices = duplicate_name_indices[duplicate_name_indices]
     duplicate_names = mlf.df_out.loc[duplicate_name_indices.index, 'name']
     for name in duplicate_names:
-        mlf.df_out.loc[mlf.df_out['name'] == name] = mlf.df_out.loc[mlf.df_out['name'] == name][mlf.target_name].max()
+        mlf.df_out.loc[mlf.df_out['name'] == name, pred] = mlf.df_out.loc[mlf.df_out['name'] == name][mlf.target_name].max()
 
 
 mlf.evaluate_models()
-
-# print(mlf.optimizer.threshold_opt_results_by_split)
-
+print(mlf.evaluator.evaluation_output)
 
 ### save output ###
 
@@ -105,16 +103,29 @@ mlf = SklearnMLFlow(df=df,
                     target_name=TARGET_NAME,
                     preserve_vars=PRESERVE_VARS,
                     feature_creator=TitanicFeatureCreator(),
-                    splitter=TitanicSplitter(train_pct=0.70, val_pct=0.15),
-                    feature_transformer=ft,
-                    algorithms=[CatBoostClassifier(iterations=1000,
-                                                   max_depth=3,
-                                                   bagging_temperature=1,
-                                                   per_float_feature_quantization='0:border_count=1024',
-                                                   l2_leaf_reg=5),
-                                XGBClassifier(learning_rate=0.01,
+                    splitter=TitanicSplitter(train_pct=0.7, val_pct=0.15),
+                    feature_transformer=FeatureTransformer(target_name=TARGET_NAME, preserve_vars=PRESERVE_VARS),
+                    algorithms=[CatBoostClassifier(loss_function='Logloss',
+                                                   eval_metric='Logloss',
+                                                   boosting_type='Ordered', # use permutations
+                                                   random_seed=9,
+                                                   use_best_model=True,
+                                                   one_hot_max_size=5,
+                                                   silent=True,
+                                                   depth=3,
+                                                   iterations=3000,
+                                                   learning_rate=0.03,
+                                                   l2_leaf_reg=8,
+                                                   border_count=5),
+                                XGBClassifier(n_estimators=1500,
+                                              learning_rate=0.08,
                                               max_depth=3,
-                                              l2_leaf_reg=3)],
+                                              grow_policy='lossguide',
+                                              gamma=0.8,
+                                              subsample=0.8,
+                                              l2_leaf_reg=9,
+                                              colsample_bytree=0.8,
+                                              n_jobs=-1)],
                     optimizer=ScoreThresholdOptimizer(accuracy_score),
                     evaluator=GenericMLEvaluator(
                         classification_or_regression='classification',
@@ -140,13 +151,25 @@ eval_set = [
 
 mlf.train_models(early_stopping_rounds=5, eval_set=eval_set)
 mlf.predict_models()
+mlf.assign_threshold_opt_rows(pct_train_for_opt=0.90, pct_val_for_opt=1)
 mlf.optimize_models('maximize')
+
+for pred in [i for i in mlf.df_out.columns if i.endswith('_pred_class')]:
+    duplicate_name_indices = \
+        mlf.df_out[mlf.df_out[mlf.split_colname] != 'submission']['name'] \
+            .isin(mlf.df_out[mlf.df_out[mlf.split_colname] == 'submission']['name'].tolist())
+    duplicate_name_indices = duplicate_name_indices[duplicate_name_indices]
+    duplicate_names = mlf.df_out.loc[duplicate_name_indices.index, 'name']
+    for name in duplicate_names:
+        mlf.df_out.loc[mlf.df_out['name'] == name, pred] = mlf.df_out.loc[mlf.df_out['name'] == name][mlf.target_name].max()
+
 mlf.evaluate_models()
 mlf.get_feature_importances()
 
+print(mlf.feature_importances)
 print(mlf.evaluator.evaluation_output)
 
 df_catboost.to_csv(TRAIN_LOC.replace('train.csv', 'df_catboost2.csv'), index=False)
 df_xgb.to_csv(TRAIN_LOC.replace('train.csv', 'df_xgb2.csv'), index=False)
 
-# subprocess.run('kaggle competitions submit -c titanic -f /home/melgazar9/.kaggle/titanic/df_catboost2.csv -m "mlf"')
+# subprocess.run('kaggle competitions submit -c titanic -f ~/.kaggle/titanic/df_catboost2.csv -m "mlf"')
