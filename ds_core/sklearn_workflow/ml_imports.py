@@ -28,11 +28,15 @@ from sklearn.metrics import (
 
 
 from sklearn.preprocessing import (
-    OneHotEncoder,
+    FunctionTransformer,
+
     MinMaxScaler,
     StandardScaler,
     RobustScaler,
-    FunctionTransformer
+
+    OneHotEncoder,
+    OrdinalEncoder,
+    LabelEncoder
     )
 
 from sklearn.ensemble import (

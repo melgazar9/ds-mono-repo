@@ -3,7 +3,7 @@
 from ds_core.ds_imports import *
 from ds_core.ds_utils import *
 from ds_core.sklearn_workflow.ml_utils import *
-from kaggle.titanic.titanic_utils import *
+from titanic_utils import *
 np.random.seed(9)
 
 ### global variables ###
@@ -13,6 +13,7 @@ TEST_LOC = '~/.kaggle/titanic/test.csv'
 TARGET_NAME = 'Survived'
 
 PRESERVE_VARS = ['PassengerId', 'Name', 'name_survived', 'dataset_split']
+
 
 ### load dfs ###
 
@@ -97,9 +98,7 @@ df_xgb = \
 df_catboost.to_csv(TRAIN_LOC.replace('train.csv', 'df_catboost.csv'), index=False)
 df_xgb.to_csv(TRAIN_LOC.replace('train.csv', 'df_xgb.csv'), index=False)
 
-
 ### run the workflow while using the validation set to reduce overfitting ###
-
 
 mlf = SklearnMLFlow(df=df,
                     input_features=[i for i in df.columns if i not in PRESERVE_VARS + [TARGET_NAME]],
@@ -120,7 +119,8 @@ mlf = SklearnMLFlow(df=df,
                     evaluator=GenericMLEvaluator(
                         classification_or_regression='classification',
                         groupby_cols='dataset_split'
-                    ))
+                        )
+                    )
 
 mlf.split()
 mlf.create_features()
