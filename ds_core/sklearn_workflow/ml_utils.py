@@ -1504,6 +1504,7 @@ class AbstractEvaluator:
 
     def evaluate(self):
         raise ValueError('The evaluate method must be overridden.')
+    
 class GenericMLEvaluator(AbstractEvaluator):
 
     def __init__(self,
@@ -1527,6 +1528,7 @@ class GenericMLEvaluator(AbstractEvaluator):
         self.groupby_col_order = groupby_col_order
         self.num_threads = num_threads
         self.round_decimals = round_decimals
+
     def evaluate(self, **calc_ml_metrics_params):
         evaluator = CalcMLMetrics(round_decimals=self.round_decimals)
 
