@@ -38,7 +38,7 @@ mlf = SklearnMLFlow(df=df,
                     feature_transformer=FeatureTransformer(target_name=TARGET_NAME, preserve_vars=PRESERVE_VARS),
                     algorithms=[CatBoostClassifier(iterations=300, learning_rate=0.02, random_state=9),
                                 XGBClassifier(learning_rate=0.05, max_depth=3, random_state=9)],
-                    optimizer=ScoreThresholdOptimizer(accuracy_score),
+                    optimizer=ScoreThresholdOptimizer(f1_score),
                     evaluator=GenericMLEvaluator(
                         classification_or_regression='classification',
                         groupby_cols='dataset_split'
@@ -48,11 +48,22 @@ mlf = SklearnMLFlow(df=df,
 mlf.split()
 mlf.create_features()
 mlf.transform_features()
-mlf.train_models()
-mlf.predict_models()
-mlf.optimize_models('maximize')
-mlf.evaluate_models()
+mlf.train()
+mlf.predict()
+mlf.optimize('maximize')
+mlf.evaluate()
 mlf.get_feature_importances()
 
 print(f'\n{mlf.evaluator.evaluation_output}\n')
+
 print('\nTotal time taken:', round((time.time() - start) / 60, 3), 'minutes\n')
+
+### submission ###
+
+df_catboost = \
+    mlf.df_out[mlf.df_out[mlf.split_colname] == 'submission'][['customer_id', 'CatBoostClassifier_pred']]\
+    .groupby('customer_id')\
+    .mean()\
+    .rename({'customer_id': 'customer_ID', 'CatBoostClassifier_pred': 'prediction'})
+
+# subprocess.run('kaggle competitions submit -c amex-default-prediction -f ~/.kaggle/amex-default-prediction/df_catboost.csv -m "mlf"')

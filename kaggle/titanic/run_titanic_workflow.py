@@ -13,7 +13,7 @@ TEST_LOC = '~/.kaggle/titanic/test.csv'
 TARGET_NAME = 'Survived'
 
 PRESERVE_VARS = ['PassengerId', 'Name', 'name_survived', 'dataset_split']
-
+pd.options.display.max_columns = 10
 
 ### load dfs ###
 
@@ -57,10 +57,10 @@ mlf = SklearnMLFlow(df=df,
 mlf.split()
 mlf.create_features()
 mlf.transform_features()
-mlf.train_models()
-mlf.predict_models()
+mlf.train()
+mlf.predict()
 mlf.assign_threshold_opt_rows(pct_train_for_opt=0.90, pct_val_for_opt=1)
-mlf.optimize_models('maximize') # should be custom optimization method
+mlf.optimize('maximize') # should be custom optimization method
 
 mlf.get_feature_importances()
 print(mlf.feature_importances)
@@ -75,7 +75,7 @@ for pred in [i for i in mlf.df_out.columns if i.endswith('_pred_class')]:
         mlf.df_out.loc[mlf.df_out['name'] == name, pred] = mlf.df_out.loc[mlf.df_out['name'] == name][mlf.target_name].max()
 
 
-mlf.evaluate_models()
+mlf.evaluate()
 print(mlf.evaluator.evaluation_output)
 
 ### save output ###
@@ -126,7 +126,7 @@ mlf = SklearnMLFlow(df=df,
                                               l2_leaf_reg=9,
                                               colsample_bytree=0.8,
                                               n_jobs=-1)],
-                    optimizer=ScoreThresholdOptimizer(accuracy_score),
+                    optimizer=ScoreThresholdOptimizer(f1_score),
                     evaluator=GenericMLEvaluator(
                         classification_or_regression='classification',
                         groupby_cols='dataset_split'
@@ -149,10 +149,10 @@ eval_set = [
     )
     ]
 
-mlf.train_models(early_stopping_rounds=5, eval_set=eval_set)
-mlf.predict_models()
+mlf.train(early_stopping_rounds=5, eval_set=eval_set)
+mlf.predict()
 mlf.assign_threshold_opt_rows(pct_train_for_opt=0.90, pct_val_for_opt=1)
-mlf.optimize_models('maximize')
+mlf.optimize('maximize')
 
 for pred in [i for i in mlf.df_out.columns if i.endswith('_pred_class')]:
     duplicate_name_indices = \
@@ -163,7 +163,7 @@ for pred in [i for i in mlf.df_out.columns if i.endswith('_pred_class')]:
     for name in duplicate_names:
         mlf.df_out.loc[mlf.df_out['name'] == name, pred] = mlf.df_out.loc[mlf.df_out['name'] == name][mlf.target_name].max()
 
-mlf.evaluate_models()
+mlf.evaluate()
 mlf.get_feature_importances()
 
 print(mlf.feature_importances)

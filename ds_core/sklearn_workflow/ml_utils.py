@@ -4,6 +4,7 @@ Created on Sat Jan 30 10:57:45 2021
 
 @author: melgazar9
 """
+import inspect
 
 from ds_core.ds_imports import *
 from ds_core.ds_utils import *
@@ -170,7 +171,7 @@ class SklearnMLFlow:
 
             return self
 
-    def train_models(self, **fit_params):
+    def train(self, **fit_params):
         if hasattr(self, 'df_train_resampled'):
             X_train = self.df_train_resampled.drop(self.target_name, axis=1)
             y_train = self.df_train_resampled[self.target_name]
@@ -190,7 +191,7 @@ class SklearnMLFlow:
         print("\nModel training done!\n")
         return self
 
-    def predict_models(self):
+    def predict(self):
         print(f"Predicting models...\n")
 
         if hasattr(self.algorithms, 'predict_proba'):
@@ -244,35 +245,41 @@ class SklearnMLFlow:
 
         return self
 
-    def optimize_models(self,
-                        minimize_or_maximize,
-                        splits_to_assess=('train', 'val', 'test'),
-                        **assign_threshold_opt_rows_params):
+    def optimize(self,
+                 minimize_or_maximize,
+                 splits_to_assess=('train', 'val', 'test'),
+                 is_classification=True,
+                 **assign_threshold_opt_rows_params):
 
         self.assign_threshold_opt_rows(**assign_threshold_opt_rows_params)
 
         fits = [i for i in self.df_out.columns if i.endswith('_pred')]
 
+        splits_to_assess = [splits_to_assess] if isinstance(splits_to_assess, str) else splits_to_assess
+        splits_to_assess = list(splits_to_assess) if isinstance(splits_to_assess, tuple) else splits_to_assess
+
         self.optimizer.run_optimization(fits=fits,
                                         minimize_or_maximize=minimize_or_maximize,
-                                        df=self.df_out[self.df_out[self.threshold_opt_name]],
+                                        df=self.df_out[(self.df_out[self.threshold_opt_name]) &
+                                                       (self.df_out[self.split_colname].isin(splits_to_assess))],
                                         target_name=self.target_name)
 
         ### assign the positive class based on the optimal threshold ###
 
-        for fit in self.optimizer.best_thresholds.keys():
-            thres_opt = \
-                ThresholdOptimizer(df=self.df_out, pred_column=fit, pred_class_col=fit + '_class', make_copy=False)
+        if is_classification:
+            for fit in self.optimizer.best_thresholds.keys():
+                thres_opt = \
+                    ThresholdOptimizer(df=self.df_out, pred_column=fit, pred_class_col=fit + '_class', make_copy=False)
 
-            if self.optimizer.best_thresholds[fit].index.name != 'threshold':
-                self.optimizer.best_thresholds[fit].set_index('threshold', inplace=True)
+                if self.optimizer.best_thresholds[fit].index.name != 'threshold':
+                    self.optimizer.best_thresholds[fit].set_index('threshold', inplace=True)
 
-            thres_opt.assign_predicted_class(self.optimizer.best_thresholds[fit])
+                thres_opt.assign_predicted_class(self.optimizer.best_thresholds[fit])
 
         return self
 
 
-    def evaluate_models(self, splits_to_evaluate=('train', 'val', 'test'), **kwargs):
+    def evaluate(self, splits_to_evaluate=('train', 'val', 'test'), **kwargs):
         evaluator_params = {}
         for param in [i for i in inspect.getfullargspec(self.evaluator.__init__).args if i != 'self']:
             evaluator_params[param] = getattr(self.evaluator, param)
@@ -298,15 +305,15 @@ class SklearnMLFlow:
                     .get_feature_importance()
         return self
 
-    def run_ml_workflow(self,
-                        split_params=None,
-                        create_features_params=None,
-                        transform_features_params=None,
-                        resampler_params=None,
-                        train_model_params=None,
-                        predict_model_params=None,
-                        optimize_models_params=None,
-                        evaluate_model_params=None):
+    def run_workflow(self,
+                     split_params=None,
+                     create_features_params=None,
+                     transform_features_params=None,
+                     resampler_params=None,
+                     train_model_params=None,
+                     predict_model_params=None,
+                     optimize_models_params=None,
+                     evaluate_model_params=None):
 
         ### split data ###
 
@@ -331,7 +338,7 @@ class SklearnMLFlow:
 
         ### train models ###
 
-        self.train_models() if train_model_params is None else self.train_models(**train_model_params)
+        self.train() if train_model_params is None else self.train(**train_model_params)
 
         ### sanity check that all algorithms are fitted ###
 
@@ -346,19 +353,19 @@ class SklearnMLFlow:
         ### predict models ###
 
         if len(fitted_algorithms) == len(self.algorithms):
-            self.predict_models() if predict_model_params is None else self.predict_models(**predict_model_params)
+            self.predict() if predict_model_params is None else self.predict(**predict_model_params)
 
             ### optimize models ###
 
             if self.optimizer is not None:
-                self.optimize_models() if optimize_models_params is None \
-                    else self.optimize_models(**optimize_models_params)
+                self.optimize() if optimize_models_params is None \
+                    else self.optimize(**optimize_models_params)
 
             ### evaluate models ###
 
             if self.evaluator is not None:
-                self.evaluate_models() if evaluate_model_params is None \
-                    else self.evaluate_models(**evaluate_model_params)
+                self.evaluate() if evaluate_model_params is None \
+                    else self.evaluate(**evaluate_model_params)
 
             ### get feature importances ###
 
@@ -1030,8 +1037,9 @@ class CalcMLMetrics:
         dictionary of regression scores
         """
 
-        output_dict = dict(  # R2=r2_score(y_true, y_pred),
+        output_dict = dict(
             r2=r_squared(y_true, y_pred),
+            sklearn_r2=r2_score(y_true, y_pred),
             rmse=np.sqrt(mean_squared_error(y_true, y_pred)),
             mae=mean_absolute_error(y_true, y_pred))
         return output_dict
@@ -1082,7 +1090,7 @@ class CalcMLMetrics:
         Select the datasets and needed columns
         melt the multiple fit columns into long df w/ fit & fit_values columns
         drop NAs if specified
-        groupby cols if specified
+        groupby_cols if specified
         apply the metric fn to each group
         cast the results to a dict and then df
         sort the dataset values if specified
@@ -1090,16 +1098,19 @@ class CalcMLMetrics:
 
         Parameters
         ----------
-        df: pandas df witht he target_name and fits
-        target_name: str of the target name
-        fits: list or tuple of fits in the dataframe to evaluate
-        groupby_cols: list or tuple of cols to groupby when calculating the ML metrics
-        drop_nas: Bool to drop NA values before evaluation
+        :param df: pandas df witht he target_name and fits
+        :param target_name: str of the target name
+        :param fits: list or tuple of fits in the dataframe to evaluate
+        :param groupby_cols: list or tuple of cols to groupby when calculating the ML metrics
+        :param drop_nas: Bool to drop NA values before evaluation
+        :param groupby_col_order: dict of the order to sort the groupby_cols
+        :param num_threads: int of num_threads to use. -1 means use all threads
 
         Returns: pandas dataframe with calculated ML metrics
 
         """
         assert df[target_name].isnull().sum() == 0, 'There cannot be NAs in the target variable'
+        num_threads = mp.cpu_count() if num_threads < 0 else num_threads
 
         self.df = df[list(set(fits + [target_name]))] if groupby_cols is None \
             else df[list(set(fits + [target_name] + [groupby_cols]))]
@@ -1235,7 +1246,7 @@ class ThresholdOptimizer:
     make_copy: bool whether to create a copy of the dataframe prior to computation
     """
 
-    def __init__(self, df, pred_column, pred_class_col='pred_class', make_copy=True):
+    def __init__(self, df=None, pred_column=None, pred_class_col='pred_class', make_copy=True):
 
         self.df = df
         self.pred_column = pred_column
@@ -1371,7 +1382,7 @@ class ScoreThresholdOptimizer(ThresholdOptimizer):
         pandas df of all thresholds tested and the score calculated in the optimization_fn
         """
 
-        assert str(type(self.optimization_func)) == "<class 'function'>", 'optimization_func must be a function!'
+        assert type(self.optimization_func).__name__ == 'function', 'optimization_func must be a function!'
 
         self.thresholds = np.arange(0, 100) / 100 if thresholds is None else thresholds
         score_df = pd.DataFrame({'y_pred': self.y_pred, 'y_true': self.y_true})
@@ -1381,7 +1392,15 @@ class ScoreThresholdOptimizer(ThresholdOptimizer):
             for thres in self.thresholds:
                 score_df.loc[:, 'pred_class'] = 0
                 score_df.loc[score_df['y_pred'] >= thres, 'pred_class'] = 1
-                self.scores[thres] = self.optimization_func(y_pred=score_df['pred_class'], y_true=score_df['y_true'])
+
+                if 'y_true' in inspect.getfullargspec(self.optimization_func).args and \
+                        'y_pred' in inspect.getfullargspec(self.optimization_func).args:
+
+                    self.scores[thres] = \
+                        self.optimization_func(y_true=score_df['y_true'], y_pred=score_df['pred_class'])
+                else:
+                    self.scores[thres] = \
+                        self.optimization_func(score_df['y_true'], score_df['pred_class'])
 
             self.threshold_df = pd.DataFrame.from_dict(self.scores, orient='index').reset_index()
             self.threshold_df.columns = ['threshold', 'score']
@@ -1504,7 +1523,7 @@ class AbstractEvaluator:
 
     def evaluate(self):
         raise ValueError('The evaluate method must be overridden.')
-    
+
 class GenericMLEvaluator(AbstractEvaluator):
 
     def __init__(self,
@@ -1549,5 +1568,8 @@ class GenericMLEvaluator(AbstractEvaluator):
                 groupby_col_order=self.groupby_col_order,
                 num_threads=self.num_threads
             )
+        self.evaluation_output.reset_index(drop=True, inplace=True)
+        self.evaluation_output =\
+            self.evaluation_output[['fit'] + [i for i in self.evaluation_output.columns if i != 'fit']]
 
         return self

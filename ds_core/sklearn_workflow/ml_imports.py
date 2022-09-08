@@ -23,7 +23,8 @@ from sklearn.metrics import (
     # regression metrics
     mean_squared_error,
     mean_absolute_error,
-    mean_squared_log_error
+    mean_squared_log_error,
+    r2_score
     )
 
 
