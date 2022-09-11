@@ -1,6 +1,7 @@
 beautifulsoup4==4.11.1
 catboost==1.0.6
 category-encoders==2.5.0
+dash==2.6.1
 dbt-snowflake==1.2.0
 dill==0.3.5.1
 feather-format==0.4.1
