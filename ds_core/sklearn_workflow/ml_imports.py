@@ -73,7 +73,7 @@ from sklearn.pipeline import (
 )
 from xgboost import XGBClassifier, XGBRegressor, XGBRFClassifier, XGBRFRegressor
 from catboost import CatBoostClassifier, CatBoostRegressor, Pool
-from lightgbm import LGBMClassifier, LGBMRegressor
+# from lightgbm import LGBMClassifier, LGBMRegressor # commented out by default because installation currently fails on the m1 chip
 
 from category_encoders.target_encoder import TargetEncoder
 

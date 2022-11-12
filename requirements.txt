@@ -2,9 +2,10 @@ beautifulsoup4==4.11.1
 catboost==1.0.6
 category-encoders==2.5.0
 dash==2.6.1
-dbt-snowflake==1.2.0
+dask==2022.10.2
 dill==0.3.5.1
 feather-format==0.4.1
+feature-engine==1.5.1
 flatten-json==0.1.7
 graphviz==0.20.1
 imbalanced-learn==0.9.1
@@ -17,6 +18,7 @@ jupyter-console==6.4.4
 jupyter-core==4.11.1
 jupyterlab-pygments==0.2.2
 jupyterlab-widgets==3.0.2
+kaggle==1.5.12
 keyring==23.8.2
 lxml==4.9.1
 matplotlib==3.5.3
@@ -29,7 +31,6 @@ networkx==2.8.5
 notebook==6.4.12
 numpy==1.23.2
 pandas==1.4.3
-pip==22.2.2
 plotly==5.10.0
 pyarrow==8.0.0
 pymongo==4.2.0
@@ -47,4 +48,5 @@ statsmodels==0.13.2
 tornado==6.2
 tqdm==4.64.0
 virtualenv==20.16.3
+xgboost==1.7.1
 yagmail==0.15.283

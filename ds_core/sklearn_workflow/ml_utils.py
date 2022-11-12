@@ -1505,6 +1505,7 @@ class AbstractSplitter:
 class SimpleSplitter(AbstractSplitter):
 
     def __init__(self, train_pct=0.7, val_pct=0.15):
+        super().__init__()
         self.train_pct = train_pct
         self.val_pct = val_pct
     def split(self, df):
