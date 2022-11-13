@@ -13,9 +13,7 @@ class MetaclassMethodEnforcer:
 
 
 def find_list_duplicates(input_list):
-    return [item for item, count in
-            Counter(input_list).items()
-            if count > 1]
+    return [item for item, count in Counter(input_list).items() if count > 1]
 
 
 def merge_dicts(*dict_args):
@@ -43,8 +41,10 @@ def flatten_list(lst):
     # return [v1 for v2 in lst for v1 in v2]
     return [v for item in lst for v in (item if isinstance(item, list) else [item])]
 
-def cur_timestamp():
-    ts = datetime.today().replace(second=0, microsecond=0).strftime('%Y-%m-%d__%H_%M_%S')
+def cur_timestamp(clean_string=True):
+    ts = datetime.today().replace(second=0, microsecond=0).strftime('%Y-%m-%d %H:%M:%S')
+    if clean_string:
+        ts = ts.replace(' ', '__').replace(':', '_')
     return ts
 
 def zip_dir(directory, output_loc, exclude_suffix='.dill'):
