@@ -32,7 +32,7 @@ networkx==2.8.5
 notebook==6.4.12
 numerapi==2.12.7
 numpy==1.23.2
-pandas==1.4.3
+pandas==1.5.1
 pandas-datareader==0.10.0
 plotly==5.10.0
 pyarrow==8.0.0

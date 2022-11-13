@@ -2,7 +2,7 @@ from ds_core.ds_imports import *
 import snowflake.connector
 from pymongo import MongoClient
 import MySQLdb
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 
 class MySQLConnect:
 
@@ -10,7 +10,7 @@ class MySQLConnect:
     Description
     -----------
     Connect to MySQL database and run sql queries.
-    The mysql-client library, which has C dependencies, is likely to be the fastest amongst the MySQL libraries.
+    The mysql-client library, which has C dependencies, has currently proven to be the fastest amongst the MySQL libraries.
 
     If using sqlalchemy as the sql client, it uses mysql-client in the backend.
 
@@ -19,45 +19,30 @@ class MySQLConnect:
     df = MySQLConnect().run_sql('select * from <my_table> limit 1;')
     """
 
-    def __init__(self, database, host='localhost', user='root', password='', sql_client='mysql_client'):
-        # Options for sql_client are 'mysql_client' and 'sqlalchemy'
+    def __init__(self, database, host='localhost', user='root', password='', charset='utf8'):
         self.database = database
-        self.host = host
+        self.host = os.environ.get('MYSQL_HOST') if host is None else host
         self.user = os.environ.get('MYSQL_USER') if user is None else user
         self.password = os.environ.get('MYSQL_PASSWORD') if password is None else password
-        self.sql_client = sql_client
+        self.charset = charset
 
-    def connect(self):
-        if self.sql_client == 'mysql_client':
-            con = MySQLdb.connect(host=self.host, database=self.database, user=self.user, password=self.password)
-        else:
-            engine = create_engine(
-                f"mysql+mysqldb://{self.user}:{self.password}@{self.host}/{self.database}?charset=utf8mb4&binary_prefix=true",
-                pool_recycle=3600)
-            con = engine.connect()
+    def connect(self, **kwargs):
+        engine = create_engine(
+          f"mysql+mysqldb://{self.user}:{self.password}@{self.host}/{self.database}?charset={self.charset}mb4&binary_prefix=true",
+          **kwargs)
+        con = engine.connect()
         return con
 
-    def run_sql(self, query, limit_rows=False):
+    def run_sql(self, query, **read_sql_kwargs):
         con = self.connect()
         if query.lower().startswith('select'):
-            if self.sql_client == 'mysql_client':
-                con.query(query)
-                if limit_rows:
-                    r = con.use_result()
-                else:
-                    r = con.store_result()
-                df = pd.DataFrame(r.fetch_row(0, 1)) # fetch all rows and columns
-            else:
-                res = con.execute(query)
-                df = pd.DataFrame(res.fetchall())
+            df = pd.read_sql(query, con=con, **read_sql_kwargs)
             con.close()
             return df
         else:
-            if self.sql_client == 'mysql_client':
-                con.cursor().execute(query)
-            else:
-                con.execute(query)
-        con.close()
+            query = text(query)
+            con.execute(query)
+            con.close()
         return
 
 
