@@ -17,7 +17,7 @@ class MySQLConnect:
     df = MySQLConnect().run_sql('select * from <my_table> limit 1;')
     """
 
-    def __init__(self, database, host='localhost', user='root', password='', charset='utf8', backend_url='mysqldb'):
+    def __init__(self, database='', host='localhost', user='root', password='', charset='utf8', backend_url='mysqldb'):
         self.database = database
         self.host = os.environ.get('MYSQL_HOST') if host is None else host
         self.user = os.environ.get('MYSQL_USER') if user is None else user

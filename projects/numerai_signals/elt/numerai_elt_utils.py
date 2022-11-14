@@ -17,12 +17,18 @@ class YFinanceETL:
     def __init__(self):
         pass
 
-    def connect_to_db(self):
-        self.db = MySQLConnect(database='yfinance',
-                          user=os.environ.get('MYSQL_USER'),
-                          password=os.environ.get('MYSQL_PASSWORD'))
+    def connect_to_db(self,
+                      database='yfinance',
+                      user=os.environ.get('MYSQL_USER'),
+                      password=os.environ.get('MYSQL_PASSWORD'),
+                      create_schema_if_not_exists=True):
 
-        self.con = self.db.connect()  # if this fails create a schema called yfinance
+        if create_schema_if_not_exists:
+            self.db = MySQLConnect(database='', user=user, password=password)
+            self.db.run_sql(f'CREATE DATABASE IF NOT EXISTS {database};')
+
+        self.db = MySQLConnect(database=database, user=user, password=password)
+        self.con = self.db.connect()
         return
 
     def etl_stock_prices(self):
@@ -30,26 +36,99 @@ class YFinanceETL:
 
         all_yahoo_tickers = download_ticker_map(napi).rename(columns={'yahoo': 'yahoo_ticker', 'ticker': 'numerai_ticker'})
 
-        if len(self.db.run_sql("select 1 from information_schema.tables where table_schema='yfinance' and table_name='stock_prices_1d';")):
+        if len(self.db.run_sql("select 1 from information_schema.tables where table_schema='yfinance' and table_name='stock_prices_1m';")):
             start_timestamp = \
                 self.db.run_sql("SELECT MAX(timestamp) - interval 1 day FROM stock_prices_1d;")\
-                    .iloc[0].iloc[0].strftime('%Y-%m-%d %H:%M:%S')
+                .iloc[0].iloc[0].strftime('%Y-%m-%d %H:%M:%S')
         else:
             start_timestamp = '1900-01-01 00:00:00'
 
         dfs = download_yf_prices(all_yahoo_tickers['yahoo_ticker'],
                                  yf_params=dict(start=start_timestamp, prepost=True))
 
-        column_order = ['timestamp', 'numerai_ticker', 'bloomberg_ticker', 'yahoo_ticker', 'open', 'high', 'low', 'close', 'adj_close', 'volume']
+        column_order = ['id', 'timestamp', 'numerai_ticker', 'bloomberg_ticker', 'yahoo_ticker', 'open', 'high', 'low', 'close', 'adj_close', 'volume']
 
         for key in dfs.keys():
+            self.db.run_sql(f"""
+                CREATE TABLE IF NOT EXISTS stock_prices_{key} (
+                  id INT NOT NULL PRIMARY KEY,
+                  timestamp DATETIME NOT NULL,
+                  numerai_ticker VARCHAR(32),
+                  bloomberg_ticker VARCHAR(32),
+                  yahoo_ticker VARCHAR(32),
+                  open DECIMAL(38, 12),
+                  high DECIMAL(38, 12),
+                  low DECIMAL(38, 12),
+                  close DECIMAL(38, 12),
+                  adj_close DECIMAL(38, 12),
+                  volume DECIMAL(38, 12)
+                  )
+                  ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+                """)
+
             df = pd.merge(dfs[key], all_yahoo_tickers, on='yahoo_ticker')
 
             assert len(np.intersect1d(df.columns, column_order)) == df.shape[1], \
                 'Column mismatch! Review download_yf_data function!'
 
+            idx_start = self.db.run_sql(f"SELECT MAX(id) FROM stock_prices_{key}")
+            idx_start = 0 if pd.isnull(idx_start.values) else idx_start.iloc[0].iloc[0]
+
+            df.sort_values(by='timestamp', inplace=True)
+            df.loc[:, 'id'] = [i for i in range(idx_start + 1, idx_start + 1 + df.shape[0])]
             df = df[column_order]
             df.to_sql(name=f'stock_prices_{key}', con=self.con, index=False, if_exists='append')
+
+            self.db.run_sql(f"""
+              CREATE TABLE stock_prices_{key}_bk LIKE stock_prices_{key}; 
+              
+              INSERT INTO stock_prices_{key}_bk
+              
+              WITH cte as (
+                SELECT
+                  *,
+                  ROW_NUMBER() OVER(PARTITION BY timestamp, numerai_ticker ORDER BY timestamp DESC) AS rn
+                FROM
+                  stock_prices_1d
+                )
+              
+                SELECT
+                  id,
+                  timestamp,
+                  numerai_ticker,
+                  bloomberg_ticker,
+                  yahoo_ticker,
+                  open,
+                  high,
+                  low,
+                  close,
+                  adj_close,
+                  volume
+                FROM
+                  cte
+                WHERE
+                  rn = 1
+                ORDER BY
+                  timestamp, numerai_ticker, yahoo_ticker, bloomberg_ticker;
+            """)
+
+            self.db.run_sql(f"""
+              ALTER TABLE stock_prices_{key}_bk DROP id;
+              ALTER TABLE stock_prices_{key}_bk AUTO_INCREMENT = 1;
+              ALTER TABLE stock_prices_{key}_bk ADD id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY FIRST;
+            """)
+
+            self.db.run_sql(f"""
+              DROP TABLE stock_prices_{key};
+              CREATE TABLE stock_prices_{key}
+              SELECT * FROM stock_prices_{key}_bk;
+            """)
+
+            if not len(self.db.run_sql(f"select 1 from information_schema.tables where table_schema = 'yfinance' and table_name = 'stock_prices_{key}'")):
+                self.db.run_sql(f"CREATE INDEX ts ON stock_prices_{key} (timestamp);")
+
+            self.db.run_sql(f"DROP TABLE stock_prices_{key}_bk;")
+
         return
 
 def download_yf_prices(tickers,
