@@ -55,4 +55,4 @@ tqdm==4.64.0
 virtualenv==20.16.3
 xgboost==1.7.1
 yagmail==0.15.283
-yfinance==0.1.85
+yfinance==0.1.86
