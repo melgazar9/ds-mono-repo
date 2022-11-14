@@ -35,6 +35,7 @@ class YFinanceETL:
         napi = numerapi.SignalsAPI(os.environ.get('NUMERAI_PUBLIC_KEY'), os.environ.get('NUMERAI_PRIVATE_KEY'))
 
         all_yahoo_tickers = download_ticker_map(napi).rename(columns={'yahoo': 'yahoo_ticker', 'ticker': 'numerai_ticker'})
+        
 
         if len(self.db.run_sql("select 1 from information_schema.tables where table_schema='yfinance' and table_name='stock_prices_1m';")):
             start_timestamp = \
@@ -124,9 +125,7 @@ class YFinanceETL:
               SELECT * FROM stock_prices_{key}_bk;
             """)
 
-            if not len(self.db.run_sql(f"select 1 from information_schema.tables where table_schema = 'yfinance' and table_name = 'stock_prices_{key}'")):
-                self.db.run_sql(f"CREATE INDEX ts ON stock_prices_{key} (timestamp);")
-
+            self.db.run_sql(f"CREATE INDEX ts ON stock_prices_{key} (timestamp);")
             self.db.run_sql(f"DROP TABLE stock_prices_{key}_bk;")
 
         return
