@@ -1,14 +1,62 @@
 from ds_core.ds_utils import *
+from ds_core.db_connectors import MySQLConnect
+import numerapi
 import yfinance as yf
 import simplejson
 
-from ds_core.db_connectors import *
+class YFinanceETL:
+
+    """
+    Description:
+    ------------
+    Responsible for yfinance ETL process.
+    Calls multiple instances of yfinance packages, light transformations, and loads data into a MySQL database
+
+    """
+
+    def __init__(self):
+        pass
+
+    def connect_to_db(self):
+        self.db = MySQLConnect(database='yfinance',
+                          user=os.environ.get('MYSQL_USER'),
+                          password=os.environ.get('MYSQL_PASSWORD'))
+
+        self.con = self.db.connect()  # if this fails create a schema called yfinance
+        return
+
+    def etl_stock_prices(self):
+        napi = numerapi.SignalsAPI(os.environ.get('NUMERAI_PUBLIC_KEY'), os.environ.get('NUMERAI_PRIVATE_KEY'))
+
+        all_yahoo_tickers = download_ticker_map(napi).rename(columns={'yahoo': 'yahoo_ticker', 'ticker': 'numerai_ticker'})
+
+        if len(self.db.run_sql("select 1 from information_schema.tables where table_schema='yfinance' and table_name='stock_prices_1d';")):
+            start_timestamp = \
+                self.db.run_sql("SELECT MAX(timestamp) - interval 1 day FROM stock_prices_1d;")\
+                    .iloc[0].iloc[0].strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            start_timestamp = '1900-01-01 00:00:00'
+
+        dfs = download_yf_prices(all_yahoo_tickers['yahoo_ticker'],
+                                 yf_params=dict(start=start_timestamp, prepost=True))
+
+        column_order = ['timestamp', 'numerai_ticker', 'bloomberg_ticker', 'yahoo_ticker', 'open', 'high', 'low', 'close', 'adj_close', 'volume']
+
+        for key in dfs.keys():
+            df = pd.merge(dfs[key], all_yahoo_tickers, on='yahoo_ticker')
+
+            assert len(np.intersect1d(df.columns, column_order)) == df.shape[1], \
+                'Column mismatch! Review download_yf_data function!'
+
+            df = df[column_order]
+            df.to_sql(name=f'stock_prices_{key}', con=self.con, index=False, if_exists='append')
+        return
 
 def download_yf_prices(tickers,
-                       intervals_to_download=['1d', '1h', '1m', '2m', '5m'],
+                       intervals_to_download=('1d', '1h', '1m', '2m', '5m'),
                        num_workers=1,
                        n_chunks=1,
-                       yf_params={},
+                       yf_params=None,
                        yahoo_ticker_colname='yahoo_ticker',
                        verbose=True):
     """
@@ -29,6 +77,7 @@ def download_yf_prices(tickers,
     """
 
     failed_ticker_downloads = []
+    yf_params = {} if yf_params is None else yf_params
 
     if 'start' not in yf_params.keys():
         if verbose:
