@@ -1,7 +1,7 @@
 from ds_core.ds_imports import *
 import snowflake.connector
 from pymongo import MongoClient
-import MySQLdb
+
 from sqlalchemy import create_engine, text
 
 class MySQLConnect:
@@ -10,26 +10,26 @@ class MySQLConnect:
     Description
     -----------
     Connect to MySQL database and run sql queries.
-    The mysql-client library, which has C dependencies, has currently proven to be the fastest amongst the MySQL libraries.
-
-    If using sqlalchemy as the sql client, it uses mysql-client in the backend.
+    Default settings uses mysql-client as the backend because it has shown to be the fastest amongst the MySQL python libraries.
 
     Example
     -------
     df = MySQLConnect().run_sql('select * from <my_table> limit 1;')
     """
 
-    def __init__(self, database, host='localhost', user='root', password='', charset='utf8'):
+    def __init__(self, database, host='localhost', user='root', password='', charset='utf8', backend_url='mysqldb'):
         self.database = database
         self.host = os.environ.get('MYSQL_HOST') if host is None else host
         self.user = os.environ.get('MYSQL_USER') if user is None else user
         self.password = os.environ.get('MYSQL_PASSWORD') if password is None else password
         self.charset = charset
+        self.backend_url = backend_url
 
     def connect(self, **kwargs):
-        engine = create_engine(
-          f"mysql+mysqldb://{self.user}:{self.password}@{self.host}/{self.database}?charset={self.charset}mb4&binary_prefix=true",
-          **kwargs)
+        engine_string = f"mysql://{self.user}:{self.password}@{self.host}/{self.database}?charset={self.charset}mb4&binary_prefix=true"
+        if self.backend_url is not None:
+            engine_string = engine_string.replace('mysql://', f'mysql+{self.backend_url}://')
+        engine = create_engine(engine_string, **kwargs)
         con = engine.connect()
         return con
 

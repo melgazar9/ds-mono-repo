@@ -1,8 +1,8 @@
-import pandas as pd
-
 from ds_core.ds_utils import *
 import yfinance as yf
 import simplejson
+
+from ds_core.db_connectors import *
 
 def download_yf_prices(tickers,
                        intervals_to_download=['1d', '1h', '1m', '2m', '5m'],

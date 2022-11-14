@@ -1,0 +1,5 @@
+- MySQL needs to be installed
+  - On Linux you'll likely need to run the below command before continuing with `pip install -r requirements.txt`
+    - Ubuntu / Debian: `sudo apt-get install python3-dev default-libmysqlclient-dev build-essential`
+    - Redhat / CentOS: `sudo yum install python3-devel mysql-devel`
+- Once MySQL is installed run `pip install -r requirements.txt`
