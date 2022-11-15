@@ -44,10 +44,10 @@ class YFinanceEL:
         else:
             start_timestamp = '1970-01-01 00:00:00'
 
-        dfs = download_yf_prices(all_yahoo_tickers['yahoo_ticker'],
+        dfs = download_yf_prices(all_yahoo_tickers['yahoo_ticker'].tolist(),
                                  yf_params=dict(start=start_timestamp, prepost=True))
 
-        column_order = ['id', 'timestamp', 'numerai_ticker', 'bloomberg_ticker', 'yahoo_ticker', 'open', 'high', 'low', 'close', 'adj_close', 'volume']
+        column_order = ['id', 'timestamp', 'numerai_ticker', 'bloomberg_ticker', 'yahoo_ticker', 'open', 'high', 'low', 'close', 'volume', 'dividends', 'stock_splits']
 
         for key in dfs.keys():
             self.db.run_sql(f"""
@@ -61,8 +61,9 @@ class YFinanceEL:
                   high DECIMAL(38, 12),
                   low DECIMAL(38, 12),
                   close DECIMAL(38, 12),
-                  adj_close DECIMAL(38, 12),
-                  volume DECIMAL(38, 12)
+                  volume DECIMAL(38, 12),
+                  dividends DECIMAL(38, 12),
+                  stock_splits DECIMAL(38, 12)
                   )
                   ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
                 """)
@@ -103,8 +104,9 @@ class YFinanceEL:
                   high,
                   low,
                   close,
-                  adj_close,
-                  volume
+                  volume,
+                  dividends,
+                  stock_splits
                 FROM
                   cte
                 WHERE
@@ -177,18 +179,24 @@ def download_yf_prices(tickers,
     """
     Parameters
     __________
-    See yf.download docs for a detailed description of yf parameters
-    tickers: list of tickers to pass to yf.download - it will be parsed to be in the format "AAPL MSFT FB"
+    See yf.Ticker(<ticker>).history() docs for a detailed description of yf parameters
+    tickers: list of tickers to pass to yf.Ticker(<ticker>).history() - it will be parsed to be in the format "AAPL MSFT FB"
     intervals_to_download : list of intervals to download OHLCV data for each stock (e.g. ['1w', '1d', '1h'])
     num_workers: number of threads used to download the data
         so far only 1 thread is implemented
-    n_chunks: int number of chunks to pass to yf.download()
+    n_chunks: int number of chunks to pass to yf.Ticker(<ticker>).history()
         1 is the slowest but most reliable because if two are passed and one fails, then both tickers are not returned
     tz_localize_location: timezone location to set the datetime
-    **yf_params: dict - passed to yf.download(yf_params)
+    **yf_params: dict - passed to yf.Ticker(<ticker>).history(**yf_params)
         set threads = True for faster performance, but tickers will fail, scipt may hang
         set threads = False for slower performance, but more tickers will succeed
     NOTE: passing some intervals return unreliable stock data (e.g. '3mo' returns many NAs when they should not be)
+
+    Restrictions
+    ------------
+    Yahoo finance API currently has a 2000 requests per hour or 48000 requests per day limit at the time of writing.
+    If the limit hits 1900 requests from the first API call, it will sleep for the remaining time (new hour).
+    Similarly, if there are 47000 requests from the first API call it will sleep for the remaining time (new day)
     """
 
     failed_ticker_downloads = []
@@ -209,9 +217,23 @@ def download_yf_prices(tickers,
     assert pd.Timestamp(start_date) <= datetime.today(), 'Start date cannot be after the current date!'
 
     if num_workers == 1:
+
+        n_requests = 0
+        request_start_timestamp = datetime.now()
+
         dict_of_dfs = {}
         for i in intervals_to_download:
+            total_runtime_seconds = (datetime.now() - request_start_timestamp).seconds
+            if n_requests > 1900 and total_runtime_seconds > 3500:
+                if verbose:
+                    print(f'\nToo many requests in one hour. Pausing requests for {total_runtime_seconds} seconds.\n')
+                time.sleep(3600 - total_runtime_seconds)
+            if n_requests > 45000 and total_runtime_seconds > 85000:
+                print(f'\nToo many requests in one day. Pausing requests for {total_runtime_seconds} seconds.\n')
+                time.sleep(86400 - total_runtime_seconds)
+
             print(f'\n*** Running interval {i} ***\n')
+
             yf_params['interval'] = i
 
             # Maximum lookback period for intervals i
@@ -239,20 +261,24 @@ def download_yf_prices(tickers,
                 yf_params['start'] = pd.to_datetime(yf_params['start']).strftime('%Y-%m-%d')
 
             if yf_params['threads'] == True:
-                df_i = yf.download(' '.join(tickers), **yf_params)\
-                               .stack()\
-                               .rename_axis(index=['timestamp', yahoo_ticker_colname])\
-                               .reset_index()
+                t = yf.Tickers(tickers)
+                df_i = t.history(tickers, **yf_params)\
+                        .stack()\
+                        .rename_axis(index=['timestamp', yahoo_ticker_colname])\
+                        .reset_index()
+
+                n_requests += 1
+
                 if isinstance(df_i.columns, pd.MultiIndex):
                     df_i.columns = flatten_multindex_columns(df_i)
                 df_i = clean_columns(df_i)
                 dict_of_dfs[i] = df_i
             else:
-                ticker_chunks = [' '.join(tickers[i:i+n_chunks]) for i in range(0, len(tickers), n_chunks)]
+                ticker_chunks = [tickers[i:i+n_chunks] for i in range(0, len(tickers), n_chunks)]
                 chunk_dfs_lst = []
                 column_order = clean_columns(
                     pd.DataFrame(
-                        columns=['timestamp', yahoo_ticker_colname, 'Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
+                        columns=['timestamp', yahoo_ticker_colname, 'Open', 'High', 'Low', 'Close', 'Volume', 'Dividends', 'Stock Splits']
                     )
                 ).columns.tolist()
 
@@ -260,17 +286,21 @@ def download_yf_prices(tickers,
                     if verbose:
                         print(f"Running chunk {chunk}")
                     try:
-                        if n_chunks == 1 or len(chunk.split(' ')) == 1:
+                        if n_chunks == 1 or len(chunk) == 1:
                             try:
+                                t = yf.Ticker(chunk[0])
                                 df_tmp = \
-                                    yf.download(chunk, **yf_params)\
-                                            .rename_axis(index='timestamp')\
-                                            .pipe(lambda x: clean_columns(x))
-                                df_tmp[yahoo_ticker_colname] = chunk
+                                    t.history(chunk, **yf_params)\
+                                     .rename_axis(index='timestamp')\
+                                     .pipe(lambda x: clean_columns(x))
+
+                                n_requests += 1
+
+                                df_tmp.loc[:, yahoo_ticker_colname] = chunk[0]
                                 df_tmp.reset_index(inplace=True)
                                 df_tmp = df_tmp[column_order]
 
-                                if len(df_tmp) == 0:
+                                if df_tmp.shape[0] == 0:
                                     continue
                             except:
                                 if verbose:
@@ -280,13 +310,17 @@ def download_yf_prices(tickers,
 
                         else:
                             # should be the order of column_order
-                            df_tmp = yf.download(chunk, **yf_params)\
-                                .stack()\
-                                .rename_axis(index=['timestamp', yahoo_ticker_colname])\
-                                .reset_index()\
-                                .pipe(lambda x: clean_columns(x))
+                            t = yf.Tickers(chunk)
+                            df_tmp = \
+                                t.history(chunk, **yf_params)\
+                                 .stack()\
+                                 .rename_axis(index=['timestamp', yahoo_ticker_colname])\
+                                 .reset_index()\
+                                 .pipe(lambda x: clean_columns(x))
 
-                            if len(df_tmp) == 0:
+                            n_requests += 1
+
+                            if df_tmp.shape[0] == 0:
                                 continue
 
                             df_tmp = df_tmp[column_order]
@@ -294,11 +328,14 @@ def download_yf_prices(tickers,
                         chunk_dfs_lst.append(df_tmp)
 
                     except simplejson.errors.JSONDecodeError:
+                        if verbose:
+                            print(f"JSONDecodeError for tickers: {chunk}")
+                        failed_ticker_downloads.append(chunk)
                         pass
 
                 df_i = pd.concat(chunk_dfs_lst)
                 dict_of_dfs[i] = df_i
-                del chunk_dfs_lst
+                del chunk_dfs_lst, df_i
                 yf_params['start'] = start_date
 
             ### print errors ###
@@ -308,7 +345,7 @@ def download_yf_prices(tickers,
                     if n_chunks > 1:
                         failed_ticker_downloads = list(itertools.chain(*failed_ticker_downloads))
 
-                print(f"\nFailed ticker downloads:\n{failed_ticker_downloads}")
+                print(f"\nTotal failed ticker downloads:\n{failed_ticker_downloads}")
 
     else:
         raise ValueError("Multi-threading not supported yet.")
