@@ -4,13 +4,13 @@ import numerapi
 import yfinance as yf
 import simplejson
 
-class YFinanceETL:
+class YFinanceEL:
 
     """
     Description:
     ------------
-    Responsible for yfinance ETL process.
-    Calls multiple instances of yfinance packages, light transformations, and loads data into a MySQL database
+    Responsible for yfinance extracting and loading yfinance data (The E and L in ELT).
+    Extracts data from instances of yfinance object and loads data into a MySQL database.
 
     """
 
@@ -31,10 +31,10 @@ class YFinanceETL:
         self.con = self.db.connect()
         return
 
-    def etl_stock_prices(self):
+    def el_stock_prices(self):
         napi = numerapi.SignalsAPI(os.environ.get('NUMERAI_PUBLIC_KEY'), os.environ.get('NUMERAI_PRIVATE_KEY'))
 
-        all_yahoo_tickers = download_ticker_map(napi).rename(columns={'yahoo': 'yahoo_ticker', 'ticker': 'numerai_ticker'})
+        all_yahoo_tickers = download_ticker_map(napi).rename(columns={'yahoo': 'yahoo_ticker', 'ticker': 'numerai_ticker'}).head()
         
 
         if len(self.db.run_sql("select 1 from information_schema.tables where table_schema='yfinance' and table_name='stock_prices_1m';")):
@@ -88,9 +88,9 @@ class YFinanceETL:
               WITH cte as (
                 SELECT
                   *,
-                  ROW_NUMBER() OVER(PARTITION BY timestamp, numerai_ticker ORDER BY timestamp DESC) AS rn
+                  ROW_NUMBER() OVER(PARTITION BY timestamp, numerai_ticker, yahoo_ticker, bloomberg_ticker ORDER BY id desc, timestamp DESC) AS rn
                 FROM
-                  stock_prices_1d
+                  stock_prices_{key}
                 )
               
                 SELECT
@@ -110,25 +110,62 @@ class YFinanceETL:
                 WHERE
                   rn = 1
                 ORDER BY
-                  timestamp, numerai_ticker, yahoo_ticker, bloomberg_ticker;
+                  id, timestamp, numerai_ticker, yahoo_ticker, bloomberg_ticker;
             """)
 
             self.db.run_sql(f"""
               ALTER TABLE stock_prices_{key}_bk DROP id;
               ALTER TABLE stock_prices_{key}_bk AUTO_INCREMENT = 1;
               ALTER TABLE stock_prices_{key}_bk ADD id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY FIRST;
-            """)
-
-            self.db.run_sql(f"""
+              
               DROP TABLE stock_prices_{key};
-              CREATE TABLE stock_prices_{key}
-              SELECT * FROM stock_prices_{key}_bk;
+              CREATE TABLE stock_prices_{key} LIKE stock_prices_{key}_bk;
+              INSERT INTO stock_prices_{key} SELECT * FROM stock_prices_{key}_bk;
+              
             """)
 
-            self.db.run_sql(f"CREATE INDEX ts ON stock_prices_{key} (timestamp);")
+            idx_cols = self.db.run_sql(f"""
+                SELECT
+                  *
+                FROM
+                  information_schema.statistics 
+                WHERE
+                  table_schema = '{self.db.database}'
+                  AND table_name = 'stock_prices_{key}'
+            """)
+
+            if 'timestamp' not in idx_cols['COLUMN_NAME'].tolist():
+                self.db.run_sql(f"CREATE INDEX ts ON stock_prices_{key} (timestamp);")
+
             self.db.run_sql(f"DROP TABLE stock_prices_{key}_bk;")
 
         return
+
+class YFinanceTransform:
+
+    """
+    Description:
+    ------------
+    Responsible for yfinance data transformations after extracting and loading data using method calls in YFinanceEL.
+    """
+
+    def __init__(self):
+        pass
+
+    def connect_to_db(self,
+                      database='yfinance',
+                      user=os.environ.get('MYSQL_USER'),
+                      password=os.environ.get('MYSQL_PASSWORD')):
+
+        self.db = MySQLConnect(database=database, user=user, password=password)
+        self.con = self.db.connect()
+        return
+
+    def transform_stock_prices(self):
+        self.db.run_sql()
+
+
+
 
 def download_yf_prices(tickers,
                        intervals_to_download=('1d', '1h', '1m', '2m', '5m'),

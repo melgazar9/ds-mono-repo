@@ -1,6 +1,6 @@
 from numerai_elt_utils import *
 
-yf_etl = YFinanceETL()
+yf_el = YFinanceEL()
 
-yf_etl.connect_to_db()
-yf_etl.etl_stock_prices()
+yf_el.connect_to_db()
+yf_el.el_stock_prices()

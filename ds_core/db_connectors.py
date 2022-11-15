@@ -35,7 +35,7 @@ class MySQLConnect:
 
     def run_sql(self, query, **read_sql_kwargs):
         con = self.connect()
-        if query.lower().startswith('select'):
+        if query.strip().lower().startswith('select'):
             df = pd.read_sql(query, con=con, **read_sql_kwargs)
             con.close()
             return df

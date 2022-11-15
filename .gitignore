@@ -1,4 +1,5 @@
 **.git_credentials
+**logs/
 **.DS_store
 **build/
 **.egg-info/
