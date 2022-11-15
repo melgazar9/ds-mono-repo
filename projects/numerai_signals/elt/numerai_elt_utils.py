@@ -42,7 +42,7 @@ class YFinanceEL:
                 self.db.run_sql("SELECT MAX(timestamp) - interval 1 day FROM stock_prices_1d;")\
                 .iloc[0].iloc[0].strftime('%Y-%m-%d %H:%M:%S')
         else:
-            start_timestamp = '1900-01-01 00:00:00'
+            start_timestamp = '1970-01-01 00:00:00'
 
         dfs = download_yf_prices(all_yahoo_tickers['yahoo_ticker'],
                                  yf_params=dict(start=start_timestamp, prepost=True))
