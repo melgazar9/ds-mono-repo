@@ -223,14 +223,14 @@ def download_yf_prices(tickers,
 
         dict_of_dfs = {}
         for i in intervals_to_download:
-            total_runtime_seconds = (datetime.now() - request_start_timestamp).seconds
-            if n_requests > 1900 and total_runtime_seconds > 3500:
+            current_runtime_seconds = (datetime.now() - request_start_timestamp).seconds
+            if n_requests > 1900 and current_runtime_seconds > 3500:
                 if verbose:
-                    print(f'\nToo many requests in one hour. Pausing requests for {total_runtime_seconds} seconds.\n')
-                time.sleep(3600 - total_runtime_seconds)
-            if n_requests > 45000 and total_runtime_seconds > 85000:
-                print(f'\nToo many requests in one day. Pausing requests for {total_runtime_seconds} seconds.\n')
-                time.sleep(86400 - total_runtime_seconds)
+                    print(f'\nToo many requests in one hour. Pausing requests for {current_runtime_seconds} seconds.\n')
+                time.sleep(np.abs(3600 - current_runtime_seconds))
+            if n_requests > 45000 and current_runtime_seconds > 85000:
+                print(f'\nToo many requests in one day. Pausing requests for {current_runtime_seconds} seconds.\n')
+                time.sleep(np.abs(86400 - current_runtime_seconds))
 
             print(f'\n*** Running interval {i} ***\n')
 
