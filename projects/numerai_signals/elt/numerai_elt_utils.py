@@ -17,6 +17,7 @@ class YFinanceEL:
     def __init__(self):
         pass
 
+
     def connect_to_db(self,
                       database='yfinance',
                       user=os.environ.get('MYSQL_USER'),
@@ -35,7 +36,6 @@ class YFinanceEL:
         napi = numerapi.SignalsAPI(os.environ.get('NUMERAI_PUBLIC_KEY'), os.environ.get('NUMERAI_PRIVATE_KEY'))
 
         all_yahoo_tickers = download_ticker_map(napi).rename(columns={'yahoo': 'yahoo_ticker', 'ticker': 'numerai_ticker'})
-        
 
         if len(self.db.run_sql("select 1 from information_schema.tables where table_schema='yfinance' and table_name='stock_prices_1m';")):
             start_timestamp = \
@@ -69,7 +69,6 @@ class YFinanceEL:
                 """)
 
             df = pd.merge(dfs[key], all_yahoo_tickers, on='yahoo_ticker')
-
             assert len(np.intersect1d(df.columns, column_order)) == df.shape[1], \
                 'Column mismatch! Review download_yf_data function!'
 
@@ -82,6 +81,7 @@ class YFinanceEL:
             df.to_sql(name=f'stock_prices_{key}', con=self.con, index=False, if_exists='append')
 
             self.db.run_sql(f"""
+              
               CREATE TABLE stock_prices_{key}_bk LIKE stock_prices_{key}; 
               
               INSERT INTO stock_prices_{key}_bk
@@ -143,6 +143,7 @@ class YFinanceEL:
 
         return
 
+
 class YFinanceTransform:
 
     """
@@ -165,7 +166,6 @@ class YFinanceTransform:
 
     def transform_stock_prices(self):
         self.db.run_sql()
-
 
 
 
@@ -199,7 +199,10 @@ def download_yf_prices(tickers,
     Similarly, if there are 47000 requests from the first API call it will sleep for the remaining time (new day)
     """
 
-    failed_ticker_downloads = []
+    start = time.time()
+    failed_ticker_downloads = {}
+    for i in intervals_to_download:
+        failed_ticker_downloads[i] = []
     yf_params = {} if yf_params is None else yf_params
 
     if 'start' not in yf_params.keys():
@@ -214,10 +217,10 @@ def download_yf_prices(tickers,
         yf_params['progress'] = False
 
     start_date = yf_params['start']
+
     assert pd.Timestamp(start_date) <= datetime.today(), 'Start date cannot be after the current date!'
 
     if num_workers == 1:
-
         n_requests = 0
         request_start_timestamp = datetime.now()
 
@@ -305,9 +308,8 @@ def download_yf_prices(tickers,
                             except:
                                 if verbose:
                                     print(f"failed download for tickers: {chunk}")
-                                failed_ticker_downloads.append(chunk)
+                                failed_ticker_downloads[i].append(chunk)
                                 continue
-
                         else:
                             # should be the order of column_order
                             t = yf.Tickers(chunk)
@@ -330,7 +332,7 @@ def download_yf_prices(tickers,
                     except simplejson.errors.JSONDecodeError:
                         if verbose:
                             print(f"JSONDecodeError for tickers: {chunk}")
-                        failed_ticker_downloads.append(chunk)
+                        failed_ticker_downloads[i].append(chunk)
                         pass
 
                 df_i = pd.concat(chunk_dfs_lst)
@@ -338,17 +340,14 @@ def download_yf_prices(tickers,
                 del chunk_dfs_lst, df_i
                 yf_params['start'] = start_date
 
-            ### print errors ###
-
             if verbose:
-                if len(failed_ticker_downloads) > 0:
-                    if n_chunks > 1:
-                        failed_ticker_downloads = list(itertools.chain(*failed_ticker_downloads))
-
-                print(f"\nTotal failed ticker downloads:\n{failed_ticker_downloads}")
+                print(f"\nFailed ticker downloads:\n{failed_ticker_downloads}")
 
     else:
         raise ValueError("Multi-threading not supported yet.")
+
+    if verbose:
+        print("\nDownloading yfinance data took %s minutes\n" % round((time.time() - start) / 60, 3))
 
     return dict_of_dfs
 
@@ -375,7 +374,6 @@ def download_ticker_map(napi,
                      and i is not None\
                      and not str(i).lower() == ''\
                      and len(i) > 0]
-
     if verbose:
         print('tickers before cleaning:', ticker_map.shape)  # before removing bad tickers
 
