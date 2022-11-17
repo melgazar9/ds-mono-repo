@@ -1,4 +1,4 @@
-from numerai_elt_utils import *
+from yfinance_elt_utils import *
 
 yf_el = YFinanceEL()
 
