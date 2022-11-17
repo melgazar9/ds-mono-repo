@@ -59,7 +59,7 @@ class YFinanceEL:
             .drop_duplicates()\
             .reset_index(drop=True)
 
-        dfs = download_yf_prices(yahoo_tickers['yahoo_ticker'].tolist()[0:5],
+        dfs = download_yf_prices(yahoo_tickers['yahoo_ticker'].tolist(),
                                  yf_params=dict(start=start_timestamp),
                                  mysql_con=self.db)
 
