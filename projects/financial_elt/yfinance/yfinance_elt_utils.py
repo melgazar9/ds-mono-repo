@@ -105,7 +105,10 @@ class YFinanceEL:
               WITH cte as (
                 SELECT
                   *,
-                  ROW_NUMBER() OVER(PARTITION BY timestamp, numerai_ticker, yahoo_ticker, bloomberg_ticker ORDER BY id desc, timestamp DESC) AS rn
+                  ROW_NUMBER() OVER(
+                    PARTITION BY timestamp, numerai_ticker, yahoo_ticker, bloomberg_ticker
+                    ORDER BY id DESC, timestamp DESC
+                    ) AS rn
                 FROM
                   stock_prices_{key}
                 )
