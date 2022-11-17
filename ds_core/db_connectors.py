@@ -49,7 +49,7 @@ class MySQLConnect:
                 self.engine_string = self.engine_string + f':{self.password}'
             if self.host is not None:
                 self.engine_string = self.engine_string + f'@{self.host}'
-            if self.host is not None:
+            if self.database is not None:
                 self.engine_string = self.engine_string + f'/{self.database}'
             if self.charset is not None:
                 self.engine_string = self.engine_string + f'?charset={self.charset}'
