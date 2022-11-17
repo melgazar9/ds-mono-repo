@@ -1,6 +1,6 @@
 from ds_core.ds_utils import *
 from ds_core.db_connectors import MySQLConnect
-import numerapi
+from numerapi import SignalsAPI
 import yfinance as yf
 import simplejson
 from pytickersymbols import PyTickerSymbols
@@ -446,14 +446,15 @@ def download_pts_tickers():
     return all_tickers
 
 def download_numerai_signals_ticker_map(
+    napi=SignalsAPI(),
     numerai_ticker_link='https://numerai-signals-public-data.s3-us-west-2.amazonaws.com/signals_ticker_map_w_bbg.csv',
     yahoo_ticker_colname='yahoo',
     verbose=True
     ):
 
     ticker_map = pd.read_csv(numerai_ticker_link)
-    # eligible_tickers = pd.Series(napi.ticker_universe(), name=yahoo_ticker_colname)
-    # ticker_map = ticker_map[ticker_map['bloomberg_ticker'].isin(eligible_tickers)]
+    eligible_tickers = pd.Series(napi.ticker_universe(), name='bloomberg_ticker')
+    ticker_map = pd.merge(ticker_map, eligible_tickers, on='bloomberg_ticker', how='right')
 
     if verbose:
         # print(f"Number of eligible tickers: {len(eligible_tickers)}")
