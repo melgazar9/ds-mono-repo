@@ -17,19 +17,46 @@ class MySQLConnect:
     df = MySQLConnect().run_sql('select * from <my_table> limit 1;')
     """
 
-    def __init__(self, database='', host='localhost', user='root', password='', charset='utf8', backend_url='mysqldb'):
-        self.database = database
-        self.host = os.environ.get('MYSQL_HOST') if host is None else host
+    def __init__(self,
+                 user=os.environ.get('MYSQL_USER'),
+                 password=os.environ.get('MYSQL_PASSWORD'),
+                 host=os.environ.get('MYSQL_HOST'),
+                 database=None,
+                 charset='utf8',
+                 backend_url='mysqldb',
+                 string_extension='mb4&binary_prefix=true',
+                 engine_string=None):
         self.user = os.environ.get('MYSQL_USER') if user is None else user
         self.password = os.environ.get('MYSQL_PASSWORD') if password is None else password
+        self.host = os.environ.get('MYSQL_HOST') if host is None else host
+        self.database = database
         self.charset = charset
         self.backend_url = backend_url
+        self.string_extension = string_extension
+        self.engine_string = engine_string
 
     def connect(self, **kwargs):
-        engine_string = f"mysql://{self.user}:{self.password}@{self.host}/{self.database}?charset={self.charset}mb4&binary_prefix=true"
-        if self.backend_url is not None:
-            engine_string = engine_string.replace('mysql://', f'mysql+{self.backend_url}://')
-        engine = create_engine(engine_string, **kwargs)
+        if self.engine_string is not None:
+            self.engine_string = self.engine_string
+        else:
+            self.engine_string = "mysql://"
+
+            if self.backend_url is not None:
+                self.engine_string = self.engine_string.replace('mysql://', f'mysql+{self.backend_url}://')
+            if self.user is not None:
+                self.engine_string = self.engine_string + self.user
+            if self.password is not None:
+                self.engine_string = self.engine_string + f':{self.password}'
+            if self.host is not None:
+                self.engine_string = self.engine_string + f'@{self.host}'
+            if self.host is not None:
+                self.engine_string = self.engine_string + f'/{self.database}'
+            if self.charset is not None:
+                self.engine_string = self.engine_string + f'?charset={self.charset}'
+            if self.string_extension is not None:
+                self.engine_string = self.engine_string + self.string_extension
+
+        engine = create_engine(self.engine_string, **kwargs)
         con = engine.connect()
         return con
 

@@ -7,4 +7,7 @@
       - sudo apt-get install mysql-client 
       - sudo apt-get install libmysqlclient-dev 
       - sudo apt-get install libssl-dev
+  - If `pip install -r requirements.txt` errors out because if `mysql-client`
+    - `echo "LD_PRELOAD=/lib/x86_64-linux-gnu/libstdc++.so.6 python" >> ~/.bashrc`
+    - `source ~/.bashrc`
 - Once MySQL is installed run `pip install -r requirements.txt`
