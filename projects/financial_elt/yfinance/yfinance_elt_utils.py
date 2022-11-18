@@ -31,46 +31,78 @@ class YFinanceEL:
         self.db.connect()
         return self
 
-    def el_stock_prices(self):
+    def el_stock_tickers(self):
         # napi = numerapi.SignalsAPI(os.environ.get('NUMERAI_PUBLIC_KEY'), os.environ.get('NUMERAI_PRIVATE_KEY'))
 
-        numerai_yahoo_tickers = \
-            download_numerai_signals_ticker_map()\
-                .rename(columns={'yahoo': 'yahoo_ticker', 'ticker': 'numerai_ticker'})
+        df_pts_tickers = download_pts_tickers()
 
-        pts_updated_valid_yahoo_tickers = \
-            pd.DataFrame(download_pts_tickers())[['yahoo_tickers']]\
-              .rename(columns={'yahoo_tickers': 'yahoo_ticker'})
+        numerai_yahoo_tickers = \
+            download_numerai_signals_ticker_map().rename(columns={'yahoo': 'yahoo_ticker', 'ticker': 'numerai_ticker'})
+
+        df1 = pd.merge(df_pts_tickers, numerai_yahoo_tickers, on='yahoo_ticker', how='left').set_index('yahoo_ticker')
+        df2 = pd.merge(numerai_yahoo_tickers, df_pts_tickers, on='yahoo_ticker', how='left').set_index('yahoo_ticker')
+        df3 = pd.merge(df_pts_tickers, numerai_yahoo_tickers, left_on='yahoo_ticker', right_on='numerai_ticker', how='left')\
+                 .rename(columns={'yahoo_ticker_x': 'yahoo_ticker', 'yahoo_ticker_y': 'yahoo_ticker_old'})\
+                 .set_index('yahoo_ticker')
+        df4 = pd.merge(df_pts_tickers, numerai_yahoo_tickers, left_on='yahoo_ticker', right_on='bloomberg_ticker', how='left') \
+                .rename(columns={'yahoo_ticker_x': 'yahoo_ticker', 'yahoo_ticker_y': 'yahoo_ticker_old'}) \
+                .set_index('yahoo_ticker')
+
+        df_tickers_wide = clean_columns(pd.concat([df1, df2, df3, df4], axis=1))
+
+        for col in df_tickers_wide.columns:
+            suffix = col[-1]
+            if suffix.isdigit():
+                root_col = col.strip('_' + suffix)
+                df_tickers_wide[root_col] = df_tickers_wide[root_col].fillna(df_tickers_wide[col])
+
+        df_tickers = \
+            df_tickers_wide.reset_index()\
+            [['yahoo_ticker', 'google_ticker', 'bloomberg_ticker', 'numerai_ticker', 'yahoo_ticker_old']]\
+            .sort_values(by=['yahoo_ticker', 'google_ticker', 'bloomberg_ticker', 'numerai_ticker', 'yahoo_ticker_old'])\
+            .drop_duplicates()
+
+        df_tickers.loc[:, 'yahoo_valid_pts'] = False
+        df_tickers.loc[:, 'yahoo_valid_numerai'] = False
+
+        df_tickers.loc[
+            df_tickers['yahoo_ticker'].isin(df_pts_tickers['yahoo_ticker'].tolist()), 'yahoo_valid_pts'] = True
+
+        df_tickers.loc[
+            df_tickers['yahoo_ticker'].isin(numerai_yahoo_tickers['numerai_ticker'].tolist()), 'yahoo_valid_numerai'
+        ] = True
+
+        df_tickers.to_sql('tickers', con=self.db.con, if_exists='replace', index=False)
+
+        return
+
+
+    def el_stock_prices(self):
 
         if len(self.db.run_sql("select 1 from information_schema.tables where table_schema='yfinance' and table_name='stock_prices_1m';")):
             start_timestamp = \
                 self.db.run_sql("SELECT MAX(timestamp) - interval 1 day FROM stock_prices_1m;")\
                 .iloc[0].iloc[0].strftime('%Y-%m-%d')
         else:
-            start_timestamp = '1970-01-01'
+            start_timestamp = '1900-01-01'
 
-        yahoo_tickers = \
-            pd.merge(numerai_yahoo_tickers,
-                     pts_updated_valid_yahoo_tickers,
-                     on='yahoo_ticker',
-                     how='outer')\
-            .drop_duplicates()\
-            .reset_index(drop=True)
+        tickers = self.db.run_sql("SELECT yahoo_ticker, bloomberg_ticker, numerai_ticker FROM tickers;")
 
-        dfs = download_yf_prices(yahoo_tickers['yahoo_ticker'].tolist(),
+        dfs = download_yf_prices(tickers['yahoo_ticker'].unique().tolist(),
                                  yf_params=dict(start=start_timestamp),
                                  mysql_con=self.db)
 
-        column_order = ['id', 'timestamp', 'numerai_ticker', 'bloomberg_ticker', 'yahoo_ticker', 'open', 'high', 'low', 'close', 'volume', 'dividends', 'stock_splits']
+        column_order = ['id', 'timestamp', 'yahoo_ticker', 'bloomberg_ticker', 'numerai_ticker',
+                        'open', 'high', 'low', 'close', 'volume', 'dividends', 'stock_splits']
 
         for key in dfs.keys():
             self.db.run_sql(f"""
                 CREATE TABLE IF NOT EXISTS stock_prices_{key} (
                   id INT NOT NULL PRIMARY KEY,
                   timestamp DATETIME NOT NULL,
-                  numerai_ticker VARCHAR(32),
-                  bloomberg_ticker VARCHAR(32),
                   yahoo_ticker VARCHAR(32),
+                  bloomberg_ticker VARCHAR(32),
+                  numerai_ticker VARCHAR(32),
                   open DECIMAL(38, 12),
                   high DECIMAL(38, 12),
                   low DECIMAL(38, 12),
@@ -82,7 +114,7 @@ class YFinanceEL:
                   ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
                 """)
 
-            df = pd.merge(dfs[key], yahoo_tickers, on='yahoo_ticker')
+            df = pd.merge(dfs[key], tickers, on='yahoo_ticker')
             assert len(np.intersect1d(df.columns, column_order)) == df.shape[1], \
                 'Column mismatch! Review download_yf_data function!'
 
@@ -116,9 +148,9 @@ class YFinanceEL:
                 SELECT
                   id,
                   timestamp,
-                  numerai_ticker,
-                  bloomberg_ticker,
                   yahoo_ticker,
+                  bloomberg_ticker,
+                  numerai_ticker,
                   open,
                   high,
                   low,
@@ -131,7 +163,7 @@ class YFinanceEL:
                 WHERE
                   rn = 1
                 ORDER BY
-                  id, timestamp, numerai_ticker, yahoo_ticker, bloomberg_ticker;
+                  1, 2, 3, 4, 5;
             """)
 
             self.db.run_sql(f"""
@@ -184,10 +216,10 @@ class YFinanceTransform:
         return con
 
     def transform_stock_prices(self):
-        self.db.run_sql()
+        pass
 
 
-def get_valid_yfinance_start_timestamp(interval, start='1970-01-01 00:00:00'):
+def get_valid_yfinance_start_timestamp(interval, start='1900-01-01 00:00:00'):
 
     """
     Description
@@ -255,7 +287,7 @@ def download_yf_prices(tickers,
     mysql_con: database connection object to mysql using MySQLConnect class
         disabled if None - it won't search a MySQL DB for missing tickers.
         when db is successfully connected:
-            if ticker isn't found in MySQL db table, then set the start date to '1970-01-01' for that specific ticker
+            if ticker isn't found in MySQL db table, then set the start date to '1900-01-01' for that specific ticker
             else use default params
         Note: To use this parameter, a MySQL database needs to be set up, which stores the output tables into a schema
             called 'yfinance' when calling YFinanceEL().el_stock_prices()
@@ -284,8 +316,8 @@ def download_yf_prices(tickers,
 
     if 'start' not in yf_params.keys():
         if verbose:
-            print('*** yf params start set to 1970-01-01! ***')
-        yf_params['start'] = '1970-01-01'
+            print('*** yf params start set to 1900-01-01! ***')
+        yf_params['start'] = '1900-01-01'
     if 'threads' not in yf_params.keys() or not yf_params['threads']:
         if verbose:
             print('*** yf params threads set to False! ***')
@@ -303,8 +335,8 @@ def download_yf_prices(tickers,
 
         column_order = clean_columns(
             pd.DataFrame(
-                columns=['timestamp', yahoo_ticker_colname, 'Open', 'High', 'Low', 'Close', 'Volume', 'Dividends',
-                         'Stock Splits']
+                columns=['timestamp', yahoo_ticker_colname, 'Open', 'High', 'Low',
+                         'Close', 'Volume', 'Dividends', 'Stock Splits']
             )
         ).columns.tolist()
 
@@ -446,6 +478,16 @@ def download_pts_tickers():
             all_tickers['yahoo_tickers'].append((getattr(pts, t)()))
     all_tickers['google_tickers'] = flatten_list(all_tickers['google_tickers'])
     all_tickers['yahoo_tickers'] = flatten_list(all_tickers['yahoo_tickers'])
+    if len(all_tickers['yahoo_tickers']) == len(all_tickers['google_tickers']):
+        all_tickers = pd.DataFrame(all_tickers)
+    else:
+        all_tickers = pd.DataFrame(dict([(k, pd.Series(v)) for k, v in all_tickers.items()]))
+
+    all_tickers = \
+        all_tickers\
+            .rename(columns={'yahoo_tickers': 'yahoo_ticker', 'google_tickers': 'google_ticker'})\
+            .sort_values(by=['yahoo_ticker', 'google_ticker'])\
+            .drop_duplicates()
     return all_tickers
 
 def download_numerai_signals_ticker_map(
