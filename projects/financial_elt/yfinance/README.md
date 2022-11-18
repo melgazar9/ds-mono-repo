@@ -2,6 +2,7 @@
   - On Linux you'll likely need to run the below command before continuing with `pip install -r requirements.txt`
     - Ubuntu / Debian: `sudo apt-get install python3-dev default-libmysqlclient-dev build-essential`
     - Redhat / CentOS: `sudo yum install python3-devel mysql-devel`
+    - Current setup relies on python version 3.9.15
     
     OR (on debian)
       - sudo apt-get install mysql-client 
@@ -10,4 +11,5 @@
   - If `pip install -r requirements.txt` errors out because if `mysql-client`
     - `echo "LD_PRELOAD=/lib/x86_64-linux-gnu/libstdc++.so.6 python" >> ~/.bashrc`
     - `source ~/.bashrc`
+
 - Once MySQL is installed run `pip install -r requirements.txt`
