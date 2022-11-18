@@ -3,6 +3,7 @@
 - **By default,** projects reference the virtual env and requirements.txt in the root folder of this repo.
   - If there exists a requirements.txt folder in a specific projects, then create a new virtual environment within that project directory and follow the README instructions within that project.
   - Docker is not set up to run the projects (yet).
+  - Current setup relies on python version 3.9.15
 
 ### Setup
 - `git clone https://github.com/melgazar9/ds-mono-repo.git && cd ds-mono-repo`
