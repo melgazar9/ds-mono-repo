@@ -26,6 +26,24 @@ class MySQLConnect:
                  backend_url='mysqldb',
                  string_extension='mb4&binary_prefix=true',
                  engine_string=None):
+
+        """
+        Description
+        -----------
+        Connection to MySQL db via python sqlalchemy package.
+        If engine_string is provided all other parameters are ignored.
+
+        Parameters
+        ----------
+        user: MySQL username
+        password: MySQL password
+        host: MySQL host
+        charset: MySQL charset
+        backend_url: backend to use (e.g. mysqldb)
+        string_extension: string to append the MySQL engine_string
+        engine_string: str of the full extension URL. If this is provided all other parameters are ignored.
+        """
+
         self.user = os.environ.get('MYSQL_USER') if user is None else user
         self.password = os.environ.get('MYSQL_PASSWORD') if password is None else password
         self.host = os.environ.get('MYSQL_HOST') if host is None else host
@@ -57,19 +75,19 @@ class MySQLConnect:
                 self.engine_string = self.engine_string + self.string_extension
 
         engine = create_engine(self.engine_string, **kwargs)
-        con = engine.connect()
-        return con
+        self.con = engine.connect()
+        return self
 
     def run_sql(self, query, **read_sql_kwargs):
-        con = self.connect()
+        self.connect()
         if query.strip().lower().startswith('select'):
-            df = pd.read_sql(query, con=con, **read_sql_kwargs)
-            con.close()
+            df = pd.read_sql(query, con=self.con, **read_sql_kwargs)
+            self.con.close()
             return df
         else:
             query = text(query)
-            con.execute(query)
-            con.close()
+            self.con.execute(query)
+            self.con.close()
         return
 
 
@@ -110,16 +128,21 @@ class SnowflakeConnect:
             'warehouse': self.warehouse
         }
 
-        con = snowflake.connector.connect(**snowflake_connection_params)
+        self.con = snowflake.connector.connect(**snowflake_connection_params)
         # del self.username, self.account, self.password
-        return con
+        return self
 
     def run_sql(self, query):
-        con = self.connect()
-        cur = con.cursor()
+        self.connect()
+        cur = self.con.cursor()
         cur.execute(query)
-        df = cur.fetch_pandas_all()
-        return df
+
+        if query.lower().startswith('select'):
+            df = cur.fetch_pandas_all()
+            self.con.close()
+            return df
+        self.con.close()
+        return
 
 
 class MongoDBConnect:
@@ -159,16 +182,17 @@ class MongoDBConnect:
             self.mongodb_connection_string = mongodb_connection_string
 
     def connect(self):
-        client = MongoClient(self.mongodb_connection_string)
-        # del self.mongodb_connection_string
-        return client
+        self.client = MongoClient(self.mongodb_connection_string)
+        self.client.connect()
+        return self
 
     def find(self, *args):
         assert self.database is not None and self.collection is not None, \
             'Init params for database and collection cannot be None!'
 
-        client = self.connect()
-        db = client[self.database]
+        self.connect()
+        db = self.client[self.database]
         _collection = db[self.collection]
         output = [i for i in _collection.find(*args)]
+        self.client.close()
         return output

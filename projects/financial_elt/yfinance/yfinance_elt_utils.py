@@ -19,19 +19,17 @@ class YFinanceEL:
         pass
 
 
-    def connect_to_db(self,
-                      database='yfinance',
-                      user=os.environ.get('MYSQL_USER'),
-                      password=os.environ.get('MYSQL_PASSWORD'),
-                      create_schema_if_not_exists=True):
-
+    def connect_to_db(self, create_schema_if_not_exists=True, **mysql_connect_params):
         if create_schema_if_not_exists:
-            self.db = MySQLConnect(database='', user=user, password=password)
-            self.db.run_sql(f'CREATE DATABASE IF NOT EXISTS {database};')
+            if 'database' not in mysql_connect_params:
+                mysql_connect_params['database'] = 'yfinance'
+            self.db = MySQLConnect(**mysql_connect_params)
+            self.db.database = 'mysql'
+            self.db.run_sql(f"CREATE DATABASE IF NOT EXISTS {mysql_connect_params['database']};")
 
-        self.db = MySQLConnect(database=database, user=user, password=password)
-        self.con = self.db.connect()
-        return
+        self.db = MySQLConnect(**mysql_connect_params)
+        self.db.connect()
+        return self
 
     def el_stock_prices(self):
         # napi = numerapi.SignalsAPI(os.environ.get('NUMERAI_PUBLIC_KEY'), os.environ.get('NUMERAI_PRIVATE_KEY'))
@@ -93,8 +91,10 @@ class YFinanceEL:
 
             df.sort_values(by='timestamp', inplace=True)
             df.loc[:, 'id'] = [i for i in range(idx_start + 1, idx_start + 1 + df.shape[0])]
+            df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
             df = df[column_order]
-            df.to_sql(name=f'stock_prices_{key}', con=self.con, index=False, if_exists='append')
+            self.db.connect()
+            df.to_sql(name=f'stock_prices_{key}', con=self.db.con, index=False, if_exists='append')
 
             self.db.run_sql(f"""
               
@@ -180,8 +180,8 @@ class YFinanceTransform:
                       password=os.environ.get('MYSQL_PASSWORD')):
 
         self.db = MySQLConnect(database=database, user=user, password=password)
-        self.con = self.db.connect()
-        return
+        con = self.db.connect()
+        return con
 
     def transform_stock_prices(self):
         self.db.run_sql()
@@ -339,7 +339,7 @@ def download_yf_prices(tickers,
                 if mysql_con is not None and any(x for x in tickers if x not in stored_tickers):
                     yf_params['start'] = get_valid_yfinance_start_timestamp(i)
                 t = yf.Tickers(tickers)
-                df_i = t.history(tickers, **yf_params)\
+                df_i = t.history(**yf_params)\
                         .stack()\
                         .rename_axis(index=['timestamp', yahoo_ticker_colname])\
                         .reset_index()
@@ -364,7 +364,7 @@ def download_yf_prices(tickers,
                                     yf_params['start'] = get_valid_yfinance_start_timestamp(i)
                                 t = yf.Ticker(chunk[0])
                                 df_tmp = \
-                                    t.history(chunk, **yf_params)\
+                                    t.history(**yf_params)\
                                      .rename_axis(index='timestamp')\
                                      .pipe(lambda x: clean_columns(x))
 
@@ -386,7 +386,7 @@ def download_yf_prices(tickers,
                                 yf_params['start'] = get_valid_yfinance_start_timestamp(i)
                             t = yf.Tickers(chunk)
                             df_tmp = \
-                                t.history(chunk, **yf_params)\
+                                t.history(**yf_params)\
                                  .stack()\
                                  .rename_axis(index=['timestamp', yahoo_ticker_colname])\
                                  .reset_index()\
