@@ -21,7 +21,7 @@ class MySQLConnect:
                  user=os.environ.get('MYSQL_USER'),
                  password=os.environ.get('MYSQL_PASSWORD'),
                  host=os.environ.get('MYSQL_HOST'),
-                 database=None,
+                 database='',
                  charset='utf8',
                  backend_url='mysqldb',
                  string_extension='mb4&binary_prefix=true',
@@ -49,7 +49,7 @@ class MySQLConnect:
                 self.engine_string = self.engine_string + f':{self.password}'
             if self.host is not None:
                 self.engine_string = self.engine_string + f'@{self.host}'
-            if self.database is not None:
+            if self.database is not None and self.database != '':
                 self.engine_string = self.engine_string + f'/{self.database}'
             if self.charset is not None:
                 self.engine_string = self.engine_string + f'?charset={self.charset}'
