@@ -21,7 +21,7 @@ class MySQLConnect:
                  user=os.environ.get('MYSQL_USER'),
                  password=os.environ.get('MYSQL_PASSWORD'),
                  host=os.environ.get('MYSQL_HOST'),
-                 database='',
+                 database=os.environ.get('MYSQL_DATABASE'),
                  charset='utf8',
                  backend_url='mysqldb',
                  string_extension='mb4&binary_prefix=true',
