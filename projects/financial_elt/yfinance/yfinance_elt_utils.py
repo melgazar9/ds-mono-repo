@@ -88,7 +88,7 @@ class YFinanceEL:
 
         tickers = self.db.run_sql("SELECT yahoo_ticker, bloomberg_ticker, numerai_ticker FROM tickers;")
 
-        dfs = download_yf_prices(tickers['yahoo_ticker'].unique().tolist(),
+        dfs = download_yf_prices(tickers['yahoo_ticker'].unique().tolist()[10:13],
                                  yf_params=dict(start=start_timestamp),
                                  mysql_con=self.db)
 
@@ -267,6 +267,7 @@ def download_yf_prices(tickers,
                        yahoo_ticker_colname='yahoo_ticker',
                        mysql_con=None,
                        yf_params=None,
+                       database='yfinance',
                        verbose=True):
     """
     Parameters
@@ -291,6 +292,8 @@ def download_yf_prices(tickers,
             else use default params
         Note: To use this parameter, a MySQL database needs to be set up, which stores the output tables into a schema
             called 'yfinance' when calling YFinanceEL().el_stock_prices()
+
+    database: str of the database to connect to --- ignored if mysql_con is None
 
     **yf_params: dict - passed to yf.Ticker(<ticker>).history(**yf_params)
         set threads = True for faster performance, but tickers will fail, scipt may hang
@@ -358,17 +361,25 @@ def download_yf_prices(tickers,
             if mysql_con is not None:
                 existing_tables = \
                     mysql_con.run_sql(
-                        "SELECT DISTINCT(table_name) FROM information_schema.tables WHERE table_schema = 'yfinance'"
+                        f"SELECT DISTINCT(table_name) FROM information_schema.tables WHERE table_schema = '{database}'"
                     )
 
                 if f'stock_prices_{i}' in existing_tables['TABLE_NAME'].tolist():
+
                     stored_tickers = \
-                        mysql_con.run_sql(f'SELECT DISTINCT(yahoo_ticker) FROM stock_prices_{i}')['yahoo_ticker'].tolist()
+                        mysql_con.run_sql(f"""
+                            SELECT 
+                                yahoo_ticker,
+                                MAX(timestamp) AS max_timestamp
+                            FROM
+                                stock_prices_{i}
+                            GROUP BY 1
+                            """)
                 else:
-                    stored_tickers = []
+                    stored_tickers = pd.DataFrame(columns=['yahoo_ticker', 'max_timestamp'])
 
             if yf_params['threads'] == True:
-                if mysql_con is not None and any(x for x in tickers if x not in stored_tickers):
+                if mysql_con is not None and any(x for x in tickers if x not in stored_tickers['yahoo_ticker'].tolist()):
                     yf_params['start'] = get_valid_yfinance_start_timestamp(i)
                 t = yf.Tickers(tickers)
                 df_i = t.history(**yf_params)\
@@ -392,8 +403,14 @@ def download_yf_prices(tickers,
                     try:
                         if n_chunks == 1 or len(chunk) == 1:
                             try:
-                                if mysql_con is not None and any(x for x in chunk if x not in stored_tickers):
-                                    yf_params['start'] = get_valid_yfinance_start_timestamp(i)
+                                if mysql_con is not None:
+                                    if chunk[0] not in stored_tickers['yahoo_ticker'].tolist():
+                                        yf_params['start'] = get_valid_yfinance_start_timestamp(i)
+                                    else:
+                                        yf_params['start'] = \
+                                            stored_tickers[stored_tickers['yahoo_ticker'] == chunk[0]][
+                                                'max_timestamp'].min().strftime('%Y-%m-%d')
+
                                 t = yf.Ticker(chunk[0])
                                 df_tmp = \
                                     t.history(**yf_params)\
@@ -414,8 +431,14 @@ def download_yf_prices(tickers,
                                 failed_ticker_downloads[i].append(chunk)
                                 continue
                         else:
-                            if mysql_con is not None and any(x for x in chunk if x not in stored_tickers):
-                                yf_params['start'] = get_valid_yfinance_start_timestamp(i)
+                            if mysql_con is not None:
+                                if any(x for x in chunk if x not in stored_tickers['yahoo_ticker'].tolist()):
+                                    yf_params['start'] = get_valid_yfinance_start_timestamp(i)
+                                else:
+                                    yf_params['start'] = \
+                                        stored_tickers[stored_tickers['yahoo_ticker'].isin(chunk)][
+                                            'max_timestamp'].min().strftime('%Y-%m-%d')
+
                             t = yf.Tickers(chunk)
                             df_tmp = \
                                 t.history(**yf_params)\
