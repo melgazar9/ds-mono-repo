@@ -84,7 +84,7 @@ class YFinanceEL:
                 self.db.run_sql("SELECT MAX(timestamp) - interval 1 day FROM stock_prices_1m;")\
                 .iloc[0].iloc[0].strftime('%Y-%m-%d')
         else:
-            start_timestamp = '1900-01-01'
+            start_timestamp = '1950-01-01'
 
         tickers = self.db.run_sql("SELECT yahoo_ticker, bloomberg_ticker, numerai_ticker FROM tickers;")
 
@@ -219,7 +219,7 @@ class YFinanceTransform:
         pass
 
 
-def get_valid_yfinance_start_timestamp(interval, start='1900-01-01 00:00:00'):
+def get_valid_yfinance_start_timestamp(interval, start='1950-01-01 00:00:00'):
 
     """
     Description
@@ -287,7 +287,7 @@ def download_yf_prices(tickers,
     mysql_con: database connection object to mysql using MySQLConnect class
         disabled if None - it won't search a MySQL DB for missing tickers.
         when db is successfully connected:
-            if ticker isn't found in MySQL db table, then set the start date to '1900-01-01' for that specific ticker
+            if ticker isn't found in MySQL db table, then set the start date to '1950-01-01' for that specific ticker
             else use default params
         Note: To use this parameter, a MySQL database needs to be set up, which stores the output tables into a schema
             called 'yfinance' when calling YFinanceEL().el_stock_prices()
@@ -316,8 +316,8 @@ def download_yf_prices(tickers,
 
     if 'start' not in yf_params.keys():
         if verbose:
-            print('*** yf params start set to 1900-01-01! ***')
-        yf_params['start'] = '1900-01-01'
+            print('*** yf params start set to 1950-01-01! ***')
+        yf_params['start'] = '1950-01-01'
     if 'threads' not in yf_params.keys() or not yf_params['threads']:
         if verbose:
             print('*** yf params threads set to False! ***')
