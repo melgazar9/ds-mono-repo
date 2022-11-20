@@ -5,13 +5,50 @@ class MetaclassMethodEnforcer:
     """
     Description
     -----------
-    Goal: Design a metaclass enforcer that ensures certain method names exist within a class.
+    A metaclass enforcer that ensures certain method names exist within a class.
+    Enforce classes to use the same methods for code reliability across team members
     """
 
-    def __init__(self):
-        pass
+    def __init__(self, required_methods, parent_class):
+        self.required_methods = required_methods
+        self.parent_class = parent_class
 
+    @staticmethod
+    def overwrite_new(f, cls):
+        def method(*args, **kwargs):
+            return f(*args, **kwargs)
 
+        method.__name__ = f.__name__
+        method.__doc__ = f.__doc__
+        return method
+
+    def enforce(self):
+        class MetaEnforcer(type):
+
+            def __init__(cls, name, bases, cls_dict):
+                method_map = dict()
+                for m in self.required_methods:
+                    if m in cls_dict and callable(cls_dict[m]):
+                        method_map[m] = cls_dict[m]
+                        continue
+
+                    for b in bases:
+                        if isinstance(b, MetaEnforcer):
+                            continue
+
+                        if m in b.__dict__ and callable(b.__dict__[m]):
+                            method_map[m] = b.__dict__[m]
+                            break
+
+                if len(method_map) < len(self.required_methods):
+                    raise ValueError(f"{cls.__name__} must have (or inherit) methods "
+                                     f"[{', '.join(self.required_methods)}]")
+
+                for m in self.required_methods:
+                    setattr(cls, m, self.overwrite_new(method_map[m], cls))
+
+        MetaEnforcer.__name__ = "Meta" + self.parent_class
+        return MetaEnforcer
 def find_list_duplicates(input_list):
     return [item for item, count in Counter(input_list).items() if count > 1]
 

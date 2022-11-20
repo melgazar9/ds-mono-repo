@@ -1,20 +1,86 @@
-from ds_core.ds_imports import *
+from ds_core.ds_utils import *
 import snowflake.connector
 from pymongo import MongoClient
 
 from sqlalchemy import create_engine, text
 
-class MySQLConnect:
+
+class RDBMSConnect:
+
+    def __init__(self):
+        pass
+
+    def connect(self):
+        raise ValueError('method must be overridden.')
+
+    def run_sql(self):
+        raise ValueError('method must be overridden.')
+
+rdbms_method_enforcer = MetaclassMethodEnforcer(required_methods=['connect', 'run_sql'], parent_class='RDBMSConnect')
+MetaclassRDBMSEnforcer = rdbms_method_enforcer.enforce()
+
+class BigQueryConnect(metaclass=MetaclassRDBMSEnforcer):
+
+    """
+    Description
+    -----------
+    Connect to Google BigQuery database and run queries.
+    Must have methods named "connect" and "run_sql"
+
+    Example
+    -------
+    db = BigQueryConnect()
+    df = db.run_sql('select * from <my_table> limit 1;')
+
+    Prerequisites
+    -------------
+    Log into Google BigQuery and create a service account for a specific project here:
+        https://console.cloud.google.com/iam-admin/serviceaccounts/
+        Make sure the proper permissions are granted (e.g. grant both read and write permissions)
+    Once the credentials json file is downloaded, copy it to a safe location (e.g. ~/.credentials/)
+    Open ~/.bashrc (or ~/.zshrc) and add the following line
+        export GOOGLE_APPLICATION_CREDENTIALS=<path to credentials json file>
+    Run source ~/.bashrc (or source ~/.zshrc); source venv/bin/activate;
+    When running pandas gbq it will probably have you log into your Google account via web browser
+    At this point you should be connected to Google BigQuery!
+    """
+
+    def __init__(self,
+                 project_id,
+                 user=os.environ.get('MYSQL_USER'),
+                 password=os.environ.get('MYSQL_PASSWORD'),
+                 host=os.environ.get('MYSQL_HOST'),
+                 database=os.environ.get('MYSQL_DATABASE')):
+        self.project_id = project_id
+        self.user = user
+        self.password = password
+        self.host = host
+        self.database = database
+
+    def connect(self):
+        pass
+
+    def run_sql(self, query):
+        if query.strip().lower().startswith('select'):
+            df = pdg.read_gbq(query, project_id=self.project_id)
+            return df
+        else:
+            pass
+
+
+class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
 
     """
     Description
     -----------
     Connect to MySQL database and run sql queries.
     Default settings uses mysql-client as the backend because it has shown to be the fastest amongst the MySQL python libraries.
+    Must have methods named "connect" and "run_sql"
 
     Example
     -------
-    df = MySQLConnect().run_sql('select * from <my_table> limit 1;')
+    db = MySQLConnect()
+    df = db.run_sql('select * from <my_table> limit 1;')
     """
 
     def __init__(self,
@@ -32,6 +98,7 @@ class MySQLConnect:
         -----------
         Connection to MySQL db via python sqlalchemy package.
         If engine_string is provided all other parameters are ignored.
+        Must have methods named "connect" and "run_sql"
 
         Parameters
         ----------
@@ -91,16 +158,18 @@ class MySQLConnect:
         return
 
 
-class SnowflakeConnect:
+class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
 
     """
     Description
     -----------
     Connect to snowflake database and run sql queries.
+    Must have methods named "connect" and "run_sql"
 
     Example
     -------
-    df = SnowflakeConnect().run_sql('select * from <my_table> limit 1;')
+    db = SnowflakeConnect()
+    df = db.run_sql('select * from <my_table> limit 1;')
     """
 
     def __init__(self,
@@ -137,7 +206,7 @@ class SnowflakeConnect:
         cur = self.con.cursor()
         cur.execute(query)
 
-        if query.lower().startswith('select'):
+        if query.strip().lower().startswith('select'):
             df = cur.fetch_pandas_all()
             self.con.close()
             return df
@@ -145,7 +214,24 @@ class SnowflakeConnect:
         return
 
 
-class MongoDBConnect:
+###### NoSQL Connectors ######
+
+class NoSQLConnect:
+
+    def __init__(self):
+        pass
+
+    def connect(self):
+        raise ValueError('method must be overridden.')
+
+    def find(self):
+        raise ValueError('method must be overridden.')
+
+
+nosql_method_enforcer = MetaclassMethodEnforcer(required_methods=['connect', 'find'], parent_class='NoSQLConnect')
+MetaclassNoSQLEnforcer = nosql_method_enforcer.enforce()
+
+class MongoDBConnect(metaclass=MetaclassNoSQLEnforcer):
 
     """
     Description
@@ -154,10 +240,8 @@ class MongoDBConnect:
 
     Example
     -------
-    # df = MongoDBConnect(env=<env>,
-    #                     database=<db>,
-    #                     collection=<collection>)\
-    #     .find_one()
+    db = MongoDBConnect(env=<env>, database=<db>, collection=<collection>)
+    df = db.find_one()
     """
 
     def __init__(self,
