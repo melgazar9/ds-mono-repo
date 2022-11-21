@@ -1,9 +1,9 @@
 from ds_core.ds_utils import *
+from sqlalchemy import create_engine, text
 import snowflake.connector
 from pymongo import MongoClient
-
-from sqlalchemy import create_engine, text
-
+import pandas_gbq as pdg
+from google.cloud import bigquery
 
 class RDBMSConnect:
 
@@ -11,10 +11,10 @@ class RDBMSConnect:
         pass
 
     def connect(self):
-        raise ValueError('method must be overridden.')
+        raise ValueError('method connect must be overridden.')
 
     def run_sql(self):
-        raise ValueError('method must be overridden.')
+        raise ValueError('method run_sql must be overridden.')
 
 rdbms_method_enforcer = MetaclassMethodEnforcer(required_methods=['connect', 'run_sql'], parent_class='RDBMSConnect')
 MetaclassRDBMSEnforcer = rdbms_method_enforcer.enforce()
@@ -43,29 +43,38 @@ class BigQueryConnect(metaclass=MetaclassRDBMSEnforcer):
     Run source ~/.bashrc (or source ~/.zshrc); source venv/bin/activate;
     When running pandas gbq it will probably have you log into your Google account via web browser
     At this point you should be connected to Google BigQuery!
+
+    Parameters
+    ----------
+    project_id: str of the project-id
+    google_application_credentials: str of path where json credentials are stored from creating a service account
+    database: str of the database or schema name
+    job_config_params: dict of params passed to bigquery.QueryJobConfig.
     """
 
     def __init__(self,
-                 project_id,
-                 user=os.environ.get('MYSQL_USER'),
-                 password=os.environ.get('MYSQL_PASSWORD'),
-                 host=os.environ.get('MYSQL_HOST'),
-                 database=os.environ.get('MYSQL_DATABASE')):
-        self.project_id = project_id
-        self.user = user
-        self.password = password
-        self.host = host
-        self.database = database
+                 google_application_credentials=os.environ.get('GOOGLE_APPLICATION_CREDENTIALS'),
+                 schema=os.environ.get('BIGQUERY_SCHEMA'),
+                 job_config_params=None):
+        self.google_application_credentials = google_application_credentials
+        self.schema = schema
+        self.job_config_params = {} if job_config_params is None else job_config_params
 
     def connect(self):
-        pass
+        self.client = bigquery.Client()
+        self.job_config = bigquery.QueryJobConfig(**self.job_config_params)
+        return self
 
-    def run_sql(self, query):
-        if query.strip().lower().startswith('select'):
-            df = pdg.read_gbq(query, project_id=self.project_id)
+    def run_sql(self, query, return_result=True, use_pd_gbq=True):
+        self.connect()
+        if query.strip().lower().startswith('select') and use_pd_gbq:
+            df = pdg.read_gbq(query)
             return df
         else:
-            pass
+            job = self.client.query(query, job_config=self.job_config)
+            if return_result:
+                return job.result()
+        return
 
 
 class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
@@ -155,7 +164,7 @@ class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
             query = text(query)
             self.con.execute(query)
             self.con.close()
-        return
+        return self
 
 
 class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
@@ -210,8 +219,11 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
             df = cur.fetch_pandas_all()
             self.con.close()
             return df
+        else:
+            # TODO: Add full flexibility to SnowflakeConnect run_sql method
+            raise ValueError('Snowflake run_sql method not fully implemented yet.')
         self.con.close()
-        return
+        return self
 
 
 ###### NoSQL Connectors ######
@@ -222,10 +234,10 @@ class NoSQLConnect:
         pass
 
     def connect(self):
-        raise ValueError('method must be overridden.')
+        raise ValueError('method connect must be overridden.')
 
     def find(self):
-        raise ValueError('method must be overridden.')
+        raise ValueError('method run_sql must be overridden.')
 
 
 nosql_method_enforcer = MetaclassMethodEnforcer(required_methods=['connect', 'find'], parent_class='NoSQLConnect')
