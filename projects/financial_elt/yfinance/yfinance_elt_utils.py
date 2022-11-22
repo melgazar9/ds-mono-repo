@@ -161,6 +161,12 @@ class YFinanceEL:
                         else:
                             start_date = '1950-01-01'
 
+
+                        # TODO: Validate yfinance API is not dropping rows.
+                        #  For now I'm overriding start date to always be '1950-01-01'
+
+                        start_date = '1950-01-01'
+
                         yf_params['start'] = get_valid_yfinance_start_timestamp(interval=i, start=start_date)
 
                         df = stock_price_getter.download_single_stock_price_history(
@@ -186,7 +192,7 @@ class YFinanceEL:
                             if self.verbose:
                                 print('\nUploading to BigQuery...\n')
                             df.to_gbq(f'{self.db.schema}.stock_prices_{i}', if_exists='append')
-
+                            time.sleep(2)  # rate limit is 5 GBQ table update operations per 10 seconds
 
                             # load_table_from_dataframe has pyarrow datatype issues
                             # self.db.client.load_table_from_dataframe(df,
@@ -225,6 +231,7 @@ class YFinanceEL:
                     if self.verbose:
                         print('\nUploading to BigQuery...\n')
                     df.to_gbq(f'{self.db.schema}.stock_prices_{key}', if_exists='append')
+                    time.sleep(2) # rate limit is 5 GBQ table update operations per 10 seconds
                 self._dedupe_yf_stock_price_interval(interval=key, create_timestamp_index=self.create_timestamp_index)
         return
 
@@ -530,6 +537,10 @@ class YFStockPriceGetter:
         if yf_history_params['interval'] not in self.failed_ticker_downloads.keys():
             self.failed_ticker_downloads[yf_history_params['interval']] = []
 
+        # TODO: Validate yfinance API is not dropping rows.
+        #  For now I'm overriding start date to always be '1950-01-01'
+        yf_history_params['start'] = get_valid_yfinance_start_timestamp(yf_history_params['interval'])
+
         t = yf.Ticker(ticker)
         try:
             df = \
@@ -637,6 +648,10 @@ class YFStockPriceGetter:
                             and any(x for x in tickers if x not in self.stored_tickers['yahoo_ticker'].tolist()):
                         yf_history_params['start'] = get_valid_yfinance_start_timestamp(i)
 
+                    # TODO: Validate yfinance API is not dropping rows.
+                    #  For now I'm overriding start date to always be '1950-01-01'
+                    yf_history_params['start'] = get_valid_yfinance_start_timestamp(i)
+
                     t = yf.Tickers(tickers)
                     df_i = t.history(**yf_history_params)\
                             .stack()\
@@ -666,6 +681,10 @@ class YFStockPriceGetter:
                                             yf_history_params['start'] = \
                                                 self.stored_tickers[self.stored_tickers['yahoo_ticker'] == chunk[0]][
                                                     'max_timestamp'].min().strftime('%Y-%m-%d')
+
+                                    # TODO: Validate yfinance API is not dropping rows.
+                                    #  For now I'm overriding start date to always be '1950-01-01'
+                                    yf_history_params['start'] = get_valid_yfinance_start_timestamp(i)
 
                                     self._request_limit_check()
 
@@ -702,6 +721,10 @@ class YFStockPriceGetter:
                                         yf_history_params['start'] = \
                                             self.stored_tickers[self.stored_tickers['yahoo_ticker'].isin(chunk)][
                                                 'max_timestamp'].min().strftime('%Y-%m-%d')
+
+                                # TODO: Validate yfinance API is not dropping rows.
+                                #  For now I'm overriding start date to always be '1950-01-01'
+                                yf_history_params['start'] = get_valid_yfinance_start_timestamp(i)
 
                                 self._request_limit_check()
 
