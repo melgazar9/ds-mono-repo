@@ -9,6 +9,7 @@ feather-format==0.4.1
 feature-engine==1.5.1
 flatten-json==0.1.7
 graphviz==0.20.1
+html5lib==1.1
 imbalanced-learn==0.9.1
 Jinja2==2.11.3
 joblib==1.1.0

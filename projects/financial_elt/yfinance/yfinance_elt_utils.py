@@ -5,8 +5,8 @@ import yfinance as yf
 import simplejson
 from pytickersymbols import PyTickerSymbols
 
-class YFinanceEL:
 
+class YFinanceEL:
     """
     Description:
     ------------
@@ -88,7 +88,6 @@ class YFinanceEL:
             self.db.client.load_table_from_dataframe(df_tickers, f'{self.db.schema}.tickers', job_config=job_config)
         return
 
-
     def el_stock_prices(self,
                         intervals_to_download=('1m', '2m', '5m', '1h', '1d'),
                         n_chunks=1,
@@ -154,25 +153,25 @@ class YFinanceEL:
                         if ticker in stored_tickers['yahoo_ticker'].tolist():
                             start_date = \
                                 stored_tickers[
-                                    stored_tickers['yahoo_ticker'] == ticker\
-                                    ]['max_timestamp']\
-                                    .min()\
+                                    stored_tickers['yahoo_ticker'] == ticker \
+                                    ]['max_timestamp'] \
+                                    .min() \
                                     .strftime('%Y-%m-%d')
                         else:
                             start_date = '1950-01-01'
 
-
                         # TODO: Validate yfinance API is not dropping rows.
-                        #  For now I'm overriding start date to always be '1950-01-01'
+                        #  For now I'm overriding start date to always be '1950-01-01' if interval != '1d'
 
-                        start_date = '1950-01-01'
+                        if i != '1d':
+                            start_date = '1950-01-01'
 
                         yf_params['start'] = get_valid_yfinance_start_timestamp(interval=i, start=start_date)
 
                         df = stock_price_getter.download_single_stock_price_history(
                             ticker,
                             yf_history_params=yf_params
-                            )
+                        )
 
                         if not df.shape[0]:
                             continue
@@ -191,8 +190,13 @@ class YFinanceEL:
                             # by default) it shouldn't be too bad, especially since we're already in a slow for loop
                             if self.verbose:
                                 print('\nUploading to BigQuery...\n')
-                            df.to_gbq(f'{self.db.schema}.stock_prices_{i}', if_exists='append')
-                            time.sleep(2)  # rate limit is 5 GBQ table update operations per 10 seconds
+
+                            try:
+                                df.to_gbq(f'{self.db.schema}.stock_prices_{i}', if_exists='append')
+                            except:
+                                # the rate limit is 5 table update operations per 10 seconds
+                                time.sleep(10)
+                                df.to_gbq(f'{self.db.schema}.stock_prices_{i}', if_exists='append')
 
                             # load_table_from_dataframe has pyarrow datatype issues
                             # self.db.client.load_table_from_dataframe(df,
@@ -212,7 +216,7 @@ class YFinanceEL:
             dfs = stock_price_getter.batch_download_stock_price_history(
                 df_tickers['yahoo_ticker'].unique().tolist(),
                 intervals_to_download=intervals_to_download
-                )
+            )
 
             for key in dfs.keys():
                 stock_price_getter._create_stock_prices_table_if_not_exists(table_name=f'stock_prices_{key}')
@@ -230,8 +234,13 @@ class YFinanceEL:
                 elif self.dwh == 'bigquery':
                     if self.verbose:
                         print('\nUploading to BigQuery...\n')
-                    df.to_gbq(f'{self.db.schema}.stock_prices_{key}', if_exists='append')
-                    time.sleep(2) # rate limit is 5 GBQ table update operations per 10 seconds
+                    try:
+                        df.to_gbq(f'{self.db.schema}.stock_prices_{key}', if_exists='append')
+                    except:
+                        # rate limit is 5 GBQ table update operations per 10 seconds
+                        time.sleep(10)
+                        df.to_gbq(f'{self.db.schema}.stock_prices_{key}', if_exists='append')
+
                 self._dedupe_yf_stock_price_interval(interval=key, create_timestamp_index=self.create_timestamp_index)
         return
 
@@ -309,7 +318,6 @@ class YFinanceEL:
 
 
 class YFinanceTransform:
-
     """
     Description:
     ------------
@@ -337,7 +345,6 @@ class YFinanceTransform:
 
 
 def get_valid_yfinance_start_timestamp(interval, start='1950-01-01 00:00:00'):
-
     """
     Description
     -----------
@@ -374,15 +381,11 @@ def get_valid_yfinance_start_timestamp(interval, start='1950-01-01 00:00:00'):
     else:
         start = pd.to_datetime(start)
 
-    start = start.strftime('%Y-%m-%d') # yfinance doesn't like strftime with hours minutes or seconds
+    start = start.strftime('%Y-%m-%d')  # yfinance doesn't like strftime with hours minutes or seconds
     return start
 
 
-
-
-
 class YFStockPriceGetter:
-
     """
 
     Parameters
@@ -467,10 +470,10 @@ class YFStockPriceGetter:
 
         if self.n_requests > 1900 and self.current_runtime_seconds > 3500:
             if self.verbose:
-                print(f'\nToo many requests in one hour. Pausing requests for {self.current_runtime_seconds} seconds.\n')
+                print(f'\nToo many requests per hour. Pausing requests for {self.current_runtime_seconds} seconds.\n')
             time.sleep(np.abs(3600 - self.current_runtime_seconds))
         if self.n_requests > 45000 and self.current_runtime_seconds > 85000:
-            print(f'\nToo many requests in one day. Pausing requests for {self.current_runtime_seconds} seconds.\n')
+            print(f'\nToo many requests per day. Pausing requests for {self.current_runtime_seconds} seconds.\n')
             time.sleep(np.abs(86400 - self.current_runtime_seconds))
         return
 
@@ -538,8 +541,9 @@ class YFStockPriceGetter:
             self.failed_ticker_downloads[yf_history_params['interval']] = []
 
         # TODO: Validate yfinance API is not dropping rows.
-        #  For now I'm overriding start date to always be '1950-01-01'
-        yf_history_params['start'] = get_valid_yfinance_start_timestamp(yf_history_params['interval'])
+        #  For now I'm overriding start date to always be '1950-01-01' if interval != '1d'
+        if yf_history_params['interval'] != '1d':
+            yf_history_params['start'] = get_valid_yfinance_start_timestamp(yf_history_params['interval'])
 
         t = yf.Ticker(ticker)
         try:
@@ -592,7 +596,6 @@ class YFStockPriceGetter:
                         GROUP BY 1
                         """)
         return self
-
 
     def batch_download_stock_price_history(self,
                                            tickers,
@@ -649,14 +652,16 @@ class YFStockPriceGetter:
                         yf_history_params['start'] = get_valid_yfinance_start_timestamp(i)
 
                     # TODO: Validate yfinance API is not dropping rows.
-                    #  For now I'm overriding start date to always be '1950-01-01'
-                    yf_history_params['start'] = get_valid_yfinance_start_timestamp(i)
+                    #  For now I'm overriding start date to always be '1950-01-01' if interval != '1d'
+                    if yf_history_params['interval'] != '1d':
+                        yf_history_params['start'] = get_valid_yfinance_start_timestamp(i)
 
                     t = yf.Tickers(tickers)
-                    df_i = t.history(**yf_history_params)\
-                            .stack()\
-                            .rename_axis(index=['timestamp', self.yahoo_ticker_colname])\
-                            .reset_index()
+                    df_i = \
+                        t.history(**yf_history_params) \
+                         .stack() \
+                         .rename_axis(index=['timestamp', self.yahoo_ticker_colname]) \
+                         .reset_index()
 
                     self.n_requests += 1
 
@@ -665,7 +670,7 @@ class YFStockPriceGetter:
                     df_i = clean_columns(df_i)
                     dict_of_dfs[i] = df_i
                 else:
-                    ticker_chunks = [tickers[i:i+self.n_chunks] for i in range(0, len(tickers), self.n_chunks)]
+                    ticker_chunks = [tickers[i:i + self.n_chunks] for i in range(0, len(tickers), self.n_chunks)]
                     chunk_dfs_lst = []
 
                     for chunk in ticker_chunks:
@@ -683,15 +688,16 @@ class YFStockPriceGetter:
                                                     'max_timestamp'].min().strftime('%Y-%m-%d')
 
                                     # TODO: Validate yfinance API is not dropping rows.
-                                    #  For now I'm overriding start date to always be '1950-01-01'
-                                    yf_history_params['start'] = get_valid_yfinance_start_timestamp(i)
+                                    #  For now I'm overriding start date to always be '1950-01-01' if interval != '1d'
+                                    if yf_history_params['interval'] != '1d':
+                                        yf_history_params['start'] = get_valid_yfinance_start_timestamp(i)
 
                                     self._request_limit_check()
 
                                     t = yf.Ticker(chunk[0])
                                     df_tmp = \
-                                        t.history(**yf_history_params)\
-                                         .rename_axis(index='timestamp')\
+                                        t.history(**yf_history_params) \
+                                         .rename_axis(index='timestamp') \
                                          .pipe(lambda x: clean_columns(x))
 
                                     self.n_requests += 1
@@ -723,17 +729,18 @@ class YFStockPriceGetter:
                                                 'max_timestamp'].min().strftime('%Y-%m-%d')
 
                                 # TODO: Validate yfinance API is not dropping rows.
-                                #  For now I'm overriding start date to always be '1950-01-01'
-                                yf_history_params['start'] = get_valid_yfinance_start_timestamp(i)
+                                #  For now I'm overriding start date to always be '1950-01-01' if interval != '1d'
+                                if yf_history_params['interval'] != '1d':
+                                    yf_history_params['start'] = get_valid_yfinance_start_timestamp(i)
 
                                 self._request_limit_check()
 
                                 t = yf.Tickers(chunk)
                                 df_tmp = \
-                                    t.history(**yf_history_params)\
-                                     .stack()\
-                                     .rename_axis(index=['timestamp', self.yahoo_ticker_colname])\
-                                     .reset_index()\
+                                    t.history(**yf_history_params) \
+                                     .stack() \
+                                     .rename_axis(index=['timestamp', self.yahoo_ticker_colname]) \
+                                     .reset_index() \
                                      .pipe(lambda x: clean_columns(x))
 
                                 self.n_requests += 1
@@ -758,7 +765,7 @@ class YFStockPriceGetter:
                         dict_of_dfs[i] = df_i
                         del chunk_dfs_lst, df_i
                     except ValueError:
-                        print('\n*** ValueError occurred when trying to concatenate df_i = pd.concat(chunk_dfs_lst) ***\n')
+                        print('\n*** ValueError occurred when running df_i = pd.concat(chunk_dfs_lst) ***\n')
 
                 if self.verbose:
                     for ftd in self.failed_ticker_downloads:
@@ -772,6 +779,7 @@ class YFStockPriceGetter:
             print("\nDownloading yfinance data took %s minutes\n" % round((time.time() - start) / 60, 3))
         return dict_of_dfs
 
+
 class TickerDownloader:
 
     def __init__(self):
@@ -782,7 +790,7 @@ class TickerDownloader:
         pts = PyTickerSymbols()
         all_getters = list(filter(
             lambda x: (
-                x.endswith('_yahoo_tickers') or x.endswith('_google_tickers')
+                    x.endswith('_yahoo_tickers') or x.endswith('_google_tickers')
             ),
             dir(pts),
         ))
@@ -801,19 +809,18 @@ class TickerDownloader:
             all_tickers = pd.DataFrame(dict([(k, pd.Series(v)) for k, v in all_tickers.items()]))
 
         all_tickers = \
-            all_tickers\
-                .rename(columns={'yahoo_tickers': 'yahoo_ticker', 'google_tickers': 'google_ticker'})\
-                .sort_values(by=['yahoo_ticker', 'google_ticker'])\
+            all_tickers \
+                .rename(columns={'yahoo_tickers': 'yahoo_ticker', 'google_tickers': 'google_ticker'}) \
+                .sort_values(by=['yahoo_ticker', 'google_ticker']) \
                 .drop_duplicates()
         return all_tickers
 
     @staticmethod
     def download_numerai_signals_ticker_map(
-        napi=SignalsAPI(),
-        numerai_ticker_link='https://numerai-signals-public-data.s3-us-west-2.amazonaws.com/signals_ticker_map_w_bbg.csv',
-        yahoo_ticker_colname='yahoo',
-        verbose=True
-        ):
+            napi=SignalsAPI(),
+            numerai_ticker_link='https://numerai-signals-public-data.s3-us-west-2.amazonaws.com/signals_ticker_map_w_bbg.csv',
+            yahoo_ticker_colname='yahoo',
+            verbose=True):
 
         ticker_map = pd.read_csv(numerai_ticker_link)
         eligible_tickers = pd.Series(napi.ticker_universe(), name='bloomberg_ticker')
@@ -826,10 +833,10 @@ class TickerDownloader:
         # Remove null / empty tickers from the yahoo tickers
         valid_tickers = [i for i in ticker_map[yahoo_ticker_colname]
                          if not pd.isnull(i)
-                         and not str(i).lower() == 'nan'\
-                         and not str(i).lower() == 'null'\
-                         and i is not None\
-                         and not str(i).lower() == ''\
+                         and not str(i).lower() == 'nan' \
+                         and not str(i).lower() == 'null' \
+                         and i is not None \
+                         and not str(i).lower() == '' \
                          and len(i) > 0]
         if verbose:
             print('tickers before cleaning:', ticker_map.shape)  # before removing bad tickers
@@ -848,12 +855,13 @@ class TickerDownloader:
         df_pts_tickers = cls.download_pts_tickers()
 
         numerai_yahoo_tickers = \
-            cls.download_numerai_signals_ticker_map()\
-               .rename(columns={'yahoo': 'yahoo_ticker', 'ticker': 'numerai_ticker'})
+            cls.download_numerai_signals_ticker_map() \
+                .rename(columns={'yahoo': 'yahoo_ticker', 'ticker': 'numerai_ticker'})
 
         df1 = pd.merge(df_pts_tickers, numerai_yahoo_tickers, on='yahoo_ticker', how='left').set_index('yahoo_ticker')
         df2 = pd.merge(numerai_yahoo_tickers, df_pts_tickers, on='yahoo_ticker', how='left').set_index('yahoo_ticker')
-        df3 = pd.merge(df_pts_tickers, numerai_yahoo_tickers, left_on='yahoo_ticker', right_on='numerai_ticker', how='left') \
+        df3 = pd.merge(df_pts_tickers, numerai_yahoo_tickers, left_on='yahoo_ticker', right_on='numerai_ticker',
+                       how='left') \
             .rename(columns={'yahoo_ticker_x': 'yahoo_ticker', 'yahoo_ticker_y': 'yahoo_ticker_old'}) \
             .set_index('yahoo_ticker')
         df4 = pd.merge(df_pts_tickers, numerai_yahoo_tickers, left_on='yahoo_ticker', right_on='bloomberg_ticker',
@@ -872,7 +880,8 @@ class TickerDownloader:
         df_tickers = \
             df_tickers_wide.reset_index() \
                 [['yahoo_ticker', 'google_ticker', 'bloomberg_ticker', 'numerai_ticker', 'yahoo_ticker_old']] \
-                .sort_values(by=['yahoo_ticker', 'google_ticker', 'bloomberg_ticker', 'numerai_ticker', 'yahoo_ticker_old']) \
+                .sort_values(
+                    by=['yahoo_ticker', 'google_ticker', 'bloomberg_ticker', 'numerai_ticker', 'yahoo_ticker_old']) \
                 .drop_duplicates()
 
         df_tickers.loc[:, 'yahoo_valid_pts'] = False
@@ -886,3 +895,170 @@ class TickerDownloader:
         ] = True
 
         return df_tickers
+
+
+class YFinanceFinancialsGetter:
+
+    def __init__(self, tickers):
+        self.tickers = [tickers] if isinstance(tickers, str) else tickers
+        assert isinstance(tickers, (tuple, list)), 'parameter tickers must be in the format str, list, or tuple'
+
+        self.financials_to_get = (
+            'actions',
+            'analysis',
+            'balance_sheet',
+            'calendar',
+            'cashflow',
+            'dividends',
+            'earnings',
+            'earnings_dates',
+            'financials',
+            'institutional_holders',
+            'major_holders',
+            'mutualfund_holders',
+            'quarterly_balance_sheet',
+            'quarterly_cashflow',
+            'quarterly_earnings',
+            'quarterly_financials',
+            'recommendations',
+            'shares',
+            'splits',
+            'sustainability'
+        )
+
+        self.dict_of_financials = dict()
+        for f in self.financials_to_get:
+            self.dict_of_financials[f] = pd.DataFrame()
+    def get_finanials(self):
+        for ticker in self.tickers:
+            t = yf.Ticker(ticker)
+
+            self.dict_of_financials['actions'] = \
+                pd.concat([self.dict_of_financials['actions'],
+                           t.actions.reset_index().assign(ticker=ticker).pipe(lambda x: clean_columns(x))])
+
+            self.dict_of_financials['analysis'] = \
+                pd.concat([self.dict_of_financials['analysis'],
+                           t.analysis.reset_index().assign(ticker=ticker).pipe(lambda x: clean_columns(x))])
+
+            self.dict_of_financials['balance_sheet'] = \
+                pd.concat([self.dict_of_financials['balance_sheet'],
+                           t.balance_sheet\
+                            .T.rename_axis(index='date')\
+                            .reset_index()\
+                            .assign(ticker=ticker)\
+                            .pipe(lambda x: clean_columns(x))]
+                          )
+
+            self.dict_of_financials['calendar'] = \
+                pd.concat([self.dict_of_financials['calendar'],
+                          t.calendar.T.assign(ticker=ticker).pipe(lambda x: clean_columns(x))])
+
+            self.dict_of_financials['cashflow'] = \
+                pd.concat([self.dict_of_financials['cashflow'],
+                          t.cashflow.T\
+                           .rename_axis(index='date')\
+                           .reset_index()\
+                           .assign(ticker=ticker)\
+                           .pipe(lambda x: clean_columns(x))])
+
+            self.dict_of_financials['dividends'] = \
+                pd.concat([self.dict_of_financials['dividends'],
+                          t.dividends\
+                          .reset_index()\
+                          .assign(ticker=ticker)\
+                          .pipe(lambda x: clean_columns(x))])
+
+            self.dict_of_financials['earnings'] = \
+                pd.concat([self.dict_of_financials['earnings'],
+                           t.earnings.reset_index().assign(ticker=ticker).pipe(lambda x: clean_columns(x))])
+
+            self.dict_of_financials['earnings_dates'] = \
+                pd.concat([self.dict_of_financials['earnings_dates'],
+                          t.earnings_dates\
+                           .rename(columns={'Surprise(%)': 'surprise_pct'})\
+                           .reset_index()\
+                           .assign(ticker=ticker)\
+                           .pipe(lambda x: clean_columns(x))])
+
+            self.dict_of_financials['financials'] = \
+                pd.concat([self.dict_of_financials['financials'],
+                           t.financials \
+                            .T\
+                            .rename_axis(index='date') \
+                            .reset_index() \
+                            .assign(ticker=ticker)\
+                            .pipe(lambda x: clean_columns(x))])
+
+            self.dict_of_financials['institutional_holders'] = \
+                pd.concat([self.dict_of_financials['institutional_holders'],
+                           t.institutional_holders.rename(columns={'% Out': 'pct_out'}) \
+                            .assign(ticker=ticker) \
+                            .pipe(lambda x: clean_columns(x))])
+
+            self.dict_of_financials['major_holders'] = \
+                pd.concat([self.dict_of_financials['major_holders'],
+                           t.major_holders\
+                            .rename(columns={0: 'pct', 1: 'metadata'}) \
+                            .assign(ticker=ticker) \
+                            .pipe(lambda x: clean_columns(x))])
+
+            self.dict_of_financials['mutualfund_holders'] = \
+                pd.concat([self.dict_of_financials['mutualfund_holders'],
+                           t.mutualfund_holders \
+                            .rename(columns={'% Out': 'pct_out'})\
+                            .assign(ticker=ticker) \
+                            .pipe(lambda x: clean_columns(x))])
+
+            self.dict_of_financials['quarterly_balance_sheet'] = \
+                pd.concat([self.dict_of_financials['quarterly_balance_sheet'],
+                           t.quarterly_balance_sheet.T \
+                            .rename_axis(index='date')\
+                            .reset_index()\
+                            .assign(ticker=ticker) \
+                            .pipe(lambda x: clean_columns(x))])
+
+            self.dict_of_financials['quarterly_cashflow'] = \
+                pd.concat([self.dict_of_financials['quarterly_cashflow'],
+                           t.quarterly_cashflow.T \
+                            .rename_axis(index='date') \
+                            .reset_index()\
+                            .assign(ticker=ticker) \
+                            .pipe(lambda x: clean_columns(x))])
+
+            self.dict_of_financials['quarterly_earnings'] = \
+                pd.concat([self.dict_of_financials['quarterly_earnings'],
+                           t.quarterly_earnings \
+                            .reset_index() \
+                            .assign(ticker=ticker) \
+                            .pipe(lambda x: clean_columns(x))])
+
+            self.dict_of_financials['quarterly_financials'] = \
+                pd.concat([self.dict_of_financials['quarterly_financials'],
+                           t.quarterly_financials.T \
+                          .rename_axis(index='date') \
+                          .reset_index() \
+                          .assign(ticker=ticker) \
+                          .pipe(lambda x: clean_columns(x))])
+
+            self.dict_of_financials['recommendations'] = \
+                pd.concat([self.dict_of_financials['recommendations'],
+                           t.recommendations \
+                          .reset_index() \
+                          .assign(ticker=ticker) \
+                          .pipe(lambda x: clean_columns(x))])
+
+            self.dict_of_financials['shares'] = \
+                pd.concat([self.dict_of_financials['shares'],
+                           t.shares \
+                          .reset_index() \
+                          .assign(ticker=ticker) \
+                          .pipe(lambda x: clean_columns(x))])
+
+            self.dict_of_financials['sustainability'] = \
+                pd.concat([self.dict_of_financials['sustainability'],
+                           t.sustainability.T\
+                            .rename_axis(index='date')\
+                            .reset_index()
+                            .assign(ticker=ticker) \
+                            .pipe(lambda x: clean_columns(x))])
