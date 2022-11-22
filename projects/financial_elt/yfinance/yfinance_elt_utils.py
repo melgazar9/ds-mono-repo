@@ -150,7 +150,7 @@ class YFinanceEL:
                     stored_tickers = stock_price_getter.stored_tickers.copy()
                     stock_price_getter._create_stock_prices_table_if_not_exists(table_name=f'stock_prices_{i}')
 
-                    for ticker in ['AAPL', 'MSFT', 'NVDA']: # df_tickers['yahoo_ticker'].tolist():
+                    for ticker in df_tickers['yahoo_ticker'].tolist():
                         if ticker in stored_tickers['yahoo_ticker'].tolist():
                             start_date = \
                                 stored_tickers[
@@ -204,7 +204,7 @@ class YFinanceEL:
         else:
             print('\n*** Running batch download ***\n')
             dfs = stock_price_getter.batch_download_stock_price_history(
-                ['AAPL', 'MSFT', 'NVDA'],# df_tickers['yahoo_ticker'].unique().tolist(),
+                df_tickers['yahoo_ticker'].unique().tolist(),
                 intervals_to_download=intervals_to_download
                 )
 

@@ -35,6 +35,7 @@ numerapi==2.12.7
 numpy==1.23.2
 pandas==1.5.1
 pandas-datareader==0.10.0
+pandas-gbq==0.17.9
 plotly==5.10.0
 pyarrow==8.0.0
 pymongo==4.2.0
