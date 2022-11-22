@@ -61,6 +61,8 @@ class BigQueryConnect(metaclass=MetaclassRDBMSEnforcer):
         self.schema = schema
         self.job_config_params = {} if job_config_params is None else job_config_params
 
+        self.dwh_name = 'bigquery'
+
     def connect(self):
         self.client = bigquery.Client()
         self.job_config = bigquery.QueryJobConfig(**self.job_config_params)
@@ -97,7 +99,7 @@ class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
                  user=os.environ.get('MYSQL_USER'),
                  password=os.environ.get('MYSQL_PASSWORD'),
                  host=os.environ.get('MYSQL_HOST'),
-                 database=os.environ.get('MYSQL_DATABASE'),
+                 schema=os.environ.get('MYSQL_SCHEMA'),
                  charset='utf8',
                  backend_url='mysqldb',
                  string_extension='mb4&binary_prefix=true',
@@ -124,11 +126,13 @@ class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
         self.user = os.environ.get('MYSQL_USER') if user is None else user
         self.password = os.environ.get('MYSQL_PASSWORD') if password is None else password
         self.host = os.environ.get('MYSQL_HOST') if host is None else host
-        self.database = database
+        self.schema = schema
         self.charset = charset
         self.backend_url = backend_url
         self.string_extension = string_extension
         self.engine_string = engine_string
+
+        self.dwh_name = 'mysql'
 
     def connect(self, **kwargs):
         if self.engine_string is not None:
@@ -144,8 +148,8 @@ class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
                 self.engine_string = self.engine_string + f':{self.password}'
             if self.host is not None:
                 self.engine_string = self.engine_string + f'@{self.host}'
-            if self.database is not None and self.database != '':
-                self.engine_string = self.engine_string + f'/{self.database}'
+            if self.schema is not None and self.schema != '':
+                self.engine_string = self.engine_string + f'/{self.schema}'
             if self.charset is not None:
                 self.engine_string = self.engine_string + f'?charset={self.charset}'
             if self.string_extension is not None:
@@ -196,6 +200,8 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
         self.username = os.environ.get('SNOWFLAKE_USERNAME') if username is None else username
         self.account = os.environ.get('SNOWFLAKE_ACCOUNT') if account is None else account
         self.password = os.environ.get('SNOWFLAKE_PASSWORD') if password is None else password
+
+        self.dwh_name = 'snowflake'
 
     def connect(self):
         snowflake_connection_params = {
@@ -277,6 +283,8 @@ class MongoDBConnect(metaclass=MetaclassNoSQLEnforcer):
                 self.mongodb_connection_string = os.environ.get("MONGODB_PRODUCTION_STRING")
         else:
             self.mongodb_connection_string = mongodb_connection_string
+
+        self.dwh_name = 'mongodb'
 
     def connect(self):
         self.client = MongoClient(self.mongodb_connection_string)

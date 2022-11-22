@@ -19,11 +19,16 @@ class YFinanceEL:
     ----------
     dwh: str of the data warehouse name to connect to when calling self.connect_to_db()
     schema: str of the schema name to create and dump data to within the data warehouse
+    populate_bigquery: bool to append BigQuery with data dumped to db.
+        BigQuery tables will be deduped after each interval loop
+    verbose: bool to print steps in stdout
     """
 
-    def __init__(self, dwh='mysql', schema='yfinance', verbose=True):
+    def __init__(self, dwh='mysql', schema='yfinance', populate_bigquery=False, verbose=True):
+        self.db = None
         self.dwh = dwh
         self.schema = schema
+        self.populate_bigquery = populate_bigquery
         self.verbose = verbose
 
         self.df_dtype_mappings = {
@@ -47,26 +52,32 @@ class YFinanceEL:
 
         if create_schema_if_not_exists:
             if self.dwh == 'mysql':
-                if 'database' not in db_connect_params:
-                    db_connect_params['database'] = 'yfinance'
-                self.db = MySQLConnect(**db_connect_params)
-                self.db.database = ''
                 try:
                     self.db = MySQLConnect(**db_connect_params)
                 except:
                     warnings.warn("""\n
                     Error connecting to empty schema string ''.
                     Connecting to schema 'mysql' instead.
-                    To disable this set the database to some other value when instantiating the object.
+                    To disable this set the schema to some other value when instantiating the object.
                     \n""")
-                    self.db.database = 'mysql'
-                    self.db.run_sql(f"CREATE SCHEMA IF NOT EXISTS {db_connect_params['database']};")
-                    self.db = MySQLConnect(**db_connect_params)
+                    self.db.schema = 'mysql'
+                self.db.run_sql(f"CREATE SCHEMA IF NOT EXISTS {self.schema};")
+
+                if 'schema' not in db_connect_params:
+                    db_connect_params['schema'] = self.schema
+
+                self.db = MySQLConnect(**db_connect_params)
 
             elif self.dwh == 'bigquery':
-                db_connect_params['schema'] = 'yfinance'
+                db_connect_params['schema'] = self.schema
                 self.db = BigQueryConnect(**db_connect_params)
                 self.db.run_sql(f"CREATE SCHEMA IF NOT EXISTS {db_connect_params['schema']};")
+
+            if self.populate_bigquery and self.dwh != 'bigquery':
+                bq_connect_params = dict(schema=self.schema)
+                self.bq_client = BigQueryConnect(**bq_connect_params)
+                self.bq_client.run_sql(f"CREATE SCHEMA IF NOT EXISTS {bq_connect_params['schema']};")
+
         self.db.connect()
         return self
 
@@ -122,8 +133,8 @@ class YFinanceEL:
         df_tickers = \
             self.db.run_sql(f"SELECT yahoo_ticker, bloomberg_ticker, numerai_ticker FROM {self.schema}.tickers;")
 
-        column_order = ['timestamp', 'timestamp_tz_aware', 'yahoo_ticker', 'bloomberg_ticker', 'numerai_ticker',
-                        'open', 'high', 'low', 'close', 'volume', 'dividends', 'stock_splits']
+        column_order = ['timestamp', 'timestamp_tz_aware', 'timezone', 'yahoo_ticker', 'bloomberg_ticker',
+                        'numerai_ticker', 'open', 'high', 'low', 'close', 'volume', 'dividends', 'stock_splits']
 
         stock_price_getter = \
             YFStockPriceGetter(dwh=self.dwh,
@@ -180,23 +191,18 @@ class YFinanceEL:
                         df = df[column_order]
                         df = df.ffill().bfill()
 
+                        for k, v in self.df_dtype_mappings.items():
+                            df[v] = df[v].astype(k)
+
                         if self.dwh == 'mysql':
                             df.to_sql(f'stock_prices_{i}', con=con, index=False, if_exists='append')
                         elif self.dwh == 'bigquery':
-                            for k, v in self.df_dtype_mappings.items():
-                                df[v] = df[v].astype(k)
-
                             # df.to_gbq is super slow, but since we're in append-only mode (BigQuery appends table only
                             # by default) it shouldn't be too bad, especially since we're already in a slow for loop
                             if self.verbose:
                                 print('\nUploading to BigQuery...\n')
 
-                            try:
-                                df.to_gbq(f'{self.db.schema}.stock_prices_{i}', if_exists='append')
-                            except:
-                                # the rate limit is 5 table update operations per 10 seconds
-                                time.sleep(10)
-                                df.to_gbq(f'{self.db.schema}.stock_prices_{i}', if_exists='append')
+                            df.to_gbq(f'{self.db.schema}.stock_prices_{i}', if_exists='append')
 
                             # load_table_from_dataframe has pyarrow datatype issues
                             # self.db.client.load_table_from_dataframe(df,
@@ -205,6 +211,16 @@ class YFinanceEL:
                             # calling job.result() is not needed to append table and adds additional processing time
 
                     self._dedupe_yf_stock_price_interval(interval=i, create_timestamp_index=self.create_timestamp_index)
+
+                    if self.populate_bigquery and self.dwh != 'bigquery':
+                        df_tmp = self.db.run_sql(f"SELECT * FROM {self.db.schema}.stock_prices_{i}")
+                        for k, v in self.df_dtype_mappings.items():
+                            df_tmp[v] = df_tmp[v].astype(k)
+                        df_tmp.to_gbq(f'{self.bq_client.schema}.stock_prices_{i}', if_exists='append')
+
+                        self._dedupe_yf_stock_price_interval(interval=i,
+                                                             create_timestamp_index=self.create_timestamp_index,
+                                                             dwh_client=self.bq_client)
 
                 if self.verbose:
                     for ftd in stock_price_getter.failed_ticker_downloads:
@@ -223,32 +239,46 @@ class YFinanceEL:
                 df = pd.merge(dfs[key], df_tickers, on='yahoo_ticker', how='left')
                 assert len(np.intersect1d(df.columns, column_order)) == df.shape[1], \
                     'Column mismatch! Review download_yf_data function!'
-                df.sort_values(by='timestamp', inplace=True)
-                df = df[column_order]
                 df = df.ffill().bfill()
+                df.sort_values(by='timestamp', inplace=True)
                 for k, v in self.df_dtype_mappings.items():
                     df[v] = df[v].astype(k)
+                df = df[column_order]
+
                 self.db.connect()
                 if self.dwh == 'mysql':
                     df.to_sql(name=f'stock_prices_{key}', con=self.db.con, index=False, if_exists='append')
                 elif self.dwh == 'bigquery':
                     if self.verbose:
                         print('\nUploading to BigQuery...\n')
-                    try:
-                        df.to_gbq(f'{self.db.schema}.stock_prices_{key}', if_exists='append')
-                    except:
-                        # rate limit is 5 GBQ table update operations per 10 seconds
-                        time.sleep(10)
-                        df.to_gbq(f'{self.db.schema}.stock_prices_{key}', if_exists='append')
+                    df.to_gbq(f'{self.db.schema}.stock_prices_{key}', if_exists='append')
 
                 self._dedupe_yf_stock_price_interval(interval=key, create_timestamp_index=self.create_timestamp_index)
+
+                if self.populate_bigquery and self.dwh != 'bigquery':
+                    try:
+                        df.to_gbq(f'{self.bq_client.schema}.stock_prices_{key}', if_exists='append')
+                    except:
+                        warnings.warn("""
+                            \nThere was an error populating bigquery with the raw df.
+                              Reading from SQL database and then populating to biquery...
+                            \n""")
+                        df = self.db.run_sql(f"SELECT * FROM {self.bq_client.schema}.stock_prices_{key}")
+                        for k, v in self.df_dtype_mappings.items():
+                            df[v] = df[v].astype(k)
+                        df.to_gbq(f'{self.bq_client.schema}.stock_prices_{key}', if_exists='append')
+                    self._dedupe_yf_stock_price_interval(interval=key,
+                                                         create_timestamp_index=self.create_timestamp_index,
+                                                         dwh_client=self.bq_client)
         return
 
-    def _dedupe_yf_stock_price_interval(self, interval, create_timestamp_index=True):
+    def _dedupe_yf_stock_price_interval(self, interval, create_timestamp_index=True, dwh_client=None):
+
+        dwh_client = self.db if dwh_client is None else dwh_client
 
         ### need to perform table deduping because yfinance timestamp restrictions don't allow minutes as input ###
 
-        self.db.run_sql(f"""
+        dwh_client.run_sql(f"""
 
               CREATE SCHEMA IF NOT EXISTS {self.schema}_bk;
               
@@ -272,6 +302,7 @@ class YFinanceEL:
                 SELECT
                   timestamp,
                   timestamp_tz_aware,
+                  timezone,
                   yahoo_ticker,
                   bloomberg_ticker,
                   numerai_ticker,
@@ -290,30 +321,30 @@ class YFinanceEL:
                   timestamp, yahoo_ticker, bloomberg_ticker, numerai_ticker;
             """)
 
-        self.db.run_sql(f"""
+        dwh_client.run_sql(f"""
               DROP TABLE {self.schema}.stock_prices_{interval};
               CREATE TABLE {self.schema}.stock_prices_{interval} LIKE {self.schema}_bk.stock_prices_{interval}_bk;
               INSERT INTO {self.schema}.stock_prices_{interval} SELECT * FROM {self.schema}_bk.stock_prices_{interval}_bk;
             """)
 
         if create_timestamp_index:
-            if self.dwh == 'mysql':
-                idx_cols = self.db.run_sql(f"""
+            if dwh_client.dwh_name == 'mysql':
+                idx_cols = dwh_client.run_sql(f"""
                         SELECT
                           *
                         FROM
                           information_schema.statistics
                         WHERE
-                          table_schema = '{self.db.database}'
+                          table_schema = '{dwh_client.schema}'
                           AND table_name = 'stock_prices_{interval}'
                     """)
 
                 if 'timestamp' not in idx_cols['COLUMN_NAME'].tolist():
-                    self.db.run_sql(f"CREATE INDEX ts ON stock_prices_{interval} (timestamp);")
+                    dwh_client.run_sql(f"CREATE INDEX ts ON stock_prices_{interval} (timestamp);")
             elif self.dwh == 'bigquery':
                 raise NotImplementedError('Creating timestamp indices is not currently supported on bigquery.')
 
-        # self.db.run_sql(f"DROP TABLE {self.schema}_bk.stock_prices_{interval}_bk;")
+        # dwh_client.run_sql(f"DROP TABLE {self.schema}_bk.stock_prices_{interval}_bk;")
         return
 
 
@@ -328,12 +359,12 @@ class YFinanceTransform:
         self.dwh = dwh
 
     def connect_to_db(self,
-                      database='yfinance',
+                      schema='yfinance',
                       user=os.environ.get('MYSQL_USER'),
                       password=os.environ.get('MYSQL_PASSWORD')):
 
         if self.dwh == 'mysql':
-            self.db = MySQLConnect(database=database, user=user, password=password)
+            self.db = MySQLConnect(schema=schema, user=user, password=password)
             con = self.db.connect()
         elif self.dwh == 'bigquery':
             self.db = BigQueryConnect()
@@ -404,7 +435,7 @@ class YFStockPriceGetter:
         Note: To use this parameter, a MySQL database needs to be set up, which stores the output tables into a schema
             called 'yfinance' when calling YFinanceEL().el_stock_prices()
 
-    database: str of the database to connect to --- ignored if db_con is None
+    schema: str of the schema to connect to --- ignored if db_con is None
 
     num_workers: int of number of workers to use on machine
 
@@ -418,7 +449,7 @@ class YFStockPriceGetter:
                  dwh='mysql',
                  yf_params=None,
                  db_con=None,
-                 database='yfinance',
+                 schema='yfinance',
                  num_workers=1,
                  n_chunks=1,
                  yahoo_ticker_colname='yahoo_ticker',
@@ -427,7 +458,7 @@ class YFStockPriceGetter:
         self.dwh = dwh
         self.yf_params = {} if yf_params is None else yf_params
         self.db_con = db_con
-        self.database = database
+        self.schema = schema
         self.num_workers = num_workers
         self.n_chunks = n_chunks
         self.yahoo_ticker_colname = yahoo_ticker_colname
@@ -455,8 +486,8 @@ class YFStockPriceGetter:
 
         self.column_order = clean_columns(
             pd.DataFrame(
-                columns=['timestamp', 'timestamp_tz_aware', self.yahoo_ticker_colname, 'Open', 'High', 'Low',
-                         'Close', 'Volume', 'Dividends', 'Stock Splits']
+                columns=['timestamp', 'timestamp_tz_aware', 'timezone', self.yahoo_ticker_colname, 'Open', 'High',
+                         'Low', 'Close', 'Volume', 'Dividends', 'Stock Splits']
             )
         ).columns.tolist()
 
@@ -499,6 +530,7 @@ class YFStockPriceGetter:
                 CREATE TABLE IF NOT EXISTS {table_name} (
                   timestamp DATETIME NOT NULL,
                   {tz_aware_col},
+                  timezone VARCHAR(32),
                   yahoo_ticker VARCHAR(32),
                   bloomberg_ticker VARCHAR(32),
                   numerai_ticker VARCHAR(32),
@@ -520,6 +552,7 @@ class YFStockPriceGetter:
                     schema=[
                         bigquery.SchemaField(name="timestamp", field_type="TIMESTAMP"),
                         bigquery.SchemaField(name="timestamp_tz_aware", field_type=tz_aware_dtype),
+                        bigquery.SchemaField(name="timezone", field_type="STRING"),
                         bigquery.SchemaField(name="yahoo_ticker", field_type="STRING"),
                         bigquery.SchemaField(name="bloomberg_ticker", field_type="STRING"),
                         bigquery.SchemaField(name="numerai_ticker", field_type="STRING"),
@@ -564,6 +597,7 @@ class YFStockPriceGetter:
         df.loc[:, self.yahoo_ticker_colname] = ticker
         df.reset_index(inplace=True)
         df['timestamp_tz_aware'] = df['timestamp'].copy()
+        df.loc[:, 'timezone'] = df['timestamp_tz_aware'].dt.tz
         df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
         if self.convert_tz_aware_to_string:
             df['timestamp_tz_aware'] = df['timestamp_tz_aware'].astype(str)
@@ -577,12 +611,24 @@ class YFStockPriceGetter:
             if self.dwh == 'mysql':
                 existing_tables = \
                     self.db_con.run_sql(
-                        f"SELECT DISTINCT(table_name) FROM information_schema.tables WHERE table_schema = '{self.db_con.database}'"
+                        f"""
+                        SELECT
+                          DISTINCT(table_name)
+                        FROM
+                          information_schema.tables
+                        WHERE
+                          table_schema = '{self.db_con.schema}'
+                        """
                     ).pipe(lambda x: clean_columns(x))
             elif self.dwh == 'bigquery':
                 existing_tables = \
                     self.db_con.run_sql(
-                        f"SELECT DISTINCT(table_name) FROM `{self.db_con.schema}.INFORMATION_SCHEMA.TABLES`;"
+                        f"""
+                        SELECT
+                          DISTINCT(table_name)
+                        FROM
+                          `{self.db_con.schema}.INFORMATION_SCHEMA.TABLES`;
+                        """
                     ).pipe(lambda x: clean_columns(x))
 
             if f'{table_name}' in existing_tables['table_name'].tolist():
@@ -665,6 +711,12 @@ class YFStockPriceGetter:
 
                     self.n_requests += 1
 
+                    df_i['timestamp_tz_aware'] = df_i['timestamp'].copy()
+                    df_i.loc[:, 'timezone'] = df_i['timestamp_tz_aware'].dt.tz
+                    df_i['timestamp'] = pd.to_datetime(df_i['timestamp'], utc=True)
+                    if self.convert_tz_aware_to_string:
+                        df_i['timestamp_tz_aware'] = df_i['timestamp_tz_aware'].astype(str)
+
                     if isinstance(df_i.columns, pd.MultiIndex):
                         df_i.columns = flatten_multindex_columns(df_i)
                     df_i = clean_columns(df_i)
@@ -709,6 +761,7 @@ class YFStockPriceGetter:
                                     df_tmp.loc[:, self.yahoo_ticker_colname] = chunk[0]
                                     df_tmp.reset_index(inplace=True)
                                     df_tmp['timestamp_tz_aware'] = df_tmp['timestamp'].copy()
+                                    df_tmp.loc[:, 'timezone'] = df_tmp['timestamp_tz_aware'].dt.tz
                                     df_tmp['timestamp'] = pd.to_datetime(df_tmp['timestamp'], utc=True)
                                     if self.convert_tz_aware_to_string:
                                         df_tmp['timestamp_tz_aware'] = df_tmp['timestamp_tz_aware'].astype(str)
@@ -748,6 +801,12 @@ class YFStockPriceGetter:
                                 if not df_tmp.shape[0]:
                                     self.failed_ticker_downloads[i].append(chunk)
                                     continue
+
+                                df_tmp['timestamp_tz_aware'] = df_tmp['timestamp'].copy()
+                                df_tmp.loc[:, 'timezone'] = df_tmp['timestamp_tz_aware'].dt.tz
+                                df_tmp['timestamp'] = pd.to_datetime(df_tmp['timestamp'], utc=True)
+                                if self.convert_tz_aware_to_string:
+                                    df_tmp['timestamp_tz_aware'] = df_tmp['timestamp_tz_aware'].astype(str)
 
                                 df_tmp = df_tmp[self.column_order]
 
