@@ -4,6 +4,8 @@
   - If there exists a requirements.txt folder in a specific projects, then create a new virtual environment within that project directory and follow the README instructions within that project.
   - Docker is not set up to run the projects (yet).
   - Current setup relies on python version 3.9.15
+  - It is a good idea to use the `pyenv` package to install python3.9.15
+    - `https://medium.datadriveninvestor.com/how-to-install-and-manage-multiple-python-versions-on-linux-916990dabe4b`
 
 ### Setup
 - `git clone https://github.com/melgazar9/ds-mono-repo.git && cd ds-mono-repo`

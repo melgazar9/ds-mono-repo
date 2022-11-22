@@ -36,7 +36,8 @@ class BigQueryConnect(metaclass=MetaclassRDBMSEnforcer):
     -------------
     Log into Google BigQuery and create a service account for a specific project here:
         https://console.cloud.google.com/iam-admin/serviceaccounts/
-        Make sure the proper permissions are granted (e.g. grant both read and write permissions)
+        Make sure the proper permissions are granted! (e.g. grant both read and write permissions!)
+            roles/storage.objectCreator or storage admin works
     Once the credentials json file is downloaded, copy it to a safe location (e.g. ~/.credentials/)
     Open ~/.bashrc (or ~/.zshrc) and add the following line
         export GOOGLE_APPLICATION_CREDENTIALS=<path to credentials json file>

@@ -26,6 +26,14 @@ class YFinanceEL:
         self.schema = schema
         self.verbose = verbose
 
+        self.df_dtype_mappings = {
+            str: ['yahoo_ticker', 'numerai_ticker', 'bloomberg_ticker'],
+            np.number: ['open', 'high', 'low', 'close', 'dividends', 'stock_splits'],
+            np.integer: ['volume']
+        }
+
+        self.create_timestamp_index = True if self.dwh == 'mysql' else False
+
     def connect_to_db(self, create_schema_if_not_exists=True, **db_connect_params):
         """
         Description
@@ -59,54 +67,23 @@ class YFinanceEL:
                 db_connect_params['schema'] = 'yfinance'
                 self.db = BigQueryConnect(**db_connect_params)
                 self.db.run_sql(f"CREATE SCHEMA IF NOT EXISTS {db_connect_params['schema']};")
-
         self.db.connect()
         return self
 
     def el_stock_tickers(self):
-        # napi = numerapi.SignalsAPI(os.environ.get('NUMERAI_PUBLIC_KEY'), os.environ.get('NUMERAI_PRIVATE_KEY'))
-
-        df_pts_tickers = download_pts_tickers()
-
-        numerai_yahoo_tickers = \
-            download_numerai_signals_ticker_map().rename(columns={'yahoo': 'yahoo_ticker', 'ticker': 'numerai_ticker'})
-
-        df1 = pd.merge(df_pts_tickers, numerai_yahoo_tickers, on='yahoo_ticker', how='left').set_index('yahoo_ticker')
-        df2 = pd.merge(numerai_yahoo_tickers, df_pts_tickers, on='yahoo_ticker', how='left').set_index('yahoo_ticker')
-        df3 = pd.merge(df_pts_tickers, numerai_yahoo_tickers, left_on='yahoo_ticker', right_on='numerai_ticker', how='left')\
-                 .rename(columns={'yahoo_ticker_x': 'yahoo_ticker', 'yahoo_ticker_y': 'yahoo_ticker_old'})\
-                 .set_index('yahoo_ticker')
-        df4 = pd.merge(df_pts_tickers, numerai_yahoo_tickers, left_on='yahoo_ticker', right_on='bloomberg_ticker', how='left') \
-                .rename(columns={'yahoo_ticker_x': 'yahoo_ticker', 'yahoo_ticker_y': 'yahoo_ticker_old'}) \
-                .set_index('yahoo_ticker')
-
-        df_tickers_wide = clean_columns(pd.concat([df1, df2, df3, df4], axis=1))
-
-        for col in df_tickers_wide.columns:
-            suffix = col[-1]
-            if suffix.isdigit():
-                root_col = col.strip('_' + suffix)
-                df_tickers_wide[root_col] = df_tickers_wide[root_col].fillna(df_tickers_wide[col])
-
-        df_tickers = \
-            df_tickers_wide.reset_index()\
-            [['yahoo_ticker', 'google_ticker', 'bloomberg_ticker', 'numerai_ticker', 'yahoo_ticker_old']]\
-            .sort_values(by=['yahoo_ticker', 'google_ticker', 'bloomberg_ticker', 'numerai_ticker', 'yahoo_ticker_old'])\
-            .drop_duplicates()
-
-        df_tickers.loc[:, 'yahoo_valid_pts'] = False
-        df_tickers.loc[:, 'yahoo_valid_numerai'] = False
-
-        df_tickers.loc[
-            df_tickers['yahoo_ticker'].isin(df_pts_tickers['yahoo_ticker'].tolist()), 'yahoo_valid_pts'] = True
-
-        df_tickers.loc[
-            df_tickers['yahoo_ticker'].isin(numerai_yahoo_tickers['numerai_ticker'].tolist()), 'yahoo_valid_numerai'
-        ] = True
-
+        ticker_downloader = TickerDownloader()
+        df_tickers = ticker_downloader.download_valid_tickers()
         if self.dwh == 'mysql':
             df_tickers.to_sql('tickers', con=self.db.con, if_exists='replace', index=False)
         elif self.dwh == 'bigquery':
+            self.db.run_sql(f"""
+                CREATE TABLE IF NOT EXISTS {self.db.schema}.tickers
+                (
+                 yahoo_ticker STRING,
+                 bloomberg_ticker STRING,
+                 numerai_ticker STRING
+                )
+            """)
             job_config = bigquery.job.LoadJobConfig(write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE)
             self.db.client.load_table_from_dataframe(df_tickers, f'{self.db.schema}.tickers', job_config=job_config)
         return
@@ -116,7 +93,7 @@ class YFinanceEL:
                         intervals_to_download=('1m', '2m', '5m', '1h', '1d'),
                         n_chunks=1,
                         batch_download=False,
-                        convert_tz_aware_to_string=True):
+                        convert_tz_aware_to_string=False):
 
         """
         Description
@@ -168,6 +145,7 @@ class YFinanceEL:
             if n_chunks == 1:
                 for i in intervals_to_download:
                     yf_params['interval'] = i
+
                     stock_price_getter._get_max_stored_ticker_timestamps(table_name=f'stock_prices_{i}')
                     stored_tickers = stock_price_getter.stored_tickers.copy()
                     stock_price_getter._create_stock_prices_table_if_not_exists(table_name=f'stock_prices_{i}')
@@ -190,18 +168,33 @@ class YFinanceEL:
                             yf_history_params=yf_params
                             )
 
+                        if not df.shape[0]:
+                            continue
+
                         df = pd.merge(df, df_tickers, on='yahoo_ticker', how='left')
                         df = df[column_order]
+                        df = df.ffill().bfill()
+
                         if self.dwh == 'mysql':
                             df.to_sql(f'stock_prices_{i}', con=con, index=False, if_exists='append')
                         elif self.dwh == 'bigquery':
-                            job = \
-                                self.db.client.load_table_from_dataframe(df,
-                                                                         f'{self.db.schema}.stock_prices_{i}',
-                                                                         job_config=stock_price_getter.job_config)
-                            job.result()
+                            for k, v in self.df_dtype_mappings.items():
+                                df[v] = df[v].astype(k)
 
-                    self._dedupe_yf_stock_price_interval(interval=i)
+                            # df.to_gbq is super slow, but since we're in append-only mode (BigQuery appends table only
+                            # by default) it shouldn't be too bad, especially since we're already in a slow for loop
+                            if self.verbose:
+                                print('\nUploading to BigQuery...\n')
+                            df.to_gbq(f'{self.db.schema}.stock_prices_{i}', if_exists='append')
+
+
+                            # load_table_from_dataframe has pyarrow datatype issues
+                            # self.db.client.load_table_from_dataframe(df,
+                            #                                          f'{self.db.schema}.stock_prices_{i}',
+                            #                                          job_config=stock_price_getter.job_config)
+                            # calling job.result() is not needed to append table and adds additional processing time
+
+                    self._dedupe_yf_stock_price_interval(interval=i, create_timestamp_index=self.create_timestamp_index)
 
                 if self.verbose:
                     for ftd in stock_price_getter.failed_ticker_downloads:
@@ -222,10 +215,17 @@ class YFinanceEL:
                     'Column mismatch! Review download_yf_data function!'
                 df.sort_values(by='timestamp', inplace=True)
                 df = df[column_order]
+                df = df.ffill().bfill()
+                for k, v in self.df_dtype_mappings.items():
+                    df[v] = df[v].astype(k)
                 self.db.connect()
-                df.to_sql(name=f'stock_prices_{key}', con=self.db.con, index=False, if_exists='append')
-
-                self._dedupe_yf_stock_price_interval(interval=key)
+                if self.dwh == 'mysql':
+                    df.to_sql(name=f'stock_prices_{key}', con=self.db.con, index=False, if_exists='append')
+                elif self.dwh == 'bigquery':
+                    if self.verbose:
+                        print('\nUploading to BigQuery...\n')
+                    df.to_gbq(f'{self.db.schema}.stock_prices_{key}', if_exists='append')
+                self._dedupe_yf_stock_price_interval(interval=key, create_timestamp_index=self.create_timestamp_index)
         return
 
     def _dedupe_yf_stock_price_interval(self, interval, create_timestamp_index=True):
@@ -234,11 +234,13 @@ class YFinanceEL:
 
         self.db.run_sql(f"""
 
-              DROP TABLE IF EXISTS {self.schema}.stock_prices_{interval}_bk;
+              CREATE SCHEMA IF NOT EXISTS {self.schema}_bk;
               
-              CREATE TABLE {self.schema}.stock_prices_{interval}_bk LIKE stock_prices_{interval}; 
+              DROP TABLE IF EXISTS {self.schema}_bk.stock_prices_{interval}_bk;
+              
+              CREATE TABLE {self.schema}_bk.stock_prices_{interval}_bk LIKE {self.schema}.stock_prices_{interval}; 
 
-              INSERT INTO {self.schema}.stock_prices_{interval}_bk
+              INSERT INTO {self.schema}_bk.stock_prices_{interval}_bk
 
               WITH cte as (
                 SELECT
@@ -274,8 +276,8 @@ class YFinanceEL:
 
         self.db.run_sql(f"""
               DROP TABLE {self.schema}.stock_prices_{interval};
-              CREATE TABLE {self.schema}.stock_prices_{interval} LIKE stock_prices_{interval}_bk;
-              INSERT INTO {self.schema}.stock_prices_{interval} SELECT * FROM stock_prices_{interval}_bk;
+              CREATE TABLE {self.schema}.stock_prices_{interval} LIKE {self.schema}_bk.stock_prices_{interval}_bk;
+              INSERT INTO {self.schema}.stock_prices_{interval} SELECT * FROM {self.schema}_bk.stock_prices_{interval}_bk;
             """)
 
         if create_timestamp_index:
@@ -284,7 +286,7 @@ class YFinanceEL:
                         SELECT
                           *
                         FROM
-                          information_schema.statistics 
+                          information_schema.statistics
                         WHERE
                           table_schema = '{self.db.database}'
                           AND table_name = 'stock_prices_{interval}'
@@ -293,11 +295,11 @@ class YFinanceEL:
                 if 'timestamp' not in idx_cols['COLUMN_NAME'].tolist():
                     self.db.run_sql(f"CREATE INDEX ts ON stock_prices_{interval} (timestamp);")
             elif self.dwh == 'bigquery':
-                raise NotImplementedError('Creating indices is not currently supported on bigquery.')
+                raise NotImplementedError('Creating timestamp indices is not currently supported on bigquery.')
 
-        self.db.run_sql(f"DROP TABLE stock_prices_{interval}_bk;")
-
+        # self.db.run_sql(f"DROP TABLE {self.schema}_bk.stock_prices_{interval}_bk;")
         return
+
 
 class YFinanceTransform:
 
@@ -501,34 +503,30 @@ class YFStockPriceGetter:
                   ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
                 """)
         elif self.dwh == 'bigquery':
-            tz_aware_dtype = 'STRING' if self.convert_tz_aware_to_string else 'TIMESTAMP'
+            tz_aware_dtype = "STRING" if self.convert_tz_aware_to_string else "TIMESTAMP"
 
             self.job_config = \
                 bigquery.LoadJobConfig(
                     schema=[
-                        bigquery.SchemaField("timestamp", "TIMESTAMP"),
-                        bigquery.SchemaField("timestamp_tz_aware", tz_aware_dtype),
-                        bigquery.SchemaField("yahoo_ticker", "STRING"),
-                        bigquery.SchemaField("bloomberg_ticker", "STRING"),
-                        bigquery.SchemaField("numerai_ticker", "STRING"),
-                        bigquery.SchemaField("open", "FLOAT64"),
-                        bigquery.SchemaField("high", "FLOAT64"),
-                        bigquery.SchemaField("low", "FLOAT64"),
-                        bigquery.SchemaField("close", "FLOAT64"),
-                        bigquery.SchemaField("volume", "INT64"),
-                        bigquery.SchemaField("dividends", "INT64"),
-                        bigquery.SchemaField("stock_splits", "INT64")
+                        bigquery.SchemaField(name="timestamp", field_type="TIMESTAMP"),
+                        bigquery.SchemaField(name="timestamp_tz_aware", field_type=tz_aware_dtype),
+                        bigquery.SchemaField(name="yahoo_ticker", field_type="STRING"),
+                        bigquery.SchemaField(name="bloomberg_ticker", field_type="STRING"),
+                        bigquery.SchemaField(name="numerai_ticker", field_type="STRING"),
+                        bigquery.SchemaField(name="open", field_type="NUMERIC"),
+                        bigquery.SchemaField(name="high", field_type="NUMERIC"),
+                        bigquery.SchemaField(name="low", field_type="NUMERIC"),
+                        bigquery.SchemaField(name="close", field_type="NUMERIC"),
+                        bigquery.SchemaField(name="volume", field_type="INTEGER"),
+                        bigquery.SchemaField(name="dividends", field_type="NUMERIC"),
+                        bigquery.SchemaField(name="stock_splits", field_type="NUMERIC")
                     ],
-                    autodetect=False,
-                    source_format=bigquery.SourceFormat.CSV
+                    autodetect=False
                 )
         return
 
     def download_single_stock_price_history(self, ticker, yf_history_params=None):
-
         yf_history_params = self.yf_params.copy() if yf_history_params is None else yf_history_params
-        if ticker == 'NVDA':
-            print('hi')
         if yf_history_params['interval'] not in self.failed_ticker_downloads.keys():
             self.failed_ticker_downloads[yf_history_params['interval']] = []
 
@@ -579,7 +577,7 @@ class YFStockPriceGetter:
                             yahoo_ticker,
                             MAX(timestamp) AS max_timestamp
                         FROM
-                            {table_name}
+                            {self.db_con.schema}.{table_name}
                         GROUP BY 1
                         """)
         return self
@@ -749,67 +747,119 @@ class YFStockPriceGetter:
 
         if self.verbose:
             print("\nDownloading yfinance data took %s minutes\n" % round((time.time() - start) / 60, 3))
-
         return dict_of_dfs
 
-def download_pts_tickers():
-    pts = PyTickerSymbols()
-    all_getters = list(filter(
-        lambda x: (
-            x.endswith('_yahoo_tickers') or x.endswith('_google_tickers')
-        ),
-        dir(pts),
-    ))
+class TickerDownloader:
 
-    all_tickers = {'yahoo_tickers': [], 'google_tickers': []}
-    for t in all_getters:
-        if t.endswith('google_tickers'):
-            all_tickers['google_tickers'].append((getattr(pts, t)()))
-        elif t.endswith('yahoo_tickers'):
-            all_tickers['yahoo_tickers'].append((getattr(pts, t)()))
-    all_tickers['google_tickers'] = flatten_list(all_tickers['google_tickers'])
-    all_tickers['yahoo_tickers'] = flatten_list(all_tickers['yahoo_tickers'])
-    if len(all_tickers['yahoo_tickers']) == len(all_tickers['google_tickers']):
-        all_tickers = pd.DataFrame(all_tickers)
-    else:
-        all_tickers = pd.DataFrame(dict([(k, pd.Series(v)) for k, v in all_tickers.items()]))
+    def __init__(self):
+        pass
 
-    all_tickers = \
-        all_tickers\
-            .rename(columns={'yahoo_tickers': 'yahoo_ticker', 'google_tickers': 'google_ticker'})\
-            .sort_values(by=['yahoo_ticker', 'google_ticker'])\
-            .drop_duplicates()
-    return all_tickers
+    @staticmethod
+    def download_pts_tickers():
+        pts = PyTickerSymbols()
+        all_getters = list(filter(
+            lambda x: (
+                x.endswith('_yahoo_tickers') or x.endswith('_google_tickers')
+            ),
+            dir(pts),
+        ))
 
-def download_numerai_signals_ticker_map(
-    napi=SignalsAPI(),
-    numerai_ticker_link='https://numerai-signals-public-data.s3-us-west-2.amazonaws.com/signals_ticker_map_w_bbg.csv',
-    yahoo_ticker_colname='yahoo',
-    verbose=True
-    ):
+        all_tickers = {'yahoo_tickers': [], 'google_tickers': []}
+        for t in all_getters:
+            if t.endswith('google_tickers'):
+                all_tickers['google_tickers'].append((getattr(pts, t)()))
+            elif t.endswith('yahoo_tickers'):
+                all_tickers['yahoo_tickers'].append((getattr(pts, t)()))
+        all_tickers['google_tickers'] = flatten_list(all_tickers['google_tickers'])
+        all_tickers['yahoo_tickers'] = flatten_list(all_tickers['yahoo_tickers'])
+        if len(all_tickers['yahoo_tickers']) == len(all_tickers['google_tickers']):
+            all_tickers = pd.DataFrame(all_tickers)
+        else:
+            all_tickers = pd.DataFrame(dict([(k, pd.Series(v)) for k, v in all_tickers.items()]))
 
-    ticker_map = pd.read_csv(numerai_ticker_link)
-    eligible_tickers = pd.Series(napi.ticker_universe(), name='bloomberg_ticker')
-    ticker_map = pd.merge(ticker_map, eligible_tickers, on='bloomberg_ticker', how='right')
+        all_tickers = \
+            all_tickers\
+                .rename(columns={'yahoo_tickers': 'yahoo_ticker', 'google_tickers': 'google_ticker'})\
+                .sort_values(by=['yahoo_ticker', 'google_ticker'])\
+                .drop_duplicates()
+        return all_tickers
 
-    if verbose:
-        # print(f"Number of eligible tickers: {len(eligible_tickers)}")
-        print(f"Number of eligible tickers in map: {len(ticker_map)}")
+    @staticmethod
+    def download_numerai_signals_ticker_map(
+        napi=SignalsAPI(),
+        numerai_ticker_link='https://numerai-signals-public-data.s3-us-west-2.amazonaws.com/signals_ticker_map_w_bbg.csv',
+        yahoo_ticker_colname='yahoo',
+        verbose=True
+        ):
 
-    # Remove null / empty tickers from the yahoo tickers
-    valid_tickers = [i for i in ticker_map[yahoo_ticker_colname]
-                     if not pd.isnull(i)
-                     and not str(i).lower() == 'nan'\
-                     and not str(i).lower() == 'null'\
-                     and i is not None\
-                     and not str(i).lower() == ''\
-                     and len(i) > 0]
-    if verbose:
-        print('tickers before cleaning:', ticker_map.shape)  # before removing bad tickers
+        ticker_map = pd.read_csv(numerai_ticker_link)
+        eligible_tickers = pd.Series(napi.ticker_universe(), name='bloomberg_ticker')
+        ticker_map = pd.merge(ticker_map, eligible_tickers, on='bloomberg_ticker', how='right')
 
-    ticker_map = ticker_map[ticker_map[yahoo_ticker_colname].isin(valid_tickers)]
+        if verbose:
+            # print(f"Number of eligible tickers: {len(eligible_tickers)}")
+            print(f"Number of eligible tickers in map: {len(ticker_map)}")
 
-    if verbose:
-        print('tickers after cleaning:', ticker_map.shape)
+        # Remove null / empty tickers from the yahoo tickers
+        valid_tickers = [i for i in ticker_map[yahoo_ticker_colname]
+                         if not pd.isnull(i)
+                         and not str(i).lower() == 'nan'\
+                         and not str(i).lower() == 'null'\
+                         and i is not None\
+                         and not str(i).lower() == ''\
+                         and len(i) > 0]
+        if verbose:
+            print('tickers before cleaning:', ticker_map.shape)  # before removing bad tickers
 
-    return ticker_map
+        ticker_map = ticker_map[ticker_map[yahoo_ticker_colname].isin(valid_tickers)]
+
+        if verbose:
+            print('tickers after cleaning:', ticker_map.shape)
+
+        return ticker_map
+
+    @classmethod
+    def download_valid_tickers(cls):
+        # napi = numerapi.SignalsAPI(os.environ.get('NUMERAI_PUBLIC_KEY'), os.environ.get('NUMERAI_PRIVATE_KEY'))
+
+        df_pts_tickers = cls.download_pts_tickers()
+
+        numerai_yahoo_tickers = \
+            cls.download_numerai_signals_ticker_map()\
+               .rename(columns={'yahoo': 'yahoo_ticker', 'ticker': 'numerai_ticker'})
+
+        df1 = pd.merge(df_pts_tickers, numerai_yahoo_tickers, on='yahoo_ticker', how='left').set_index('yahoo_ticker')
+        df2 = pd.merge(numerai_yahoo_tickers, df_pts_tickers, on='yahoo_ticker', how='left').set_index('yahoo_ticker')
+        df3 = pd.merge(df_pts_tickers, numerai_yahoo_tickers, left_on='yahoo_ticker', right_on='numerai_ticker', how='left') \
+            .rename(columns={'yahoo_ticker_x': 'yahoo_ticker', 'yahoo_ticker_y': 'yahoo_ticker_old'}) \
+            .set_index('yahoo_ticker')
+        df4 = pd.merge(df_pts_tickers, numerai_yahoo_tickers, left_on='yahoo_ticker', right_on='bloomberg_ticker',
+                       how='left') \
+            .rename(columns={'yahoo_ticker_x': 'yahoo_ticker', 'yahoo_ticker_y': 'yahoo_ticker_old'}) \
+            .set_index('yahoo_ticker')
+
+        df_tickers_wide = clean_columns(pd.concat([df1, df2, df3, df4], axis=1))
+
+        for col in df_tickers_wide.columns:
+            suffix = col[-1]
+            if suffix.isdigit():
+                root_col = col.strip('_' + suffix)
+                df_tickers_wide[root_col] = df_tickers_wide[root_col].fillna(df_tickers_wide[col])
+
+        df_tickers = \
+            df_tickers_wide.reset_index() \
+                [['yahoo_ticker', 'google_ticker', 'bloomberg_ticker', 'numerai_ticker', 'yahoo_ticker_old']] \
+                .sort_values(by=['yahoo_ticker', 'google_ticker', 'bloomberg_ticker', 'numerai_ticker', 'yahoo_ticker_old']) \
+                .drop_duplicates()
+
+        df_tickers.loc[:, 'yahoo_valid_pts'] = False
+        df_tickers.loc[:, 'yahoo_valid_numerai'] = False
+
+        df_tickers.loc[
+            df_tickers['yahoo_ticker'].isin(df_pts_tickers['yahoo_ticker'].tolist()), 'yahoo_valid_pts'] = True
+
+        df_tickers.loc[
+            df_tickers['yahoo_ticker'].isin(numerai_yahoo_tickers['numerai_ticker'].tolist()), 'yahoo_valid_numerai'
+        ] = True
+
+        return df_tickers
