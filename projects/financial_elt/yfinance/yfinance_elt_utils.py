@@ -86,18 +86,30 @@ class YFinanceEL:
         df_tickers = ticker_downloader.download_valid_tickers()
         if self.dwh == 'mysql':
             df_tickers.to_sql('tickers', con=self.db.con, if_exists='replace', index=False)
-        elif self.dwh == 'bigquery':
-            self.db.run_sql(f"""
-                CREATE TABLE IF NOT EXISTS {self.db.schema}.tickers
-                (
-                 yahoo_ticker STRING,
-                 bloomberg_ticker STRING,
-                 numerai_ticker STRING
-                )
-            """)
-        if self.populate_bigquery or self.dwh == 'bigquery':
+        if self.populate_bigquery:
             job_config = bigquery.job.LoadJobConfig(write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE)
-            self.db.client.load_table_from_dataframe(df_tickers, f'{self.db.schema}.tickers', job_config=job_config)
+
+            if self.dwh == 'bigquery':
+                self.db.run_sql(f"""
+                    CREATE TABLE IF NOT EXISTS {self.db.schema}.tickers
+                    (
+                     yahoo_ticker STRING,
+                     bloomberg_ticker STRING,
+                     numerai_ticker STRING
+                    )
+                """)
+
+                self.db.client.load_table_from_dataframe(df_tickers, f'{self.db.schema}.tickers', job_config=job_config)
+            else:
+                self.bq_client.run_sql(f"""
+                                    CREATE TABLE IF NOT EXISTS {self.db.schema}.tickers
+                                    (
+                                     yahoo_ticker STRING,
+                                     bloomberg_ticker STRING,
+                                     numerai_ticker STRING
+                                    )
+                                """)
+                self.bq_client.client.load_table_from_dataframe(df_tickers, f'{self.db.schema}.tickers', job_config=job_config)
         return
 
     def el_stock_prices(self,
