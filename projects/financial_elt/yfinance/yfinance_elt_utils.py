@@ -174,6 +174,8 @@ class YFinanceEL:
                     stock_price_getter._create_stock_prices_table_if_not_exists(table_name=f'stock_prices_{i}')
 
                     for ticker in df_tickers['yahoo_ticker'].tolist():
+                        if self.verbose:
+                            print(f'\nRunning ticker {ticker}\n')
                         if ticker in stored_tickers['yahoo_ticker'].tolist():
                             start_date = \
                                 stored_tickers[
