@@ -95,6 +95,7 @@ class YFinanceEL:
                  numerai_ticker STRING
                 )
             """)
+        if self.populate_bigquery or self.dwh == 'bigquery':
             job_config = bigquery.job.LoadJobConfig(write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE)
             self.db.client.load_table_from_dataframe(df_tickers, f'{self.db.schema}.tickers', job_config=job_config)
         return
