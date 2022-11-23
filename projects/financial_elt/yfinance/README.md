@@ -5,6 +5,7 @@
       - OR (on debian) if there still issues entering mysql:
         - `sudo apt-get purge mysql-server mysql-client mysql-common` 
         - `sudo apt-get install mysql-server`
+        - `sudo apt-get install python-dev default-libmysqlclient-dev build-essential`
     - if `mysql not found` and on gcp check out this link: `https://cloud.google.com/architecture/setup-mysql`
       - if `_mysql` not found and on gcp, try `sudo apt install libmariadb3 libmariadb-dev`
       - when setting environment variables set `MYSQL_HOST=<public_ip_address>`
