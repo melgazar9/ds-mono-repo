@@ -315,7 +315,7 @@ class YFinanceEL:
         else:
             print('\n*** Running batch download ***\n')
             dfs = stock_price_getter.batch_download_stock_price_history(
-                ['AAPL', 'MSFT'],#df_tickers['yahoo_ticker'].unique().tolist(),
+                df_tickers['yahoo_ticker'].unique().tolist(),
                 intervals_to_download=intervals_to_download
             )
 
