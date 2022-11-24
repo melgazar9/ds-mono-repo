@@ -1,9 +1,10 @@
 from ds_core.ds_utils import *
 from sqlalchemy import create_engine, text
 import snowflake.connector
-from pymongo import MongoClient
+from snowflake.connector.pandas_tools import write_pandas
 import pandas_gbq as pdg
 from google.cloud import bigquery
+from pymongo import MongoClient
 
 
 class RDBMSConnect:
@@ -191,7 +192,7 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
     """
 
     def __init__(self,
-                 username=os.environ.get('SNOWFLAKE_USERNAME'),
+                 user=os.environ.get('SNOWFLAKE_USER'),
                  password=os.environ.get('SNOWFLAKE_PASSWORD'),
                  database=os.environ.get('SNOWFLAKE_DATABASE'),
                  schema=os.environ.get('SNOWFLAKE_SCHEMA'),
@@ -202,7 +203,7 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
                  engine_string=None,
                  keep_session_alive=False):
 
-        self.username = os.environ.get('SNOWFLAKE_USERNAME') if username is None else username
+        self.user = os.environ.get('SNOWFLAKE_USER') if user is None else user
         self.password = os.environ.get('SNOWFLAKE_PASSWORD') if password is None else password
         self.account = os.environ.get('SNOWFLAKE_ACCOUNT') if account is None else account
         self.database = database
@@ -217,7 +218,7 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
 
     def connect(self):
         snowflake_connection_params = {
-            'username': self.username,
+            'user': self.user,
             'password': self.password,
             'account': self.account,
             'database': self.database,
@@ -232,8 +233,8 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
             else:
                 self.engine_string = "snowflake://"
 
-                if self.username is not None:
-                    self.engine_string = self.engine_string + self.username
+                if self.user is not None:
+                    self.engine_string = self.engine_string + self.user
                 if self.password is not None:
                     self.engine_string = self.engine_string + f':{self.password}'
                 if self.account is not None:
