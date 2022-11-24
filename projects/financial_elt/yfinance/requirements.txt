@@ -34,6 +34,7 @@ seaborn==0.12.1
 simplejson==3.17.6
 skimpy==0.0.6
 snowflake-connector-python==2.7.11
+snowflake-sqlalchemy==1.4.4
 statsmodels==0.13.2
 SQLAlchemy==1.4.44
 tenacity==8.1.0

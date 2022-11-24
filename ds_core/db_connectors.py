@@ -5,6 +5,7 @@ from pymongo import MongoClient
 import pandas_gbq as pdg
 from google.cloud import bigquery
 
+
 class RDBMSConnect:
 
     def __init__(self):
@@ -16,11 +17,12 @@ class RDBMSConnect:
     def run_sql(self):
         raise ValueError('method run_sql must be overridden.')
 
+
 rdbms_method_enforcer = MetaclassMethodEnforcer(required_methods=['connect', 'run_sql'], parent_class='RDBMSConnect')
 MetaclassRDBMSEnforcer = rdbms_method_enforcer.enforce()
 
-class BigQueryConnect(metaclass=MetaclassRDBMSEnforcer):
 
+class BigQueryConnect(metaclass=MetaclassRDBMSEnforcer):
     """
     Description
     -----------
@@ -81,7 +83,6 @@ class BigQueryConnect(metaclass=MetaclassRDBMSEnforcer):
 
 
 class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
-
     """
     Description
     -----------
@@ -103,7 +104,8 @@ class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
                  charset='utf8',
                  backend_url='mysqldb',
                  string_extension='mb4&binary_prefix=true',
-                 engine_string=None):
+                 engine_string=None,
+                 keep_session_alive=False):
 
         """
         Description
@@ -131,6 +133,7 @@ class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
         self.backend_url = backend_url
         self.string_extension = string_extension
         self.engine_string = engine_string
+        self.keep_session_alive = keep_session_alive
 
         self.dwh_name = 'mysql'
 
@@ -163,17 +166,18 @@ class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
         self.connect()
         if query.strip().lower().startswith('select'):
             df = pd.read_sql(query, con=self.con, **read_sql_kwargs)
-            self.con.close()
+            if not self.keep_session_alive:
+                self.con.close()
             return df
         else:
             query = text(query)
             self.con.execute(query)
-            self.con.close()
+            if not self.keep_session_alive:
+                self.con.close()
         return self
 
 
 class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
-
     """
     Description
     -----------
@@ -187,48 +191,89 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
     """
 
     def __init__(self,
-                 database,
-                 schema,
-                 warehouse,
-                 username=None,
-                 account=None,
-                 password=None):
+                 username=os.environ.get('SNOWFLAKE_USERNAME'),
+                 password=os.environ.get('SNOWFLAKE_PASSWORD'),
+                 database=os.environ.get('SNOWFLAKE_DATABASE'),
+                 schema=os.environ.get('SNOWFLAKE_SCHEMA'),
+                 warehouse=os.environ.get('SNOWFLAKE_WAREHOUSE'),
+                 account=os.environ.get('SNOWFLAKE_ACCOUNT'),
+                 role=os.environ.get('SNOWFLAKE_ROLE'),
+                 backend_connection='sqlalchemy',
+                 engine_string=None,
+                 keep_session_alive=False):
 
+        self.username = os.environ.get('SNOWFLAKE_USERNAME') if username is None else username
+        self.password = os.environ.get('SNOWFLAKE_PASSWORD') if password is None else password
+        self.account = os.environ.get('SNOWFLAKE_ACCOUNT') if account is None else account
         self.database = database
         self.schema = schema
         self.warehouse = warehouse
-        self.username = os.environ.get('SNOWFLAKE_USERNAME') if username is None else username
-        self.account = os.environ.get('SNOWFLAKE_ACCOUNT') if account is None else account
-        self.password = os.environ.get('SNOWFLAKE_PASSWORD') if password is None else password
+        self.role = role
+        self.backend_connection = backend_connection
+        self.engine_string = engine_string
+        self.keep_session_alive = keep_session_alive
 
         self.dwh_name = 'snowflake'
 
     def connect(self):
         snowflake_connection_params = {
-            'user': self.username,
-            'account': self.account,
+            'username': self.username,
             'password': self.password,
+            'account': self.account,
             'database': self.database,
             'schema': self.schema,
-            'warehouse': self.warehouse
+            'warehouse': self.warehouse,
+            'role': self.role
         }
 
-        self.con = snowflake.connector.connect(**snowflake_connection_params)
-        # del self.username, self.account, self.password
+        if self.backend_connection == 'sqlalchemy':
+            if self.engine_string is not None:
+                self.engine_string = self.engine_string
+            else:
+                self.engine_string = "snowflake://"
+
+                if self.username is not None:
+                    self.engine_string = self.engine_string + self.username
+                if self.password is not None:
+                    self.engine_string = self.engine_string + f':{self.password}'
+                if self.account is not None:
+                    self.engine_string = self.engine_string + f'@{self.account}'
+                if self.database is not None and self.database != '':
+                    self.engine_string = self.engine_string + f'/{self.database}'
+                if self.schema is not None and self.schema != '':
+                    self.engine_string = self.engine_string + f'/{self.schema}'
+                if self.warehouse is not None:
+                    self.engine_string = self.engine_string + f'?warehouse={self.warehouse}'
+                if self.role is not None:
+                    self.engine_string = self.engine_string = self.engine_string + f'?role={self.role}'
+            engine = create_engine(self.engine_string)
+            self.con = engine.connect()
+        else:
+            self.con = snowflake.connector.connect(**snowflake_connection_params)
         return self
 
-    def run_sql(self, query):
+    def run_sql(self, query, **read_sql_kwargs):
         self.connect()
-        cur = self.con.cursor()
-        cur.execute(query)
-
-        if query.strip().lower().startswith('select'):
-            df = cur.fetch_pandas_all()
-            self.con.close()
-            return df
+        if self.backend_connection == 'sqlalchemy':
+            if query.strip().lower().startswith('select'):
+                df = pd.read_sql(query, con=self.con, **read_sql_kwargs)
+                if not self.keep_session_alive:
+                    self.con.close()
+                return df
+            else:
+                query = text(query)
+                self.con.execute(query)
+                if not self.keep_session_alive:
+                    self.con.close()
+            return self
         else:
-            # TODO: Add full flexibility to SnowflakeConnect run_sql method
-            raise ValueError('Snowflake run_sql method not fully implemented yet.')
+            cur = self.con.cursor()
+            cur.execute(query)
+            if query.strip().lower().startswith('select'):
+                df = cur.fetch_pandas_all()
+                if not self.keep_session_alive:
+                    self.con.close()
+                return df
         self.con.close()
         return self
 
@@ -250,8 +295,8 @@ class NoSQLConnect:
 nosql_method_enforcer = MetaclassMethodEnforcer(required_methods=['connect', 'find'], parent_class='NoSQLConnect')
 MetaclassNoSQLEnforcer = nosql_method_enforcer.enforce()
 
-class MongoDBConnect(metaclass=MetaclassNoSQLEnforcer):
 
+class MongoDBConnect(metaclass=MetaclassNoSQLEnforcer):
     """
     Description
     -----------
@@ -267,10 +312,12 @@ class MongoDBConnect(metaclass=MetaclassNoSQLEnforcer):
                  env='production',
                  database=None,
                  collection=None,
-                 mongodb_connection_string=None):
+                 mongodb_connection_string=None,
+                 keep_session_alive=False):
         self.env = env
         self.database = database
         self.collection = collection
+        self.keep_session_alive = keep_session_alive
 
         if mongodb_connection_string is None:
             if self.env.lower().startswith('dev'):
@@ -285,6 +332,7 @@ class MongoDBConnect(metaclass=MetaclassNoSQLEnforcer):
             self.mongodb_connection_string = mongodb_connection_string
 
         self.dwh_name = 'mongodb'
+        self.data = None
 
     def connect(self):
         self.client = MongoClient(self.mongodb_connection_string)
@@ -298,6 +346,7 @@ class MongoDBConnect(metaclass=MetaclassNoSQLEnforcer):
         self.connect()
         db = self.client[self.database]
         _collection = db[self.collection]
-        output = [i for i in _collection.find(*args)]
-        self.client.close()
-        return output
+        self.data = [i for i in _collection.find(*args)]
+        if not self.keep_session_alive:
+            self.client.close()
+        return self
