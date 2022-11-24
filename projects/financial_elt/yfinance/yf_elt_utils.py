@@ -806,7 +806,6 @@ class YFStockPriceGetter:
 
         for interval in intervals_to_download:
             self.failed_ticker_downloads[interval] = []
-        tickers = ['AAPL', 'MSFT']
 
         ### download ticker history ###
 
