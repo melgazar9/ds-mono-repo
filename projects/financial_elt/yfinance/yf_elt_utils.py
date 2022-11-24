@@ -122,7 +122,7 @@ class YFinanceEL:
     def el_stock_tickers(self):
         ticker_downloader = TickerDownloader()
         df_tickers = ticker_downloader.download_valid_tickers()
-        if self.dwh == 'mysql' or self.dwh == 'snowflake':
+        if self.dwh in ['mysql', 'snowflake']:
             df_tickers.to_sql('tickers', con=self.db.con, if_exists='replace', index=False, chunksize=16000)
 
         if self.populate_bigquery or self.dwh == 'bigquery':
@@ -218,7 +218,7 @@ class YFinanceEL:
         if not batch_download:
             print('\n*** Running sequential download ***\n')
             self.db.connect()
-            if self.dwh == 'mysql':
+            if self.dwh in ['mysql', 'snowflake']:
                 con = self.db.con
             elif self.dwh == 'bigquery':
                 con = self.db.client
@@ -270,13 +270,69 @@ class YFinanceEL:
                             df[v] = df[v].astype(k)
 
                         if self.dwh in ['mysql', 'snowflake']:
-                            df.to_sql(f'stock_prices_{i}', con=con, index=False, if_exists='append', chunksize=16000)
+                            try:
+                                df.to_sql(f'stock_prices_{i}',
+                                          con=con,
+                                          index=False,
+                                          if_exists='append',
+                                          schema=self.schema,
+                                          chunksize=16000)
+                            except:
+                                # Note: when setting self.dwh='snowflake' this will more than likely error out, but
+                                # I'll try the below commands anyway. It's best to set dwh='mysql' and then populate
+                                # snowflake and/or bigquery from there.
+                                # Initially handle dtypes as strings and later transform dtypes with dbt.
+
+                                warnings.warn("""
+                                    Could not directly populate database with df.
+                                    This is likely because of the timestamp_tz_aware column. Converting it to string...
+                                    """)
+
+                                query_dtype_fix = f"""
+                                    DROP TABLE IF EXISTS {self.schema}.tmp_table; 
+                                    CREATE TABLE {self.schema}.tmp_table AS 
+                                      SELECT 
+                                        timestamp, 
+                                        CAST(timestamp_tz_aware AS VARCHAR(32)) AS timestamp_tz_aware, 
+                                        timezone, 
+                                        yahoo_ticker, 
+                                        bloomberg_ticker,  
+                                        numerai_ticker, 
+                                        open, 
+                                        high, 
+                                        low, 
+                                        close, 
+                                        volume, 
+                                        dividends, 
+                                        stock_splits 
+                                      FROM 
+                                        {self.schema}.stock_prices_{i};
+                                """
+
+                                if self.dwh == 'mysql':
+                                    self.db.run_sql(query_dtype_fix)
+                                elif self.dwh == 'snowflake':
+                                    separate_query_statements = query_dtype_fix.split(';')
+                                    for query in separate_query_statements[0:-1]:
+                                        query = query.replace('\n', '').replace('  ', '') + ';'
+                                        if self.verbose:
+                                            print(f'\n\nquery: {query}\n\n')
+                                        self.db.run_sql(query)
+
+                                df['timestamp_tz_aware'] = df['timestamp_tz_aware'].astype(str)
+                                df.to_sql(f'stock_prices_{i}',
+                                          con=con,
+                                          index=False,
+                                          if_exists='append',
+                                          schema=self.schema,
+                                          chunksize=16000)
+
+
                         elif self.dwh == 'bigquery':
                             # df.to_gbq is super slow, but since we're in append-only mode (BigQuery appends table only
                             # by default) it shouldn't be too bad, especially since we're already in a slow for loop
                             if self.verbose:
                                 print('\nUploading to BigQuery...\n')
-
                             df.to_gbq(f'{self.schema}.stock_prices_{i}', if_exists='append')
 
                     self._dedupe_yf_stock_price_interval(interval=i, create_timestamp_index=self.create_timestamp_index)
@@ -679,7 +735,7 @@ class YFStockPriceGetter:
         self.stored_tickers = pd.DataFrame(columns=['yahoo_ticker', 'max_timestamp'])
 
         if self.db_con is not None:
-            if self.dwh == 'mysql':
+            if self.dwh in ['mysql', 'snowflake']:
                 existing_tables = \
                     self.db_con.run_sql(
                         f"""
