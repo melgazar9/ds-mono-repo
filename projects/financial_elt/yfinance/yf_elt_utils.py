@@ -233,7 +233,7 @@ class YFinanceEL:
                     stored_tickers = stock_price_getter.stored_tickers.copy()
                     stock_price_getter._create_stock_prices_table_if_not_exists(table_name=f'stock_prices_{i}')
 
-                    for ticker in ['AAPL', 'MSFT', 'NVDA']: # df_tickers['yahoo_ticker'].tolist():
+                    for ticker in df_tickers['yahoo_ticker'].tolist():
                         if self.verbose:
                             print(f'\nRunning ticker {ticker}\n')
                         if ticker in stored_tickers['yahoo_ticker'].tolist():
@@ -722,7 +722,7 @@ class YFStockPriceGetter:
 
         start = time.time()
         yf_history_params = self.yf_params.copy() if yf_history_params is None else yf_history_params
-        tickers = ['AAPL', 'MSFT', 'NVDA']
+
         for interval in intervals_to_download:
             self.failed_ticker_downloads[interval] = []
 
