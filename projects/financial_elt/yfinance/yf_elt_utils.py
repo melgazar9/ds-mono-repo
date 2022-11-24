@@ -315,7 +315,7 @@ class YFinanceEL:
         else:
             print('\n*** Running batch download ***\n')
             dfs = stock_price_getter.batch_download_stock_price_history(
-                df_tickers['yahoo_ticker'].unique().tolist(),
+                ['AAPL', 'MSFT'],#df_tickers['yahoo_ticker'].unique().tolist(),
                 intervals_to_download=intervals_to_download
             )
 
@@ -590,6 +590,7 @@ class YFStockPriceGetter:
                   )
                   ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
                 """)
+
         elif self.dwh == 'bigquery':
             tz_aware_dtype = "STRING" if self.convert_tz_aware_to_string else "TIMESTAMP"
 
@@ -612,6 +613,30 @@ class YFStockPriceGetter:
                     ],
                     autodetect=False
                 )
+
+        elif self.dwh == 'snowflake':
+            if self.convert_tz_aware_to_string:
+                tz_aware_col = 'timestamp_tz_aware STRING NOT NULL'
+            else:
+                tz_aware_col = 'timestamp_tz_aware TIMESTAMP_TZ NOT NULL'
+
+            self.db_con.run_sql(f"""
+                CREATE TABLE IF NOT EXISTS {table_name} (
+                  timestamp TIMESTAMP_NTZ NOT NULL,
+                  {tz_aware_col},
+                  timezone STRING,
+                  yahoo_ticker STRING,
+                  bloomberg_ticker STRING,
+                  numerai_ticker STRING,
+                  open NUMBER,
+                  high NUMBER,
+                  low NUMBER,
+                  close NUMBER,
+                  volume NUMBER,
+                  dividends NUMBER,
+                  stock_splits NUMBER
+                  );
+                """)
         return
 
     def download_single_stock_price_history(self, ticker, yf_history_params=None):
