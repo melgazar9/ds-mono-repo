@@ -123,6 +123,9 @@ class YFinanceEL:
         ticker_downloader = TickerDownloader()
         df_tickers = ticker_downloader.download_valid_tickers()
         if self.dwh in ['mysql', 'snowflake']:
+            if self.verbose:
+                print('\nOverwriting df_tickers to database...\n')
+                
             df_tickers.to_sql('tickers', con=self.db.con, if_exists='replace', index=False, chunksize=16000)
 
         if self.populate_bigquery or self.dwh == 'bigquery':
@@ -227,6 +230,9 @@ class YFinanceEL:
 
             if n_chunks == 1:
                 for i in intervals_to_download:
+                    if self.verbose:
+                        print(f'\nRunning interval {i}\n')
+
                     yf_params['interval'] = i
 
                     stock_price_getter._get_max_stored_ticker_timestamps(table_name=f'stock_prices_{i}')
@@ -268,6 +274,9 @@ class YFinanceEL:
 
                         for k, v in self.df_dtype_mappings.items():
                             df[v] = df[v].astype(k)
+
+                        if self.verbose:
+                            print('\nWriting to database...\n')
 
                         if self.dwh in ['mysql', 'snowflake']:
                             try:
@@ -335,6 +344,9 @@ class YFinanceEL:
                                 print('\nUploading to BigQuery...\n')
                             df.to_gbq(f'{self.schema}.stock_prices_{i}', if_exists='append')
 
+                    if self.verbose:
+                        print(f'\nDeduping database table stock_prices_{i}...\n')
+
                     self._dedupe_yf_stock_price_interval(interval=i, create_timestamp_index=self.create_timestamp_index)
 
                     if (self.populate_bigquery and self.dwh != 'bigquery') or \
@@ -345,12 +357,17 @@ class YFinanceEL:
                             df_tmp[v] = df_tmp[v].astype(k)
 
                         if self.populate_bigquery and self.dwh != 'bigquery':
+                            if self.verbose:
+                                print(f'\nPopulating data from {self.dwh} to bigquery...\n')
+                                
                             df_tmp.to_gbq(f'{self.schema}.stock_prices_{i}', if_exists='append')
                             self._dedupe_yf_stock_price_interval(interval=i,
                                                                  create_timestamp_index=self.create_timestamp_index,
                                                                  dwh_client=self.bq_client)
 
                         if self.populate_snowflake and self.dwh != 'snowflake':
+                            if self.verbose:
+                                print(f'\nPopulating data from {self.dwh} to snowflake...\n')
                             self.snowflake_client.connect()
                             df_tmp.to_sql(f'stock_prices_{i}',
                                           con=self.snowflake_client.con,
@@ -386,6 +403,8 @@ class YFinanceEL:
                     df[v] = df[v].astype(k)
                 df = df[column_order]
 
+                if self.verbose:
+                    print(f'\nPopulating database...\n')
                 self.db.connect()
                 if self.dwh in ['mysql', 'snowflake']:
                     df.to_sql(name=f'stock_prices_{key}',
@@ -399,6 +418,9 @@ class YFinanceEL:
                         print('\nUploading to BigQuery...\n')
                     df.to_gbq(f'{self.schema}.stock_prices_{key}', if_exists='append')
 
+                if self.verbose:
+                    print(f'\nDeduping database...\n')
+                    
                 self._dedupe_yf_stock_price_interval(interval=key, create_timestamp_index=self.create_timestamp_index)
 
                 if (self.populate_bigquery and self.dwh != 'bigquery') or \
@@ -409,12 +431,22 @@ class YFinanceEL:
                         df_tmp[v] = df_tmp[v].astype(k)
 
                     if self.populate_bigquery and self.dwh != 'bigquery':
+                        if self.verbose:
+                            print(f'\nPopulating data from {self.dwh} to bigquery...\n')
+                            
                         df_tmp.to_gbq(f'{self.schema}.stock_prices_{key}', if_exists='append')
+                        
+                        if self.verbose:
+                            print(f'\nDeduping bigquery...\n')
+                            
                         self._dedupe_yf_stock_price_interval(interval=key,
                                                              create_timestamp_index=self.create_timestamp_index,
                                                              dwh_client=self.bq_client)
 
                     if self.populate_snowflake and self.dwh != 'snowflake':
+                        if self.verbose:
+                            print(f'\nPopulating data from {self.dwh} to snowflake...\n')
+                            
                         self.snowflake_client.connect()
                         df_tmp.to_sql(f'stock_prices_{key}',
                                       con=self.snowflake_client.con,
@@ -423,6 +455,9 @@ class YFinanceEL:
                                       index=False,
                                       chunksize=16000)
 
+                        if self.verbose:
+                            print(f'\nDeduping Snowflake...\n')
+                            
                         self._dedupe_yf_stock_price_interval(interval=key,
                                                              create_timestamp_index=self.create_timestamp_index,
                                                              dwh_client=self.snowflake_client)
@@ -812,6 +847,8 @@ class YFStockPriceGetter:
         if self.num_workers == 1:
             dict_of_dfs = {}
             for i in intervals_to_download:
+                if self.verbose:
+                    print(f'\nRunning interval {i}\n')
 
                 self._request_limit_check()
 
