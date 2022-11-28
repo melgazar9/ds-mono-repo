@@ -270,11 +270,12 @@ class YFinanceEL:
                         df = df[column_order]
                         df = df.ffill().bfill()
 
+                        print(f'\nConverting dtypes in df_{i}\n') if self.verbose else None
                         for k, v in self.df_dtype_mappings.items():
                             df[v] = df[v].astype(k)
+                        gc.collect()
 
                         print('\nWriting to database...\n') if self.verbose else None
-
                         if self.dwh in ['mysql', 'snowflake']:
                             try:
                                 df.to_sql(f'stock_prices_{i}',
@@ -339,6 +340,8 @@ class YFinanceEL:
                             print('\nUploading to BigQuery...\n') if self.verbose else None
                             df.to_gbq(f'{self.schema}.stock_prices_{i}', if_exists='append')
 
+                    gc.collect()
+
                     print(f'\nDeduping database table stock_prices_{i}...\n') if self.verbose else None
 
                     self._dedupe_yf_stock_price_interval(interval=i, create_timestamp_index=self.create_timestamp_index)
@@ -351,6 +354,7 @@ class YFinanceEL:
                         print(f'\nConverting dtypes for {ticker} interval {i}...\n') if self.verbose else None
                         for k, v in self.df_dtype_mappings.items():
                             df_tmp[v] = df_tmp[v].astype(k)
+                        gc.collect()
 
                         if self.populate_bigquery and self.dwh != 'bigquery':
                             print(f'\nPopulating data from {self.dwh} to bigquery...\n') if self.verbose else None
@@ -379,6 +383,7 @@ class YFinanceEL:
                         stock_price_getter.failed_ticker_downloads[ftd] = \
                             flatten_list(stock_price_getter.failed_ticker_downloads[ftd])
                     print(f"\nFailed ticker downloads:\n{stock_price_getter.failed_ticker_downloads}")
+                gc.collect()
         else:
             print('\n*** Running batch download ***\n')
 
@@ -386,6 +391,7 @@ class YFinanceEL:
                 df_tickers['yahoo_ticker'].unique().tolist(),
                 intervals_to_download=intervals_to_download
             )
+            gc.collect()
 
             for key in dfs.keys():
                 stock_price_getter._create_stock_prices_table_if_not_exists(table_name=f'stock_prices_{key}')
@@ -423,7 +429,7 @@ class YFinanceEL:
                     df.to_gbq(f'{self.schema}.stock_prices_{key}', if_exists='append')
 
                 print(f'\nDeduping database {self.dwh}...\n') if self.verbose else None
-                    
+                gc.collect()
                 self._dedupe_yf_stock_price_interval(interval=key, create_timestamp_index=self.create_timestamp_index)
 
                 if (self.populate_bigquery and self.dwh != 'bigquery') or \
@@ -463,6 +469,7 @@ class YFinanceEL:
                         self._dedupe_yf_stock_price_interval(interval=key,
                                                              create_timestamp_index=self.create_timestamp_index,
                                                              dwh_client=self.snowflake_client)
+        gc.collect()
         return
 
     def _dedupe_yf_stock_price_interval(self, interval, create_timestamp_index=True, dwh_client=None):
