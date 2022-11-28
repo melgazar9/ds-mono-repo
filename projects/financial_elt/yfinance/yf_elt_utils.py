@@ -230,8 +230,7 @@ class YFinanceEL:
 
             if n_chunks == 1:
                 for i in intervals_to_download:
-                    if self.verbose:
-                        print(f'\nRunning interval {i}\n')
+                    print(f'\nRunning interval {i}\n') if self.verbose else None
 
                     yf_params['interval'] = i
 
@@ -240,8 +239,7 @@ class YFinanceEL:
                     stock_price_getter._create_stock_prices_table_if_not_exists(table_name=f'stock_prices_{i}')
 
                     for ticker in df_tickers['yahoo_ticker'].tolist():
-                        if self.verbose:
-                            print(f'\nRunning ticker {ticker}\n')
+                        print(f'\nRunning ticker {ticker}\n') if self.verbose else None
                         if ticker in stored_tickers['yahoo_ticker'].tolist():
                             start_date = \
                                 stored_tickers[
@@ -275,8 +273,7 @@ class YFinanceEL:
                         for k, v in self.df_dtype_mappings.items():
                             df[v] = df[v].astype(k)
 
-                        if self.verbose:
-                            print('\nWriting to database...\n')
+                        print('\nWriting to database...\n') if self.verbose else None
 
                         if self.dwh in ['mysql', 'snowflake']:
                             try:
@@ -324,8 +321,7 @@ class YFinanceEL:
                                     separate_query_statements = query_dtype_fix.split(';')
                                     for query in separate_query_statements[0:-1]:
                                         query = query.replace('\n', '').replace('  ', '') + ';'
-                                        if self.verbose:
-                                            print(f'\n\nquery: {query}\n\n')
+                                        print(f'\n\nquery: {query}\n\n') if self.verbose else None
                                         self.db.run_sql(query)
 
                                 df['timestamp_tz_aware'] = df['timestamp_tz_aware'].astype(str)
@@ -340,12 +336,10 @@ class YFinanceEL:
                         elif self.dwh == 'bigquery':
                             # df.to_gbq is super slow, but since we're in append-only mode (BigQuery appends table only
                             # by default) it shouldn't be too bad, especially since we're already in a slow for loop
-                            if self.verbose:
-                                print('\nUploading to BigQuery...\n')
+                            print('\nUploading to BigQuery...\n') if self.verbose else None
                             df.to_gbq(f'{self.schema}.stock_prices_{i}', if_exists='append')
 
-                    if self.verbose:
-                        print(f'\nDeduping database table stock_prices_{i}...\n')
+                    print(f'\nDeduping database table stock_prices_{i}...\n') if self.verbose else None
 
                     self._dedupe_yf_stock_price_interval(interval=i, create_timestamp_index=self.create_timestamp_index)
 
@@ -353,12 +347,13 @@ class YFinanceEL:
                             (self.populate_snowflake and self.dwh != 'snowflake'):
 
                         df_tmp = self.db.run_sql(f"SELECT * FROM {self.schema}.stock_prices_{i}")
+
+                        print(f'\nConverting dtypes for {ticker} interval {i}...\n') if self.verbose else None
                         for k, v in self.df_dtype_mappings.items():
                             df_tmp[v] = df_tmp[v].astype(k)
 
                         if self.populate_bigquery and self.dwh != 'bigquery':
-                            if self.verbose:
-                                print(f'\nPopulating data from {self.dwh} to bigquery...\n')
+                            print(f'\nPopulating data from {self.dwh} to bigquery...\n') if self.verbose else None
                                 
                             df_tmp.to_gbq(f'{self.schema}.stock_prices_{i}', if_exists='append')
                             self._dedupe_yf_stock_price_interval(interval=i,
@@ -366,8 +361,7 @@ class YFinanceEL:
                                                                  dwh_client=self.bq_client)
 
                         if self.populate_snowflake and self.dwh != 'snowflake':
-                            if self.verbose:
-                                print(f'\nPopulating data from {self.dwh} to snowflake...\n')
+                            print(f'\nPopulating data from {self.dwh} to snowflake...\n') if self.verbose else None
                             self.snowflake_client.connect()
                             df_tmp.to_sql(f'stock_prices_{i}',
                                           con=self.snowflake_client.con,
@@ -387,6 +381,7 @@ class YFinanceEL:
                     print(f"\nFailed ticker downloads:\n{stock_price_getter.failed_ticker_downloads}")
         else:
             print('\n*** Running batch download ***\n')
+
             dfs = stock_price_getter.batch_download_stock_price_history(
                 df_tickers['yahoo_ticker'].unique().tolist(),
                 intervals_to_download=intervals_to_download
@@ -394,17 +389,28 @@ class YFinanceEL:
 
             for key in dfs.keys():
                 stock_price_getter._create_stock_prices_table_if_not_exists(table_name=f'stock_prices_{key}')
+
+                print(f'\nMerging df_{key}...\n') if self.verbose else None
+
                 df = pd.merge(dfs[key], df_tickers, on='yahoo_ticker', how='left')
+
                 assert len(np.intersect1d(df.columns, column_order)) == df.shape[1], \
                     'Column mismatch! Review download_yf_data function!'
+
+                print(f'\nBackfilling df_{key}...\n') if self.verbose else None
                 df = df.ffill().bfill()
+
+                print(f'\nSorting by date in df_{key}...\n') if self.verbose else None
                 df.sort_values(by='timestamp', inplace=True)
+
+                print(f'\nConverting dtypes in df_{key}...\n') if self.verbose else None
                 for k, v in self.df_dtype_mappings.items():
                     df[v] = df[v].astype(k)
+
                 df = df[column_order]
 
-                if self.verbose:
-                    print(f'\nPopulating database...\n')
+                print(f'\nPopulating {self.dwh} database with interval {key} data...\n') if self.verbose else None
+
                 self.db.connect()
                 if self.dwh in ['mysql', 'snowflake']:
                     df.to_sql(name=f'stock_prices_{key}',
@@ -414,12 +420,9 @@ class YFinanceEL:
                               schema=self.schema,
                               chunksize=16000)
                 elif self.dwh == 'bigquery':
-                    if self.verbose:
-                        print('\nUploading to BigQuery...\n')
                     df.to_gbq(f'{self.schema}.stock_prices_{key}', if_exists='append')
 
-                if self.verbose:
-                    print(f'\nDeduping database...\n')
+                print(f'\nDeduping database {self.dwh}...\n') if self.verbose else None
                     
                 self._dedupe_yf_stock_price_interval(interval=key, create_timestamp_index=self.create_timestamp_index)
 
@@ -427,25 +430,25 @@ class YFinanceEL:
                         (self.populate_snowflake and self.dwh != 'snowflake'):
 
                     df_tmp = self.db.run_sql(f"SELECT * FROM {self.schema}.stock_prices_{key}")
+
+                    print(f'\nConverting dtypes (2) in df_{key}...\n') if self.verbose else None
+
                     for k, v in self.df_dtype_mappings.items():
                         df_tmp[v] = df_tmp[v].astype(k)
 
                     if self.populate_bigquery and self.dwh != 'bigquery':
-                        if self.verbose:
-                            print(f'\nPopulating data from {self.dwh} to bigquery...\n')
+                        print(f'\nPopulating data from {self.dwh} to bigquery...\n') if self.verbose else None
                             
                         df_tmp.to_gbq(f'{self.schema}.stock_prices_{key}', if_exists='append')
                         
-                        if self.verbose:
-                            print(f'\nDeduping bigquery...\n')
-                            
+                        print(f'\ndeduping bigquery...\n') if self.verbose else None
+
                         self._dedupe_yf_stock_price_interval(interval=key,
                                                              create_timestamp_index=self.create_timestamp_index,
                                                              dwh_client=self.bq_client)
 
                     if self.populate_snowflake and self.dwh != 'snowflake':
-                        if self.verbose:
-                            print(f'\nPopulating data from {self.dwh} to snowflake...\n')
+                        print(f'\nPopulating data from {self.dwh} to snowflake...\n') if self.verbose else None
                             
                         self.snowflake_client.connect()
                         df_tmp.to_sql(f'stock_prices_{key}',
@@ -455,8 +458,7 @@ class YFinanceEL:
                                       index=False,
                                       chunksize=16000)
 
-                        if self.verbose:
-                            print(f'\nDeduping Snowflake...\n')
+                        print(f'\nDeduping Snowflake dwh...\n') if self.verbose else None
                             
                         self._dedupe_yf_stock_price_interval(interval=key,
                                                              create_timestamp_index=self.create_timestamp_index,
@@ -526,8 +528,7 @@ class YFinanceEL:
             separate_query_statements = query_statements.split(';')
             for query in separate_query_statements[0:-1]:
                 query = query.replace('\n', '').replace('  ', '') + ';'
-                if self.verbose:
-                    print(f'\n\nquery: {query}\n\n')
+                print(f'\n\nQuery: {query}\n\n') if self.verbose else None
                 dwh_client.run_sql(query)
 
             dwh_client.con.close()
@@ -607,16 +608,13 @@ class YFStockPriceGetter:
         if 'prepost' not in self.yf_params.keys():
             self.yf_params['prepost'] = True
         if 'start' not in self.yf_params.keys():
-            if self.verbose:
-                print('*** yf params start set to 1950-01-01! ***')
+            print('*** YF params start set to 1950-01-01! ***') if self.verbose else None
             self.yf_params['start'] = '1950-01-01'
         if 'threads' not in self.yf_params.keys() or not self.yf_params['threads']:
-            if self.verbose:
-                print('*** yf params threads set to False! ***')
+            print('*** YF params threads set to False! ***') if self.verbose else None
             self.yf_params['threads'] = False
 
-        if not self.verbose:
-            self.yf_params['progress'] = False
+        self.yf_params['progress'] = False if not self.verbose else True
 
         self.start_date = self.yf_params['start']
         assert pd.Timestamp(self.start_date) <= datetime.today(), 'Start date cannot be after the current date!'
@@ -641,7 +639,8 @@ class YFStockPriceGetter:
                 print(f'\nToo many requests per hour. Pausing requests for {self.current_runtime_seconds} seconds.\n')
             time.sleep(np.abs(3600 - self.current_runtime_seconds))
         if self.n_requests > 45000 and self.current_runtime_seconds > 85000:
-            print(f'\nToo many requests per day. Pausing requests for {self.current_runtime_seconds} seconds.\n')
+            if self.verbose:
+                print(f'\nToo many requests per day. Pausing requests for {self.current_runtime_seconds} seconds.\n')
             time.sleep(np.abs(86400 - self.current_runtime_seconds))
         return
 
@@ -847,8 +846,7 @@ class YFStockPriceGetter:
         if self.num_workers == 1:
             dict_of_dfs = {}
             for i in intervals_to_download:
-                if self.verbose:
-                    print(f'\nRunning interval {i}\n')
+                print(f'\nRunning interval {i}\n') if self.verbose else None
 
                 self._request_limit_check()
 
@@ -893,8 +891,7 @@ class YFStockPriceGetter:
                     chunk_dfs_lst = []
 
                     for chunk in ticker_chunks:
-                        if self.verbose:
-                            print(f"Running chunk {chunk}")
+                        print(f"Running chunk {chunk}") if self.verbose else None
                         try:
                             if self.n_chunks == 1 or len(chunk) == 1:
                                 try:
@@ -935,8 +932,7 @@ class YFStockPriceGetter:
                                     df_tmp = df_tmp[self.column_order]
 
                                 except:
-                                    if self.verbose:
-                                        print(f"failed download for tickers: {chunk}")
+                                    print(f"Failed download for tickers: {chunk}") if self.verbose else None
                                     self.failed_ticker_downloads[i].append(chunk)
                                     continue
                             else:
@@ -980,8 +976,7 @@ class YFStockPriceGetter:
                             chunk_dfs_lst.append(df_tmp)
 
                         except simplejson.errors.JSONDecodeError:
-                            if self.verbose:
-                                print(f"JSONDecodeError for tickers: {chunk}")
+                            print(f"JSONDecodeError for tickers: {chunk}") if self.verbose else None
                             self.failed_ticker_downloads[i].append(chunk)
 
                         yf_history_params['start'] = self.start_date
