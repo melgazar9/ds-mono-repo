@@ -1292,8 +1292,6 @@ class YFinanceFinancialsGetter:
                             .pipe(lambda x: clean_columns(x))])
 
 
-
-
 ###### functions ######
 
 def get_valid_yfinance_start_timestamp(interval, start='1950-01-01 00:00:00'):
@@ -1332,6 +1330,6 @@ def get_valid_yfinance_start_timestamp(interval, start='1950-01-01 00:00:00'):
         start = max((datetime.today() - timedelta(days=728)), pd.to_datetime(start))
     else:
         start = pd.to_datetime(start)
-
     start = start.strftime('%Y-%m-%d')  # yfinance doesn't like strftime with hours minutes or seconds
+
     return start
