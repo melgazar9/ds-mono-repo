@@ -123,8 +123,7 @@ class YFinanceEL:
         ticker_downloader = TickerDownloader()
         df_tickers = ticker_downloader.download_valid_tickers()
         if self.dwh in ['mysql', 'snowflake']:
-            if self.verbose:
-                print('\nOverwriting df_tickers to database...\n')
+            print('\nOverwriting df_tickers to database...\n') if self.verbose else None
                 
             df_tickers.to_sql('tickers', con=self.db.con, if_exists='replace', index=False, chunksize=16000)
 
@@ -275,7 +274,7 @@ class YFinanceEL:
                             df[v] = df[v].astype(k)
                         gc.collect()
 
-                        print('\nWriting to database...\n') if self.verbose else None
+                        print(f'\nWriting to database {self.dwh}...\n') if self.verbose else None
                         if self.dwh in ['mysql', 'snowflake']:
                             try:
                                 df.to_sql(f'stock_prices_{i}',
