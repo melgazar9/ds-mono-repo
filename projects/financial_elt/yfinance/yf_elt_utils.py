@@ -276,6 +276,9 @@ class YFinanceEL:
 
                         print(f'\nWriting to database {self.dwh}...\n') if self.verbose else None
                         if self.dwh in ['mysql', 'snowflake']:
+                            if self.dwh == 'mysql':
+                                self._drop_index_constraint(interval=i)
+                                self.db.connect()
                             try:
                                 df.to_sql(f'stock_prices_{i}',
                                           con=con,
@@ -416,8 +419,10 @@ class YFinanceEL:
 
                 print(f'\nPopulating {self.dwh} database with interval {key} data...\n') if self.verbose else None
 
-                self.db.connect()
                 if self.dwh in ['mysql', 'snowflake']:
+                    if self.dwh == 'mysql':
+                        self._drop_index_constraint(interval=key)
+                    self.db.connect()
                     df.to_sql(name=f'stock_prices_{key}',
                               con=self.db.con,
                               index=False,
@@ -471,6 +476,20 @@ class YFinanceEL:
         gc.collect()
         return
 
+    def _drop_index_constraint(self, interval):
+        idx_cols = \
+            self.db.run_sql(f"""
+                SELECT
+                  *
+                FROM
+                  information_schema.statistics
+                WHERE
+                  table_schema = '{self.schema}'
+                  AND table_name = 'stock_prices_{interval}'
+            """)
+        if 'dedupe' in idx_cols['INDEX_NAME'].tolist():
+            self.db.run_sql(f"ALTER TABLE stock_prices_{interval} DROP INDEX dedupe;")
+        return
     def _dedupe_yf_stock_price_interval(self, interval, create_timestamp_index=True, dwh_client=None):
 
         ### need to perform table deduping because yfinance timestamp restrictions don't allow minutes as input ###
@@ -480,23 +499,23 @@ class YFinanceEL:
         if dwh_client.dwh_name == 'snowflake':
             dwh_client.run_sql(f"USE {self.database}")
 
-        query_statements = f"""
-              CREATE SCHEMA IF NOT EXISTS {self.schema}_bk;
-              
-              DROP TABLE IF EXISTS {self.schema}_bk.stock_prices_{interval}_bk;
-              
-              CREATE TABLE {self.schema}_bk.stock_prices_{interval}_bk LIKE {self.schema}.stock_prices_{interval}; 
-              INSERT INTO {self.schema}_bk.stock_prices_{interval}_bk 
-              (WITH cte as (
-                SELECT 
-                  *, 
-                  ROW_NUMBER() OVER(
-                    PARTITION BY timestamp, yahoo_ticker 
-                    ORDER BY timestamp DESC, timestamp_tz_aware DESC
-                    ) AS rn 
-                FROM 
-                  {self.schema}.stock_prices_{interval} 
-                ) 
+        if dwh_client.dwh_name == 'mysql':
+            query_statements = f"""
+                ALTER TABLE {self.schema}.stock_prices_{interval} ADD COLUMN to_keep BOOLEAN;
+                ALTER TABLE {self.schema}.stock_prices_{interval} 
+                ADD CONSTRAINT dedupe UNIQUE (timestamp, yahoo_ticker, to_keep);
+                UPDATE IGNORE {self.schema}.stock_prices_{interval} SET to_keep = true;
+                DELETE FROM {self.schema}.stock_prices_{interval} WHERE to_keep IS NULL;
+                ALTER TABLE {self.schema}.stock_prices_{interval} DROP to_keep;
+            """
+
+        elif dwh_client.dwh_name in ['bigquery', 'snowflake']:
+            if dwh_client.dwh_name == 'bigquery':
+                initial_syntax = f"CREATE OR REPLACE TABLE {self.schema}.stock_prices_{interval} AS ("
+            elif dwh_client.dwh_name == 'snowflake':
+                initial_syntax = f"INSERT OVERWRITE INTO {self.schema}.stock_prices_{interval} "
+            query_statements = f"""
+                {initial_syntax}
                 SELECT 
                   timestamp, 
                   timestamp_tz_aware, 
@@ -512,15 +531,11 @@ class YFinanceEL:
                   dividends, 
                   stock_splits 
                 FROM 
-                  cte 
-                WHERE 
-                  rn = 1 
+                  {self.schema}.stock_prices_{interval} 
+                QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC) = 1 
                 ORDER BY 
-                  timestamp, yahoo_ticker, bloomberg_ticker, numerai_ticker); 
-                  
-              DROP TABLE {self.schema}.stock_prices_{interval}; 
-              CREATE TABLE {self.schema}.stock_prices_{interval} LIKE {self.schema}_bk.stock_prices_{interval}_bk; 
-              INSERT INTO {self.schema}.stock_prices_{interval} SELECT * FROM {self.schema}_bk.stock_prices_{interval}_bk; 
+                  timestamp, yahoo_ticker, bloomberg_ticker, numerai_ticker
+                {');' if dwh_client.dwh_name == 'bigquery' else ';'} 
             """
 
         if dwh_client.dwh_name != 'snowflake':
