@@ -6,7 +6,7 @@ start = time.time()
 # bigquery after the interval iteration is complete... this only amounts to ~10 API calls to bigquery / snowflake per
 # run, as opposed to over 50k API calls when setting dwh='snowflake' or dwh='bigquery'
 
-yf_el = YFinanceEL(dwh='mysql', populate_snowflake=True, populate_bigquery=True)
+yf_el = YFinanceEL(dwh='mysql', populate_snowflake=False, populate_bigquery=True)
 
 yf_el.connect_to_db()
 yf_el.el_stock_tickers()
