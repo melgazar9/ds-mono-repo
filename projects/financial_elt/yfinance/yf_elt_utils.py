@@ -237,7 +237,7 @@ class YFinanceELT:
                     stock_price_getter._create_stock_prices_table_if_not_exists(table_name=f'stock_prices_{i}')
 
                     # for debugging purposes
-                    # df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(['AAPL', 'MSFT', 'NVDA', 'META', 'AMZN'])]
+                    df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(['AAPL', 'MSFT', 'NVDA', 'META', 'AMZN'])]
 
                     for ticker in df_tickers['yahoo_ticker'].tolist():
                         print(f'\nRunning ticker {ticker}\n') if self.verbose else None
@@ -387,7 +387,7 @@ class YFinanceELT:
             print('\n*** Running batch download ***\n')
 
             # for debugging purposes
-            # df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(['AAPL', 'MSFT', 'NVDA', 'META', 'AMZN'])]
+            df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(['AAPL', 'MSFT', 'NVDA', 'META', 'AMZN'])]
 
             dfs = stock_price_getter.batch_download_stock_price_history(
                 df_tickers['yahoo_ticker'].unique().tolist(),
