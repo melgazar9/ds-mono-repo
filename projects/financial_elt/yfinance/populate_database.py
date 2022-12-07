@@ -6,15 +6,15 @@ start = time.time()
 # bigquery after the interval iteration is complete... this only amounts to ~10 API calls to bigquery / snowflake per
 # run, as opposed to over 50k API calls when setting dwh='snowflake' or dwh='bigquery'
 
-yf_elt = YFinanceELT(dwh='mysql', populate_snowflake=False, populate_bigquery=True)
+pipeline = YFinanceELT(dwh='mysql', populate_snowflake=True, populate_bigquery=True)
 
-yf_elt.connect_to_db()
-yf_elt.elt_stock_tickers()
-yf_elt.elt_stock_prices(batch_download=False)
+pipeline.connect_to_db()
+pipeline.elt_stock_tickers()
+pipeline.elt_stock_prices(batch_download=True)
 
 start_fix = time.time()
 
-yf_elt.fix_missing_ticker_intervals()
+pipeline.fix_missing_ticker_intervals()
 
 print(f'\nYahoo finance ELT process took {round((start_fix - start) / 60, 3)} minutes.\n')
 print(f'\nTicker fixes took {round((time.time() - start_fix) / 60, 3)} minutes.\n')
