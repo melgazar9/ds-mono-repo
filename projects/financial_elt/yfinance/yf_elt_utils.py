@@ -183,8 +183,11 @@ class YFinanceELT:
                               chunksize=16000)
         return
 
-    def elt_stock_prices(self, intervals_to_download=('1m', '2m', '5m', '1h', '1d'), batch_download=False, n_chunks=1):
-
+    def elt_stock_prices(self,
+                         intervals_to_download=('1m', '2m', '5m', '1h', '1d'),
+                         batch_download=False,
+                         yf_params=None,
+                         n_chunks=1):
         """
         Description
         -----------
@@ -205,6 +208,7 @@ class YFinanceELT:
                 3. append the db with that single tickers price data from the pandas df
                 4. alter db table: sort the db by timestamp and ticker
 
+        yf_params: dict of yfinance params pass to yf.Ticker(<ticker>).history(**yf_params)
         n_chunks: int of the number of chunks to download per API request
         """
 
@@ -221,6 +225,7 @@ class YFinanceELT:
                                db_con=self.db,
                                convert_tz_aware_to_string=self.convert_tz_aware_to_string,
                                num_workers=self.num_workers,
+                               yf_params=yf_params,
                                verbose=self.verbose)
 
         self.db.connect()
@@ -674,7 +679,7 @@ class YFinanceELT:
                                                    db_con=self.db,
                                                    yf_params=yf_params,
                                                    convert_tz_aware_to_string=self.convert_tz_aware_to_string,
-                                                   num_workers=num_workers,
+                                                   num_workers=self.num_workers,
                                                    verbose=self.verbose)
 
                             df_prices = \
@@ -1029,9 +1034,6 @@ class YFStockPriceGetter:
         tickers: list of tickers to pass to yf.Ticker(<ticker>).history() - it will be parsed to be in the format "AAPL MSFT FB"
 
         intervals_to_download: list of intervals to download OHLCV data for each stock (e.g. ['1w', '1d', '1h'])
-
-        num_workers: number of threads used to download the data
-            so far only 1 thread is implemented
 
         n_chunks: int number of chunks to pass to yf.Ticker(<ticker>).history()
             1 is the slowest but most reliable because if two are passed and one fails, then both tickers are not returned
