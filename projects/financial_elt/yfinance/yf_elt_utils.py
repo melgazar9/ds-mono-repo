@@ -1079,7 +1079,10 @@ class YFStockPriceGetter:
                 yf_history_params['start'] = \
                     get_valid_yfinance_start_timestamp(interval=i, start=yf_history_params['start'])
 
-                t = yf.Tickers(tickers)
+                if len(tickers) == 1:
+                    t = yf.Ticker(tickers[0])
+                else:
+                    t = yf.Tickers(tickers)
                 df_i = \
                     t.history(**yf_history_params) \
                      .stack() \

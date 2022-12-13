@@ -8,7 +8,7 @@ yf_params = {'threads': True}
 
 ### run the pipeline ###
 
-pipeline = YFinanceELT(dwh='bigquery', num_workers=3)
+pipeline = YFinanceELT(dwh='bigquery', num_workers=1)
 
 pipeline.connect_to_db()
 
