@@ -6,7 +6,7 @@ intervals_to_download = ('1m', '1d')
 
 ### run the pipeline ###
 
-pipeline = YFinanceELT(dwh='mysql', populate_snowflake=True, populate_bigquery=True, num_workers=3)
+pipeline = YFinanceELT(dwh='bigquery', num_workers=3)
 
 pipeline.connect_to_db()
 pipeline.elt_stock_tickers()

@@ -223,13 +223,14 @@ class YFinanceELT:
                                num_workers=self.num_workers,
                                verbose=self.verbose)
 
+        self.db.connect()
+        if self.dwh in ['mysql', 'snowflake']:
+            con = self.db.con
+        elif self.dwh == 'bigquery':
+            con = self.db.client
+
         if not batch_download:
             print('\n*** Running sequential download ***\n')
-            self.db.connect()
-            if self.dwh in ['mysql', 'snowflake']:
-                con = self.db.con
-            elif self.dwh == 'bigquery':
-                con = self.db.client
 
             yf_params = stock_price_getter.yf_params.copy()
 
@@ -328,7 +329,7 @@ class YFinanceELT:
                 print(f'\nPopulating {self.dwh} database with interval {i} data...\n') if self.verbose else None
 
                 self.db.connect()
-                self._write_df_to_db(df=df, con=self.db.con, interval=i)
+                self._write_df_to_db(df=df, con=con, interval=i)
                 gc.collect()
         return
 
@@ -396,11 +397,19 @@ class YFinanceELT:
 
 
         elif self.dwh == 'bigquery':
-            # df.to_gbq is super slow, but since we're in append-only mode (BigQuery appends table only
-            # by default) it shouldn't be too bad, especially since we're already in a slow for loop
             print('\nUploading to BigQuery...\n') if self.verbose else None
-            df.to_gbq(f'{self.schema}.stock_prices_{interval}', if_exists='append')
+            try:
+                df.to_gbq(f'{self.schema}.stock_prices_{interval}', if_exists='append')
+            except:
+                print('\nCould not directly upload df to bigquery! '
+                      'Dumping to csv, loading, then trying again via bigquery client...\n') if self.verbose else None
 
+                df.to_csv('~/tmp.csv')
+                df = pd.read_csv('~/tmp.csv').drop('Unnamed: 0', axis=1)
+                job_config = bigquery.LoadJobConfig(autodetect=True)
+                table_id = f'{self.db.client.project}.{self.schema}.stock_prices{interval}'
+                self.db.client.load_table_from_dataframe(df, table_id, job_config=job_config).result()
+                subprocess.run('rm ~/tmp.csv', shell=True)
         gc.collect()
 
         print(f'\nDeduping database table stock_prices_{interval}...\n') if self.verbose else None
@@ -553,7 +562,11 @@ class YFinanceELT:
         pull_tickers = True if tickers is None else False
 
         self.db.connect()
-        con = self.db.con
+        if self.dwh in ['mysql', 'snowflake']:
+            con = self.db.con
+        elif self.dwh == 'bigquery':
+            con = self.db.client
+
         yf_params = {'prepost': True, 'threads': False, 'start': '1950-01-01'} if yf_params is None else yf_params
         if 'prepost' not in yf_params.keys():
             yf_params['prepost'] = True
@@ -1002,7 +1015,8 @@ class YFStockPriceGetter:
                 #     args=(tickers, intervals_to_download, yf_history_params)
                 # )
 
-            self.db_con.con.close()
+            if self.dwh in ['mysql', 'snowflake']:
+                self.db_con.con.close()
 
         return self
 
@@ -1045,8 +1059,6 @@ class YFStockPriceGetter:
 
         dict_of_dfs = {}
         for i in intervals_to_download:
-            print(f'\nRunning interval {i}\n') if self.verbose else None
-
             self._request_limit_check()
 
             print(f'\n*** Running interval {i} ***\n')
