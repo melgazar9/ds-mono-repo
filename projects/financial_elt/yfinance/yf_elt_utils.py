@@ -1028,7 +1028,6 @@ class YFStockPriceGetter:
             yf_history_params['interval'] = i
 
             if yf_history_params['threads']:
-                self._request_limit_check()
 
                 yf_history_params['start'] = \
                     get_valid_yfinance_start_timestamp(interval=i, start=yf_history_params['start'])
