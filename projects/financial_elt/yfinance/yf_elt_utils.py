@@ -4,7 +4,9 @@ from numerapi import SignalsAPI
 import yfinance as yf
 import simplejson
 from pytickersymbols import PyTickerSymbols
-import pandas_market_calendars as mcal
+import pandas_market_calendars as pmc
+import dask
+from dask import delayed
 
 class YFinanceELT:
     """
@@ -38,6 +40,7 @@ class YFinanceELT:
                  populate_bigquery=False,
                  populate_snowflake=False,
                  convert_tz_aware_to_string=False,
+                 num_workers=1,
                  verbose=True):
         self.dwh = dwh.lower()
         self.schema = schema
@@ -45,6 +48,7 @@ class YFinanceELT:
         self.populate_bigquery = populate_bigquery
         self.populate_snowflake = populate_snowflake
         self.convert_tz_aware_to_string = convert_tz_aware_to_string
+        self.num_workers = num_workers
         self.verbose = verbose
 
         self.df_dtype_mappings = {
@@ -179,8 +183,11 @@ class YFinanceELT:
                               chunksize=16000)
         return
 
-    def elt_stock_prices(self, intervals_to_download=('1m', '2m', '5m', '1h', '1d'), n_chunks=1, batch_download=False):
-
+    def elt_stock_prices(self,
+                         intervals_to_download=('1m', '2m', '5m', '1h', '1d'),
+                         batch_download=False,
+                         yf_params=None,
+                         n_chunks=1):
         """
         Description
         -----------
@@ -200,6 +207,9 @@ class YFinanceELT:
                     if there exists timestamps in the db then delete them from the pandas df
                 3. append the db with that single tickers price data from the pandas df
                 4. alter db table: sort the db by timestamp and ticker
+
+        yf_params: dict of yfinance params pass to yf.Ticker(<ticker>).history(**yf_params)
+        n_chunks: int of the number of chunks to download per API request
         """
 
         intervals_to_download = (intervals_to_download,) if isinstance(intervals_to_download, str) else intervals_to_download
@@ -214,15 +224,18 @@ class YFinanceELT:
             YFStockPriceGetter(dwh=self.dwh,
                                db_con=self.db,
                                convert_tz_aware_to_string=self.convert_tz_aware_to_string,
+                               num_workers=self.num_workers,
+                               yf_params=yf_params,
                                verbose=self.verbose)
+
+        self.db.connect()
+        if self.dwh in ['mysql', 'snowflake']:
+            con = self.db.con
+        elif self.dwh == 'bigquery':
+            con = self.db.client
 
         if not batch_download:
             print('\n*** Running sequential download ***\n')
-            self.db.connect()
-            if self.dwh in ['mysql', 'snowflake']:
-                con = self.db.con
-            elif self.dwh == 'bigquery':
-                con = self.db.client
 
             yf_params = stock_price_getter.yf_params.copy()
 
@@ -237,7 +250,7 @@ class YFinanceELT:
                     stock_price_getter._create_stock_prices_table_if_not_exists(table_name=f'stock_prices_{i}')
 
                     # for debugging purposes
-                    # df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(['SPY', 'QQQ', 'LNKD', 'NFLX', 'TSLA'])]
+                    # df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(['AAPL', 'AMZN', 'META', 'GOOG', 'SQ'])]
 
                     for ticker in df_tickers['yahoo_ticker'].tolist():
                         print(f'\nRunning ticker {ticker}\n') if self.verbose else None
@@ -277,16 +290,23 @@ class YFinanceELT:
                         stock_price_getter.failed_ticker_downloads[ftd] = \
                             flatten_list(stock_price_getter.failed_ticker_downloads[ftd])
                     print(f"\nFailed ticker downloads:\n{stock_price_getter.failed_ticker_downloads}")
+
+            else:
+                raise NotImplementedError("""
+                    n_chunks > 1 not implemented for sequential download.
+                    Set n_chunks=1 if batch_download=False.
+                    """)
         else:
             print('\n*** Running batch download ***\n')
 
             # for debugging purposes
-            # df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(['SPY', 'QQQ', 'LNKD', 'NFLX', 'TSLA'])]
+            # df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(['AAPL', 'AMZN', 'META', 'GOOG', 'SQ'])]
 
-            dfs = stock_price_getter.batch_download_stock_price_history(
+            stock_price_getter.batch_download_stock_price_history(
                 df_tickers['yahoo_ticker'].unique().tolist(),
                 intervals_to_download=intervals_to_download
             )
+            dfs = stock_price_getter.dict_of_dfs
             gc.collect()
 
             for i in dfs.keys():
@@ -314,11 +334,11 @@ class YFinanceELT:
                 print(f'\nPopulating {self.dwh} database with interval {i} data...\n') if self.verbose else None
 
                 self.db.connect()
-                self._write_df_to_db(df=df, con=self.db.con, interval=i)
-        gc.collect()
+                self._write_df_to_db(df=df, con=con, interval=i)
+                gc.collect()
         return
 
-    def _write_df_to_db(self, df, con, interval):
+    def _write_df_to_db(self, df, con, interval, retry_tmp_dir='~/tmp_dir/'):
         print(f'\nWriting to database {self.dwh}...\n') if self.verbose else None
         if self.dwh in ['mysql', 'snowflake']:
             if self.dwh == 'mysql':
@@ -382,11 +402,19 @@ class YFinanceELT:
 
 
         elif self.dwh == 'bigquery':
-            # df.to_gbq is super slow, but since we're in append-only mode (BigQuery appends table only
-            # by default) it shouldn't be too bad, especially since we're already in a slow for loop
             print('\nUploading to BigQuery...\n') if self.verbose else None
-            df.to_gbq(f'{self.schema}.stock_prices_{interval}', if_exists='append')
+            try:
+                df.to_gbq(f'{self.schema}.stock_prices_{interval}', if_exists='append')
+            except:
+                print('\nCould not directly upload df to bigquery! '
+                      'Dumping to csv, loading, then trying again via bigquery client...\n') if self.verbose else None
 
+                df.to_csv(f'{retry_tmp_dir}tmp.csv', index=False)
+                df = pd.read_csv(f'{retry_tmp_dir}tmp.csv')
+                job_config = bigquery.LoadJobConfig(autodetect=True)
+                table_id = f'{self.db.client.project}.{self.schema}.stock_prices{interval}'
+                self.db.client.load_table_from_dataframe(df, table_id, job_config=job_config).result()
+                subprocess.run('rm ~/tmp.csv', shell=True)
         gc.collect()
 
         print(f'\nDeduping database table stock_prices_{interval}...\n') if self.verbose else None
@@ -527,26 +555,44 @@ class YFinanceELT:
         # dwh_client.run_sql(f"DROP TABLE {self.schema}_bk.stock_prices_{interval}_bk;")
         return
 
-    def fix_missing_ticker_intervals(self,
-                                     tickers=None,
-                                     intervals_to_fix=('1m', '2m', '5m', '1h', '1d'),
-                                     n_attempts=3,
-                                     yf_params=None):
-        print('\nFixing missing ticker intervals...\n') if self.verbose else None
+    ### TODO: integrate fix missing tickers: define methods below ###
+    def get_market_calendar(self):
+        date_range = \
+            pd.date_range(start='1950-01-01', end=datetime.today().strftime('%Y-%m-%d'))
 
-        intervals_to_fix = (intervals_to_fix,) if isinstance(intervals_to_fix, str) else intervals_to_fix
+        self.df_calendar = \
+            pmc.get_calendar('24/7') \
+                .schedule(start_date=date_range.min().strftime('%Y-%m-%d'),
+                          end_date=date_range.max().strftime('%Y-%m-%d')) \
+                .drop_duplicates()
 
-        pull_tickers = True if tickers is None else False
+        self.market_closed_dates = []
+        for idx in range(self.df_calendar.shape[0] - 1):
+            close_date = self.df_calendar.iloc[idx]['market_close'].strftime('%Y-%m-%d')
+            next_open_date = self.df_calendar.shift(-1).iloc[idx]['market_open'].strftime('%Y-%m-%d')
 
-        self.db.connect()
-        con = self.db.con
-        yf_params = {'prepost': True, 'threads': False, 'start': '1950-01-01'} if yf_params is None else yf_params
-        if 'prepost' not in yf_params.keys():
-            yf_params['prepost'] = True
-        if 'threads' not in yf_params.keys():
-            yf_params['threads'] = False
-        if 'start' not in yf_params.keys():
-            yf_params['start'] = '1950-01-01'
+            if pd.to_datetime(next_open_date) > pd.to_datetime(close_date):
+                market_closed_dates_i = \
+                    [d.strftime('%Y-%m-%d') for d in pd.date_range(close_date, next_open_date, freq='d').tolist()[1:-1]]
+
+                self.market_closed_dates.append(market_closed_dates_i)
+        self.market_closed_dates = sorted(list(set(flatten_list(self.market_closed_dates))))
+
+        return self
+
+    def is_good_dataset(self, interval):
+        """
+        Return True if the dataset has no missing timestamps for a specific ticker interval
+        """
+
+        pass
+
+    def _fix_missing_ticker_interval(self, interval_to_fix, yf_params):
+        """
+        Logic lives here to fix missing ticker intervals for specific interval
+        """
+
+        print(f'\nFixing missing ticker interval {interval_to_fix}...\n') if self.verbose else None
 
         intervals_to_seconds = {
             '1m': 60,
@@ -564,119 +610,64 @@ class YFinanceELT:
             '3mo': 2628000 * 3
         }
 
-        date_range = \
-            pd.date_range(start='1950-01-01', end=datetime.today().strftime('%Y-%m-%d'))
+        self.db.connect()
+        if self.dwh in ['mysql', 'snowflake']:
+            con = self.db.con
+        elif self.dwh == 'bigquery':
+            con = self.db.client
 
-        df_calendar = \
-            mcal.get_calendar('24/7')\
-                .schedule(start_date=date_range.min().strftime('%Y-%m-%d'),
-                          end_date=date_range.max().strftime('%Y-%m-%d')) \
-                .drop_duplicates()
-        market_closed_dates = []
-        for row in range(df_calendar.shape[0] - 1):
-            md = \
-                pd.date_range(df_calendar.iloc[row]['market_close'],
-                              df_calendar.shift(-1).iloc[row]['market_open'],
-                              freq='d').tolist()
-            market_closed_dates.append([d.strftime('%Y-%m-%d') for d in md])
-        market_closed_dates = list(set(flatten_list(market_closed_dates)))
+        df = self.db.run_sql(
+            f"select distinct timestamp, yahoo_ticker from {self.schema}.stock_prices_{interval_to_fix}"
+        )
 
+        return df
 
-        # df_calendar = pd.DataFrame()
-        # for cal in mcal.get_calendar_names():
-        #     c = mcal.get_calendar(cal)
-        #     try:
-        #         df_calendar = \
-        #             pd.concat([df_calendar,
-        #                        c.schedule(start_date=date_range.min().strftime('%Y-%m-%d'),
-        #                                   end_date=date_range.max().strftime('%Y-%m-%d'))])
-        #     except:
-        #         pass
-        # df_calendar = df_calendar.drop_duplicates()
-        gc.collect()
+    def fix_missing_ticker_intervals(self, intervals_to_fix, yf_params, max_attempts=3, tickers_to_fix=None):
+        """
+        For each interval in intervals_to_fix, call self._fix_missing_ticker_interval
+        """
 
+        self.get_market_calendar()
+
+        intervals_to_fix = (intervals_to_fix,) if isinstance(intervals_to_fix, str) else intervals_to_fix
+
+        yf_params = {'prepost': True, 'threads': False, 'start': '1950-01-01'} if yf_params is None else yf_params
+        if 'prepost' not in yf_params.keys():
+            yf_params['prepost'] = True
+        if 'threads' not in yf_params.keys():
+            yf_params['threads'] = False
+        if 'start' not in yf_params.keys():
+            yf_params['start'] = '1950-01-01'
+
+        fixed_datasets = {}
         for i in intervals_to_fix:
-            yf_params['interval'] = i
-            if pull_tickers:
-                tickers = \
-                    self.db.run_sql(f"""
-                        SELECT DISTINCT(yahoo_ticker) FROM {self.schema}.stock_prices_{i};
-                    """)['yahoo_ticker'].tolist()
+            if tickers_to_fix is None:
+                tickers = self.db.run_sql(
+                    f"select distinct(yahoo_ticker) from {self.schema}.stock_prices_{i}"
+                )['yahoo_ticker'].unique().tolist()
+            else:
+                tickers = tickers_to_fix.copy()
 
-            for t in tickers:
-                print(f'\nRunning ticker interval fix for {t} interval {i}\n') if self.verbose else None
-                n_tries = 0
+            n_tries = 0
+            while n_tries < max_attempts:
+                print(f'Running attempt {n_tries + 1}...')
+                df_i = self._fix_missing_ticker_interval(i, tickers_to_fix=tickers)
+                n_tries += 1
 
-                df_i = \
-                    self.db.run_sql(f"""
-                        SELECT
-                          timestamp_tz_aware
-                        FROM
-                          {self.schema}.stock_prices_{i}
-                        WHERE
-                          yahoo_ticker = '{t}'
-                        ORDER BY 1
-                    """)
+                good_dataset = self.is_good_dataset(interval=i)
 
-                missing_interval_dates = \
-                    ((df_i[(
-                            (((df_i['timestamp_tz_aware'] - df_i['timestamp_tz_aware'].shift()) - pd.Timedelta(days=1))
-                             / np.timedelta64(1, 's')) > intervals_to_seconds[i])
-                    ]['timestamp_tz_aware']) - pd.Timedelta(days=1)).dt.strftime('%Y-%m-%d').unique().tolist()
+                if good_dataset or n_tries >= max_attempts:
+                    fixed_datasets[i] = df_i
+                    break
 
-                missing_interval_dates = [i for i in missing_interval_dates if i not in market_closed_dates]
+        for k in fixed_datasets.keys():
+            print(f'\nWriting fixed dataset {k} to db...\n') if self.verbose else None
+            self._write_df_to_db(fixed_datasets[k], self.db.con, k)
 
-                if len(missing_interval_dates):
-                    df_prices = pd.DataFrame()
-                    while n_tries < n_attempts:
-                        print(f'\nAttempt {n_tries + 1}...\n') if self.verbose else None
-                        for mi in missing_interval_dates:
-                            print(f'\nRunning missing {i} interval date {mi}...\n') if self.verbose else None
+            print(f'\nDeduping fixed dataset {k}...\n') if self.verbose else None
+            self._dedupe_yf_stock_price_interval(k)
 
-                            if pd.to_datetime(mi) < pd.to_datetime(get_valid_yfinance_start_timestamp(i, start=mi)):
-                                continue
-
-                            yf_params['start'] = mi
-                            start_i = (pd.to_datetime(mi)).strftime('%Y-%m-%d')
-                            end_i = (pd.to_datetime(mi) + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
-                            yf_params['start'] = get_valid_yfinance_start_timestamp(i, start=start_i)
-                            yf_params['end'] = get_valid_yfinance_start_timestamp(i, start=end_i)
-
-                            stock_price_getter = \
-                                YFStockPriceGetter(dwh=self.dwh,
-                                                   db_con=self.db,
-                                                   convert_tz_aware_to_string=self.convert_tz_aware_to_string,
-                                                   yf_params=yf_params,
-                                                   verbose=self.verbose)
-
-                            df_prices = \
-                                pd.concat([df_prices,
-                                           stock_price_getter.download_single_stock_price_history(
-                                               ticker=t,
-                                               yf_history_params=yf_params
-                                            )
-                                           ])\
-                                  .drop_duplicates(subset=['timestamp', 'yahoo_ticker'])
-
-                        n_tries += 1
-
-                        tdiffs = ((df_prices['timestamp_tz_aware'] - df_prices['timestamp_tz_aware'].shift()).dt.seconds.iloc[1:-1])
-                        missing_tdiffs = tdiffs[(tdiffs > intervals_to_seconds[i]) & (tdiffs < intervals_to_seconds[i] * 3)]
-                        is_good_dataset = True if missing_tdiffs.shape[0] == 0 else False
-
-                        if is_good_dataset or n_tries >= n_attempts:
-                            print(f"""\nAttempted {n_attempts} times to download missing ticker intervals for {t} {i}.
-                                  No more attempts will be made to fix these ticker intervals.\n
-                                  Populating {self.dwh}...\n
-                                  """)
-
-                            self._write_df_to_db(df=df_prices, con=con, interval=i)
-                            break
-
-        self.db.con.close()
         return
-
-
 
 class YFStockPriceGetter:
     """
@@ -935,7 +926,65 @@ class YFStockPriceGetter:
     def batch_download_stock_price_history(self,
                                            tickers,
                                            intervals_to_download=('1m', '2m', '5m', '1h', '1d'),
-                                           yf_history_params=None):
+                                           yf_history_params=None,
+                                           parallel_backend='dask'):
+        if self.num_workers == 1:
+            self.dict_of_dfs = \
+                self._batch_download(tickers,
+                                     intervals_to_download=intervals_to_download,
+                                     yf_history_params=yf_history_params)
+        else:
+            self.db_con.keep_session_alive = True
+            # dask.config.set(scheduler='processes')  # fails because of pickling error
+            nunique_tickers = len(set(tickers))
+            chunk_size = int(len(tickers) / self.num_workers)
+
+            if nunique_tickers >= self.num_workers:
+                ticker_chunks = [tickers[i:i + chunk_size] for i in range(0, len(tickers), chunk_size)]
+            else:
+                ticker_chunks = [[t] for t in tickers]
+
+            if len(ticker_chunks[-1]) < chunk_size:
+                ticker_chunks[-2] = ticker_chunks[-2] + ticker_chunks[-1]
+                ticker_chunks.pop(-1)
+
+            assert len(set(flatten_list(ticker_chunks))) == nunique_tickers
+
+            if parallel_backend == 'dask':
+                delayed_list = [delayed(self._batch_download)(tickers=ticker_chunk,
+                                                              intervals_to_download=intervals_to_download,
+                                                              yf_history_params=yf_history_params)
+                                for ticker_chunk in ticker_chunks
+                                ]
+
+                df_tuple = dask.compute(*delayed_list)
+                output_list = [df_tuple[i] for i in range(len(df_tuple))]
+
+                self.dict_of_dfs = {}
+                for i in intervals_to_download:
+                    self.dict_of_dfs[i] = pd.DataFrame()
+                for i in intervals_to_download:
+                    for j in range(len(output_list)):
+                        self.dict_of_dfs[i] = \
+                            pd.concat([
+                                self.dict_of_dfs[i].reset_index(drop=True),
+                                output_list[j][i].reset_index(drop=True)])\
+                              .reset_index(drop=True)
+            elif parallel_backend == 'multiprocessing':
+                raise NotImplementedError('\nSetting parallel_backend to multiprocessing is currently unstable.\n')
+                # pool = mp.Pool(self.num_workers)
+                # pool.apply_async(
+                #     self.__batch_download,
+                #     args=(tickers, intervals_to_download, yf_history_params)
+                # )
+
+            if self.dwh in ['mysql', 'snowflake']:
+                self.db_con.con.close()
+
+        return self
+
+
+    def _batch_download(self, tickers, intervals_to_download=('1m', '2m', '5m', '1h', '1d'), yf_history_params=None):
         """
         Parameters
         __________
@@ -943,9 +992,6 @@ class YFStockPriceGetter:
         tickers: list of tickers to pass to yf.Ticker(<ticker>).history() - it will be parsed to be in the format "AAPL MSFT FB"
 
         intervals_to_download: list of intervals to download OHLCV data for each stock (e.g. ['1w', '1d', '1h'])
-
-        num_workers: number of threads used to download the data
-            so far only 1 thread is implemented
 
         n_chunks: int number of chunks to pass to yf.Ticker(<ticker>).history()
             1 is the slowest but most reliable because if two are passed and one fails, then both tickers are not returned
@@ -971,104 +1017,58 @@ class YFStockPriceGetter:
 
         ### download ticker history ###
 
-        if self.num_workers == 1:
-            dict_of_dfs = {}
-            for i in intervals_to_download:
-                print(f'\nRunning interval {i}\n') if self.verbose else None
+        dict_of_dfs = {}
+        for i in intervals_to_download:
+            self._request_limit_check()
 
-                self._request_limit_check()
+            print(f'\n*** Running interval {i} ***\n')
 
-                print(f'\n*** Running interval {i} ***\n')
+            self._get_max_stored_ticker_timestamps(table_name=f'stock_prices_{i}')
 
-                self._get_max_stored_ticker_timestamps(table_name=f'stock_prices_{i}')
+            yf_history_params['interval'] = i
 
-                yf_history_params['interval'] = i
+            if yf_history_params['threads']:
 
-                if yf_history_params['threads']:
-                    self._request_limit_check()
-                    if self.db_con is not None \
-                            and any(x for x in tickers if x not in self.stored_tickers['yahoo_ticker'].tolist()):
-                        yf_history_params['start'] = \
-                            get_valid_yfinance_start_timestamp(interval=i, start=yf_history_params['start'])
+                yf_history_params['start'] = \
+                    get_valid_yfinance_start_timestamp(interval=i, start=yf_history_params['start'])
 
-                    yf_history_params['start'] = \
-                        get_valid_yfinance_start_timestamp(interval=i, start=yf_history_params['start'])
-
-                    t = yf.Tickers(tickers)
-                    df_i = \
-                        t.history(**yf_history_params) \
-                         .stack() \
-                         .rename_axis(index=['timestamp', self.yahoo_ticker_colname]) \
-                         .reset_index()
-
-                    self.n_requests += 1
-
-                    df_i['timestamp_tz_aware'] = df_i['timestamp'].copy()
-                    df_i.loc[:, 'timezone'] = df_i['timestamp_tz_aware'].dt.tz
-                    df_i['timestamp'] = pd.to_datetime(df_i['timestamp'], utc=True)
-                    if self.convert_tz_aware_to_string:
-                        df_i['timestamp_tz_aware'] = df_i['timestamp_tz_aware'].astype(str)
-
-                    if isinstance(df_i.columns, pd.MultiIndex):
-                        df_i.columns = flatten_multindex_columns(df_i)
-                    df_i = clean_columns(df_i)
-                    dict_of_dfs[i] = df_i
+                if len(tickers) == 1:
+                    t = yf.Ticker(tickers[0])
                 else:
-                    ticker_chunks = [tickers[i:i + self.n_chunks] for i in range(0, len(tickers), self.n_chunks)]
-                    chunk_dfs_lst = []
+                    t = yf.Tickers(tickers)
+                df_i = \
+                    t.history(**yf_history_params) \
+                     .stack() \
+                     .rename_axis(index=['timestamp', self.yahoo_ticker_colname]) \
+                     .reset_index()
 
-                    for chunk in ticker_chunks:
-                        print(f"Running chunk {chunk}") if self.verbose else None
-                        try:
-                            if self.n_chunks == 1 or len(chunk) == 1:
-                                try:
-                                    if self.db_con is not None:
-                                        if chunk[0] not in self.stored_tickers['yahoo_ticker'].tolist():
-                                            yf_history_params['start'] = get_valid_yfinance_start_timestamp(i)
-                                        else:
-                                            yf_history_params['start'] = \
-                                                self.stored_tickers[self.stored_tickers['yahoo_ticker'] == chunk[0]][
-                                                    'max_timestamp'].min().strftime('%Y-%m-%d')
+                self.n_requests += 1
 
-                                    yf_history_params['start'] = \
-                                        get_valid_yfinance_start_timestamp(interval=i, start=yf_history_params['start'])
+                df_i['timestamp_tz_aware'] = df_i['timestamp'].copy()
+                df_i.loc[:, 'timezone'] = df_i['timestamp_tz_aware'].dt.tz
+                df_i['timestamp'] = pd.to_datetime(df_i['timestamp'], utc=True)
+                if self.convert_tz_aware_to_string:
+                    df_i['timestamp_tz_aware'] = df_i['timestamp_tz_aware'].astype(str)
 
-                                    self._request_limit_check()
+                if isinstance(df_i.columns, pd.MultiIndex):
+                    df_i.columns = flatten_multindex_columns(df_i)
+                df_i = clean_columns(df_i)
+                dict_of_dfs[i] = df_i
+            else:
+                ticker_chunks = [tickers[i:i + self.n_chunks] for i in range(0, len(tickers), self.n_chunks)]
+                chunk_dfs_lst = []
 
-                                    print(f"\nStart {yf_history_params['start']}\n") if self.verbose else None
-
-                                    t = yf.Ticker(chunk[0])
-                                    df_tmp = \
-                                        t.history(**yf_history_params) \
-                                         .rename_axis(index='timestamp') \
-                                         .pipe(lambda x: clean_columns(x))
-
-                                    self.n_requests += 1
-
-                                    if not df_tmp.shape[0]:
-                                        self.failed_ticker_downloads[i].append(chunk)
-                                        continue
-
-                                    df_tmp.loc[:, self.yahoo_ticker_colname] = chunk[0]
-                                    df_tmp.reset_index(inplace=True)
-                                    df_tmp['timestamp_tz_aware'] = df_tmp['timestamp'].copy()
-                                    df_tmp.loc[:, 'timezone'] = df_tmp['timestamp_tz_aware'].dt.tz
-                                    df_tmp['timestamp'] = pd.to_datetime(df_tmp['timestamp'], utc=True)
-                                    if self.convert_tz_aware_to_string:
-                                        df_tmp['timestamp_tz_aware'] = df_tmp['timestamp_tz_aware'].astype(str)
-                                    df_tmp = df_tmp[self.column_order]
-
-                                except:
-                                    print(f"Failed download for tickers: {chunk}") if self.verbose else None
-                                    self.failed_ticker_downloads[i].append(chunk)
-                                    continue
-                            else:
+                for chunk in ticker_chunks:
+                    print(f"Running chunk {chunk}") if self.verbose else None
+                    try:
+                        if self.n_chunks == 1 or len(chunk) == 1:
+                            try:
                                 if self.db_con is not None:
-                                    if any(x for x in chunk if x not in self.stored_tickers['yahoo_ticker'].tolist()):
+                                    if chunk[0] not in self.stored_tickers['yahoo_ticker'].tolist():
                                         yf_history_params['start'] = get_valid_yfinance_start_timestamp(i)
                                     else:
                                         yf_history_params['start'] = \
-                                            self.stored_tickers[self.stored_tickers['yahoo_ticker'].isin(chunk)][
+                                            self.stored_tickers[self.stored_tickers['yahoo_ticker'] == chunk[0]][
                                                 'max_timestamp'].min().strftime('%Y-%m-%d')
 
                                 yf_history_params['start'] = \
@@ -1076,14 +1076,12 @@ class YFStockPriceGetter:
 
                                 self._request_limit_check()
 
-                                print(f"\nStart date {yf_history_params['start']}\n") if self.verbose else None
+                                print(f"\nStart {yf_history_params['start']}\n") if self.verbose else None
 
-                                t = yf.Tickers(chunk)
+                                t = yf.Ticker(chunk[0])
                                 df_tmp = \
                                     t.history(**yf_history_params) \
-                                     .stack() \
-                                     .rename_axis(index=['timestamp', self.yahoo_ticker_colname]) \
-                                     .reset_index() \
+                                     .rename_axis(index='timestamp') \
                                      .pipe(lambda x: clean_columns(x))
 
                                 self.n_requests += 1
@@ -1092,36 +1090,76 @@ class YFStockPriceGetter:
                                     self.failed_ticker_downloads[i].append(chunk)
                                     continue
 
+                                df_tmp.loc[:, self.yahoo_ticker_colname] = chunk[0]
+                                df_tmp.reset_index(inplace=True)
                                 df_tmp['timestamp_tz_aware'] = df_tmp['timestamp'].copy()
                                 df_tmp.loc[:, 'timezone'] = df_tmp['timestamp_tz_aware'].dt.tz
                                 df_tmp['timestamp'] = pd.to_datetime(df_tmp['timestamp'], utc=True)
                                 if self.convert_tz_aware_to_string:
                                     df_tmp['timestamp_tz_aware'] = df_tmp['timestamp_tz_aware'].astype(str)
-
                                 df_tmp = df_tmp[self.column_order]
 
-                            chunk_dfs_lst.append(df_tmp)
+                            except:
+                                print(f"Failed download for tickers: {chunk}") if self.verbose else None
+                                self.failed_ticker_downloads[i].append(chunk)
+                                continue
+                        else:
+                            if self.db_con is not None:
+                                if any(x for x in chunk if x not in self.stored_tickers['yahoo_ticker'].tolist()):
+                                    yf_history_params['start'] = get_valid_yfinance_start_timestamp(i)
+                                else:
+                                    yf_history_params['start'] = \
+                                        self.stored_tickers[self.stored_tickers['yahoo_ticker'].isin(chunk)][
+                                            'max_timestamp'].min().strftime('%Y-%m-%d')
 
-                        except simplejson.errors.JSONDecodeError:
-                            print(f"JSONDecodeError for tickers: {chunk}") if self.verbose else None
-                            self.failed_ticker_downloads[i].append(chunk)
+                            yf_history_params['start'] = \
+                                get_valid_yfinance_start_timestamp(interval=i, start=yf_history_params['start'])
 
-                        yf_history_params['start'] = self.start_date
+                            self._request_limit_check()
 
-                    try:
-                        df_i = pd.concat(chunk_dfs_lst)
-                        dict_of_dfs[i] = df_i
-                        del chunk_dfs_lst, df_i
-                    except ValueError:
-                        print('\n*** ValueError occurred when running df_i = pd.concat(chunk_dfs_lst) ***\n')
+                            print(f"\nStart date {yf_history_params['start']}\n") if self.verbose else None
 
-                if self.verbose:
-                    for ftd in self.failed_ticker_downloads:
-                        self.failed_ticker_downloads[ftd] = flatten_list(self.failed_ticker_downloads[ftd])
-                    print(f"\nFailed ticker downloads:\n{self.failed_ticker_downloads}")
+                            t = yf.Tickers(chunk)
+                            df_tmp = \
+                                t.history(**yf_history_params) \
+                                 .stack() \
+                                 .rename_axis(index=['timestamp', self.yahoo_ticker_colname]) \
+                                 .reset_index() \
+                                 .pipe(lambda x: clean_columns(x))
 
-        else:
-            raise ValueError("Multi-threading not supported yet.")
+                            self.n_requests += 1
+
+                            if not df_tmp.shape[0]:
+                                self.failed_ticker_downloads[i].append(chunk)
+                                continue
+
+                            df_tmp['timestamp_tz_aware'] = df_tmp['timestamp'].copy()
+                            df_tmp.loc[:, 'timezone'] = df_tmp['timestamp_tz_aware'].dt.tz
+                            df_tmp['timestamp'] = pd.to_datetime(df_tmp['timestamp'], utc=True)
+                            if self.convert_tz_aware_to_string:
+                                df_tmp['timestamp_tz_aware'] = df_tmp['timestamp_tz_aware'].astype(str)
+
+                            df_tmp = df_tmp[self.column_order]
+
+                        chunk_dfs_lst.append(df_tmp)
+
+                    except simplejson.errors.JSONDecodeError:
+                        print(f"JSONDecodeError for tickers: {chunk}") if self.verbose else None
+                        self.failed_ticker_downloads[i].append(chunk)
+
+                    yf_history_params['start'] = self.start_date
+
+                try:
+                    df_i = pd.concat(chunk_dfs_lst)
+                    dict_of_dfs[i] = df_i
+                    del chunk_dfs_lst, df_i
+                except ValueError:
+                    print('\n*** ValueError occurred when running df_i = pd.concat(chunk_dfs_lst) ***\n')
+
+            if self.verbose:
+                for ftd in self.failed_ticker_downloads:
+                    self.failed_ticker_downloads[ftd] = flatten_list(self.failed_ticker_downloads[ftd])
+                print(f"\nFailed ticker downloads:\n{self.failed_ticker_downloads}")
 
         if self.verbose:
             print("\nDownloading yfinance data took %s minutes\n" % round((time.time() - start) / 60, 3))
