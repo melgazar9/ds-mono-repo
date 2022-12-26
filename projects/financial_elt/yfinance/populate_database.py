@@ -15,11 +15,13 @@ pipeline.connect_to_db()
 pipeline.elt_stock_tickers()
 pipeline.elt_stock_prices(batch_download=True, intervals_to_download=intervals_to_download, yf_params=yf_params)
 
-start_fix = time.time()
+### TODO: integrate fix missing tickers ###
 
-pipeline.fix_missing_ticker_intervals(intervals_to_fix=intervals_to_download, yf_params=yf_params)
+# start_fix = time.time()
 
-print(f'\nYahoo finance ELT process took {round((start_fix - start) / 60, 3)} minutes.\n')
-print(f'\nTicker fixes took {round((time.time() - start_fix) / 60, 3)} minutes.\n')
+# pipeline.fix_missing_ticker_intervals(intervals_to_fix=intervals_to_download, yf_params=yf_params)
+
+# print(f'\nYahoo finance ELT process took {round((start_fix - start) / 60, 3)} minutes.\n')
+# print(f'\nTicker fixes took {round((time.time() - start_fix) / 60, 3)} minutes.\n')
 
 print(f'\nTotal time took {round((time.time() - start) / 60, 3)} minutes.\n')

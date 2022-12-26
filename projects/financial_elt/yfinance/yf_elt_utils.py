@@ -250,7 +250,7 @@ class YFinanceELT:
                     stock_price_getter._create_stock_prices_table_if_not_exists(table_name=f'stock_prices_{i}')
 
                     # for debugging purposes
-                    # df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(['SPY', 'QQQ', 'LNKD', 'NFLX', 'TSLA'])]
+                    # df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(['AAPL', 'AMZN', 'META', 'GOOG', 'SQ'])]
 
                     for ticker in df_tickers['yahoo_ticker'].tolist():
                         print(f'\nRunning ticker {ticker}\n') if self.verbose else None
@@ -300,7 +300,7 @@ class YFinanceELT:
             print('\n*** Running batch download ***\n')
 
             # for debugging purposes
-            # df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(['SPY', 'QQQ', 'LNKD', 'NFLX', 'TSLA'])]
+            # df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(['AAPL', 'AMZN', 'META', 'GOOG', 'SQ'])]
 
             stock_price_getter.batch_download_stock_price_history(
                 df_tickers['yahoo_ticker'].unique().tolist(),
@@ -555,30 +555,44 @@ class YFinanceELT:
         # dwh_client.run_sql(f"DROP TABLE {self.schema}_bk.stock_prices_{interval}_bk;")
         return
 
-    def fix_missing_ticker_intervals(self,
-                                     tickers=None,
-                                     intervals_to_fix=('1m', '2m', '5m', '1h', '1d'),
-                                     n_attempts=3,
-                                     yf_params=None):
-        print('\nFixing missing ticker intervals...\n') if self.verbose else None
+    ### TODO: integrate fix missing tickers: define methods below ###
+    def get_market_calendar(self):
+        date_range = \
+            pd.date_range(start='1950-01-01', end=datetime.today().strftime('%Y-%m-%d'))
 
-        intervals_to_fix = (intervals_to_fix,) if isinstance(intervals_to_fix, str) else intervals_to_fix
+        self.df_calendar = \
+            pmc.get_calendar('24/7') \
+                .schedule(start_date=date_range.min().strftime('%Y-%m-%d'),
+                          end_date=date_range.max().strftime('%Y-%m-%d')) \
+                .drop_duplicates()
 
-        pull_tickers = True if tickers is None else False
+        self.market_closed_dates = []
+        for idx in range(self.df_calendar.shape[0] - 1):
+            close_date = self.df_calendar.iloc[idx]['market_close'].strftime('%Y-%m-%d')
+            next_open_date = self.df_calendar.shift(-1).iloc[idx]['market_open'].strftime('%Y-%m-%d')
 
-        self.db.connect()
-        if self.dwh in ['mysql', 'snowflake']:
-            con = self.db.con
-        elif self.dwh == 'bigquery':
-            con = self.db.client
+            if pd.to_datetime(next_open_date) > pd.to_datetime(close_date):
+                market_closed_dates_i = \
+                    [d.strftime('%Y-%m-%d') for d in pd.date_range(close_date, next_open_date, freq='d').tolist()[1:-1]]
 
-        yf_params = {'prepost': True, 'threads': False, 'start': '1950-01-01'} if yf_params is None else yf_params
-        if 'prepost' not in yf_params.keys():
-            yf_params['prepost'] = True
-        if 'threads' not in yf_params.keys():
-            yf_params['threads'] = False
-        if 'start' not in yf_params.keys():
-            yf_params['start'] = '1950-01-01'
+                self.market_closed_dates.append(market_closed_dates_i)
+        self.market_closed_dates = sorted(list(set(flatten_list(self.market_closed_dates))))
+
+        return self
+
+    def is_good_dataset(self, interval):
+        """
+        Return True if the dataset has no missing timestamps for a specific ticker interval
+        """
+
+        pass
+
+    def _fix_missing_ticker_interval(self, interval_to_fix, yf_params):
+        """
+        Logic lives here to fix missing ticker intervals for specific interval
+        """
+
+        print(f'\nFixing missing ticker interval {interval_to_fix}...\n') if self.verbose else None
 
         intervals_to_seconds = {
             '1m': 60,
@@ -596,120 +610,64 @@ class YFinanceELT:
             '3mo': 2628000 * 3
         }
 
-        date_range = \
-            pd.date_range(start='1950-01-01', end=datetime.today().strftime('%Y-%m-%d'))
+        self.db.connect()
+        if self.dwh in ['mysql', 'snowflake']:
+            con = self.db.con
+        elif self.dwh == 'bigquery':
+            con = self.db.client
 
-        df_calendar = \
-            pmc.get_calendar('24/7')\
-                .schedule(start_date=date_range.min().strftime('%Y-%m-%d'),
-                          end_date=date_range.max().strftime('%Y-%m-%d')) \
-                .drop_duplicates()
-        market_closed_dates = []
-        for row in range(df_calendar.shape[0] - 1):
-            md = \
-                pd.date_range(df_calendar.iloc[row]['market_close'],
-                              df_calendar.shift(-1).iloc[row]['market_open'],
-                              freq='d').tolist()
-            market_closed_dates.append([d.strftime('%Y-%m-%d') for d in md])
-        market_closed_dates = list(set(flatten_list(market_closed_dates)))
+        df = self.db.run_sql(
+            f"select distinct timestamp, yahoo_ticker from {self.schema}.stock_prices_{interval_to_fix}"
+        )
 
+        return df
 
-        # df_calendar = pd.DataFrame()
-        # for cal in pmc.get_calendar_names():
-        #     c = pmc.get_calendar(cal)
-        #     try:
-        #         df_calendar = \
-        #             pd.concat([df_calendar,
-        #                        c.schedule(start_date=date_range.min().strftime('%Y-%m-%d'),
-        #                                   end_date=date_range.max().strftime('%Y-%m-%d'))])
-        #     except:
-        #         pass
-        # df_calendar = df_calendar.drop_duplicates()
-        gc.collect()
+    def fix_missing_ticker_intervals(self, intervals_to_fix, yf_params, max_attempts=3, tickers_to_fix=None):
+        """
+        For each interval in intervals_to_fix, call self._fix_missing_ticker_interval
+        """
 
+        self.get_market_calendar()
+
+        intervals_to_fix = (intervals_to_fix,) if isinstance(intervals_to_fix, str) else intervals_to_fix
+
+        yf_params = {'prepost': True, 'threads': False, 'start': '1950-01-01'} if yf_params is None else yf_params
+        if 'prepost' not in yf_params.keys():
+            yf_params['prepost'] = True
+        if 'threads' not in yf_params.keys():
+            yf_params['threads'] = False
+        if 'start' not in yf_params.keys():
+            yf_params['start'] = '1950-01-01'
+
+        fixed_datasets = {}
         for i in intervals_to_fix:
-            yf_params['interval'] = i
-            if pull_tickers:
-                tickers = \
-                    self.db.run_sql(f"""
-                        SELECT DISTINCT(yahoo_ticker) FROM {self.schema}.stock_prices_{i};
-                    """)['yahoo_ticker'].tolist()
+            if tickers_to_fix is None:
+                tickers = self.db.run_sql(
+                    f"select distinct(yahoo_ticker) from {self.schema}.stock_prices_{i}"
+                )['yahoo_ticker'].unique().tolist()
+            else:
+                tickers = tickers_to_fix.copy()
 
-            for t in tickers:
-                print(f'\nRunning ticker interval fix for {t} interval {i}\n') if self.verbose else None
-                n_tries = 0
+            n_tries = 0
+            while n_tries < max_attempts:
+                print(f'Running attempt {n_tries + 1}...')
+                df_i = self._fix_missing_ticker_interval(i, tickers_to_fix=tickers)
+                n_tries += 1
 
-                df_i = \
-                    self.db.run_sql(f"""
-                        SELECT
-                          timestamp_tz_aware
-                        FROM
-                          {self.schema}.stock_prices_{i}
-                        WHERE
-                          yahoo_ticker = '{t}'
-                        ORDER BY 1
-                    """)
+                good_dataset = self.is_good_dataset(interval=i)
 
-                missing_interval_dates = \
-                    ((df_i[(
-                            (((df_i['timestamp_tz_aware'] - df_i['timestamp_tz_aware'].shift()) - pd.Timedelta(days=1))
-                             / np.timedelta64(1, 's')) > intervals_to_seconds[i])
-                    ]['timestamp_tz_aware']) - pd.Timedelta(days=1)).dt.strftime('%Y-%m-%d').unique().tolist()
+                if good_dataset or n_tries >= max_attempts:
+                    fixed_datasets[i] = df_i
+                    break
 
-                missing_interval_dates = [i for i in missing_interval_dates if i not in market_closed_dates]
+        for k in fixed_datasets.keys():
+            print(f'\nWriting fixed dataset {k} to db...\n') if self.verbose else None
+            self._write_df_to_db(fixed_datasets[k], self.db.con, k)
 
-                if len(missing_interval_dates):
-                    df_prices = pd.DataFrame()
-                    while n_tries < n_attempts:
-                        print(f'\nAttempt {n_tries + 1}...\n') if self.verbose else None
-                        for mi in missing_interval_dates:
-                            print(f'\nRunning missing {i} interval date {mi}...\n') if self.verbose else None
+            print(f'\nDeduping fixed dataset {k}...\n') if self.verbose else None
+            self._dedupe_yf_stock_price_interval(k)
 
-                            if pd.to_datetime(mi) < pd.to_datetime(get_valid_yfinance_start_timestamp(i, start=mi)):
-                                continue
-
-                            yf_params['start'] = mi
-                            start_i = (pd.to_datetime(mi)).strftime('%Y-%m-%d')
-                            end_i = (pd.to_datetime(mi) + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
-                            yf_params['start'] = get_valid_yfinance_start_timestamp(i, start=start_i)
-                            yf_params['end'] = get_valid_yfinance_start_timestamp(i, start=end_i)
-
-                            stock_price_getter = \
-                                YFStockPriceGetter(dwh=self.dwh,
-                                                   db_con=self.db,
-                                                   yf_params=yf_params,
-                                                   convert_tz_aware_to_string=self.convert_tz_aware_to_string,
-                                                   num_workers=self.num_workers,
-                                                   verbose=self.verbose)
-
-                            df_prices = \
-                                pd.concat([df_prices,
-                                           stock_price_getter.download_single_stock_price_history(
-                                               ticker=t,
-                                               yf_history_params=yf_params
-                                            )
-                                           ])\
-                                  .drop_duplicates(subset=['timestamp', 'yahoo_ticker'])
-
-                        n_tries += 1
-
-                        tdiffs = ((df_prices['timestamp_tz_aware'] - df_prices['timestamp_tz_aware'].shift()).dt.seconds.iloc[1:-1])
-                        missing_tdiffs = tdiffs[(tdiffs > intervals_to_seconds[i]) & (tdiffs < intervals_to_seconds[i] * 3)]
-                        is_good_dataset = True if missing_tdiffs.shape[0] == 0 else False
-
-                        if is_good_dataset or n_tries >= n_attempts:
-                            print(f"""\nAttempted {n_attempts} times to download missing ticker intervals for {t} {i}.
-                                  No more attempts will be made to fix these ticker intervals.\n
-                                  Populating {self.dwh}...\n
-                                  """)
-
-                            self._write_df_to_db(df=df_prices, con=con, interval=i)
-                            break
-
-        self.db.con.close()
         return
-
-
 
 class YFStockPriceGetter:
     """
@@ -1013,7 +971,7 @@ class YFStockPriceGetter:
                                 output_list[j][i].reset_index(drop=True)])\
                               .reset_index(drop=True)
             elif parallel_backend == 'multiprocessing':
-                pass
+                raise NotImplementedError('\nSetting parallel_backend to multiprocessing is currently unstable.\n')
                 # pool = mp.Pool(self.num_workers)
                 # pool.apply_async(
                 #     self.__batch_download,
@@ -1071,10 +1029,6 @@ class YFStockPriceGetter:
 
             if yf_history_params['threads']:
                 self._request_limit_check()
-                if self.db_con is not None \
-                        and any(x for x in tickers if x not in self.stored_tickers['yahoo_ticker'].tolist()):
-                    yf_history_params['start'] = \
-                        get_valid_yfinance_start_timestamp(interval=i, start=yf_history_params['start'])
 
                 yf_history_params['start'] = \
                     get_valid_yfinance_start_timestamp(interval=i, start=yf_history_params['start'])

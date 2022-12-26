@@ -44,4 +44,4 @@ tornado==6.2
 tqdm==4.64.0
 virtualenv==20.16.3
 yagmail==0.15.283
-yfinance==0.1.87
+yfinance==0.1.86
