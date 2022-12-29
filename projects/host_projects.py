@@ -18,9 +18,9 @@ for p in PROJECTS_TO_HOST:
             for v3 in v2.keys():
                 sub_dict[v3] = v2[v3]
     d[key] = sub_dict
+
 PROJECTS_TO_HOST = d.copy()
 del d
-
 
 ### Run app ###
 
@@ -56,7 +56,7 @@ if PROJECTS_TO_HOST['numerai']['numerai_signals']:
             subprocess.run(shell_command, shell=True)
             return make_response(f'Last ran project {project_dir} at {cur_timestamp(clean_string=False)}.', 200)
 
-    cron = json_string_to_dict(os.environ.get('numerai_signals_cron'))
+    cron = json_string_to_dict(PROJECTS_TO_HOST['numerai']['numerai_signals']['numerai_signals_cron'])
     scheduler.add_job(numerai_signals, trigger='cron', **cron)
 
 
