@@ -15,6 +15,7 @@ pipeline.connect_to_db()
 pipeline.elt_stock_tickers()
 pipeline.elt_stock_prices(batch_download=True, intervals_to_download=intervals_to_download, yf_params=yf_params)
 
+
 ### TODO: integrate fix missing tickers ###
 
 # start_fix = time.time()

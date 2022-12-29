@@ -1,4 +1,5 @@
 .
+apscheduler==3.9.1
 beautifulsoup4==4.11.1
 catboost==1.0.6
 category-encoders==2.5.0
@@ -7,10 +8,11 @@ dask==2022.10.2
 dill==0.3.5.1
 feather-format==0.4.1
 feature-engine==1.5.1
+flask==2.2.2
 flatten-json==0.1.7
 graphviz==0.20.1
 imbalanced-learn==0.9.1
-Jinja2==2.11.3
+Jinja2==3.1.2
 joblib==1.1.0
 jsonschema==3.2.0
 jupyter==1.0.0
@@ -53,6 +55,7 @@ SQLAlchemy==1.4.44
 tenacity==8.1.0
 tornado==6.2
 tqdm==4.64.0
+waitress==2.1.2
 virtualenv==20.16.3
 xgboost==1.7.1
 yagmail==0.15.283

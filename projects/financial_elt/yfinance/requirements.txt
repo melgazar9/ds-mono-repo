@@ -1,4 +1,5 @@
 ../../../.
+apscheduler==3.9.1
 beautifulsoup4==4.11.1
 dask==2022.12.0
 dill==0.3.5.1
@@ -6,7 +7,7 @@ feather-format==0.4.1
 flatten-json==0.1.7
 graphviz==0.20.1
 html5lib==1.1
-Jinja2==2.11.3
+Jinja2==3.1.2
 joblib==1.1.0
 jsonschema==3.2.0
 keyring==23.8.2
@@ -42,6 +43,7 @@ SQLAlchemy==1.4.44
 tenacity==8.1.0
 tornado==6.2
 tqdm==4.64.0
+waitress==2.1.2
 virtualenv==20.16.3
 yagmail==0.15.283
 yfinance==0.1.86
