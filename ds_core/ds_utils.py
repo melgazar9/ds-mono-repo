@@ -26,7 +26,6 @@ class MetaclassMethodEnforcer:
         class MetaEnforcer(type):
 
             def __init__(cls, name, bases, cls_dict):
-                super().__init__()
                 method_map = dict()
 
                 for m in self.required_methods:
