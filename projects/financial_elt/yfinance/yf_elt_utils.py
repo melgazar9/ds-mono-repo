@@ -338,7 +338,7 @@ class YFinanceELT:
                 gc.collect()
         return
 
-    def _write_df_to_db(self, df, con, interval, retry_tmp_dir='~/tmp_dir/'):
+    def _write_df_to_db(self, df, con, interval, retry_tmp_dir=os.path.expanduser('~/tmp')):
         print(f'\nWriting to database {self.dwh}...\n') if self.verbose else None
         if self.dwh in ['mysql', 'snowflake']:
             if self.dwh == 'mysql':
@@ -409,6 +409,7 @@ class YFinanceELT:
                 print('\nCould not directly upload df to bigquery! '
                       'Dumping to csv, loading, then trying again via bigquery client...\n') if self.verbose else None
 
+                os.makedirs(retry_tmp_dir, exist_ok=True)
                 df.to_csv(f'{retry_tmp_dir}tmp.csv', index=False)
                 df = pd.read_csv(f'{retry_tmp_dir}tmp.csv')
                 job_config = bigquery.LoadJobConfig(autodetect=True)
