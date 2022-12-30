@@ -26,7 +26,9 @@ class MetaclassMethodEnforcer:
         class MetaEnforcer(type):
 
             def __init__(cls, name, bases, cls_dict):
+                super().__init__()
                 method_map = dict()
+
                 for m in self.required_methods:
                     if m in cls_dict and callable(cls_dict[m]):
                         method_map[m] = cls_dict[m]
@@ -49,9 +51,9 @@ class MetaclassMethodEnforcer:
 
         MetaEnforcer.__name__ = "Meta" + self.parent_class
         return MetaEnforcer
+
 def find_list_duplicates(input_list):
     return [item for item, count in Counter(input_list).items() if count > 1]
-
 
 def merge_dicts(*dict_args):
     """
@@ -63,19 +65,12 @@ def merge_dicts(*dict_args):
         result.update(dictionary)
     return result
 
-def valid_ip_address(ip: str) -> str:
-    try:
-        return "ipv4" if type(ip_address(ip)) is IPv4Address else "ipv6"
-    except ValueError:
-        return "invalid"
-
 def flatten_multindex_columns(df):
     new_cols = list(pd.Index([str(e[0]).lower() + '_' + str(e[1]).lower()
                               for e in df.columns.tolist()]).str.replace(' ', '_'))
     return new_cols
 
 def flatten_list(lst):
-    # return [v1 for v2 in lst for v1 in v2]
     return [v for item in lst for v in (item if isinstance(item, list) else [item])]
 
 def cur_timestamp(clean_string=True):
@@ -93,7 +88,6 @@ def zip_dir(directory, output_loc, exclude_suffix='.dill'):
                 absname = os.path.abspath(os.path.join(dirname, filename))
                 arcname = absname[len(abs_src) + 1:]
                 zf.write(absname, arcname)
-
     zf.close()
     return
 
@@ -128,3 +122,28 @@ def send_email(to_addrs,
     contents = [body] + files
     yag.send(to=to_addrs, subject=subject, contents=contents)
     return
+
+def json_string_to_dict(json_string):
+    try:
+        string_as_dict = json.loads(json_string)
+    except:
+        try:
+            string_as_dict = json.loads(json_string.replace("'", '\"'))
+        except:
+            try:
+                string_as_dict = ast.literal_eval(json_string)
+            except:
+                raise AssertionError('Could not parse input json_string!')
+    if isinstance(string_as_dict, str):
+        try:
+            string_as_dict = json.loads(string_as_dict)
+        except:
+            try:
+                string_as_dict = json.loads(string_as_dict.replace("'", '\"'))
+            except:
+                try:
+                    string_as_dict = ast.literal_eval(string_as_dict)
+                except:
+                    raise AssertionError('String parsing failed!')
+
+    return string_as_dict

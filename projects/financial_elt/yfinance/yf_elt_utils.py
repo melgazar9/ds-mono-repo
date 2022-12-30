@@ -250,7 +250,7 @@ class YFinanceELT:
                     stock_price_getter._create_stock_prices_table_if_not_exists(table_name=f'stock_prices_{i}')
 
                     # for debugging purposes
-                    # df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(['AAPL', 'AMZN', 'META', 'GOOG', 'SQ'])]
+                    # df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(['AAPL', 'AMZN', 'META', 'GOOG', 'SQ', 'SPY', 'QQQ', 'NFLX', 'LNKD'])]
 
                     for ticker in df_tickers['yahoo_ticker'].tolist():
                         print(f'\nRunning ticker {ticker}\n') if self.verbose else None
@@ -300,7 +300,7 @@ class YFinanceELT:
             print('\n*** Running batch download ***\n')
 
             # for debugging purposes
-            # df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(['AAPL', 'AMZN', 'META', 'GOOG', 'SQ'])]
+            # df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(['AAPL', 'AMZN', 'META', 'GOOG', 'SQ', 'SPY', 'QQQ', 'NFLX', 'LNKD'])]
 
             stock_price_getter.batch_download_stock_price_history(
                 df_tickers['yahoo_ticker'].unique().tolist(),
@@ -317,7 +317,7 @@ class YFinanceELT:
                 df = pd.merge(dfs[i], df_tickers, on='yahoo_ticker', how='left')
 
                 assert len(np.intersect1d(df.columns, column_order)) == df.shape[1], \
-                    'Column mismatch! Review download_yf_data function!'
+                    'Column mismatch! Review method that downloads yfinance data!'
 
                 print(f'\nBackfilling df_{i}...\n') if self.verbose else None
                 df = df.ffill().bfill()
@@ -338,7 +338,7 @@ class YFinanceELT:
                 gc.collect()
         return
 
-    def _write_df_to_db(self, df, con, interval, retry_tmp_dir='~/tmp_dir/'):
+    def _write_df_to_db(self, df, con, interval, retry_tmp_dir=os.path.expanduser('~/tmp')):
         print(f'\nWriting to database {self.dwh}...\n') if self.verbose else None
         if self.dwh in ['mysql', 'snowflake']:
             if self.dwh == 'mysql':
@@ -409,6 +409,7 @@ class YFinanceELT:
                 print('\nCould not directly upload df to bigquery! '
                       'Dumping to csv, loading, then trying again via bigquery client...\n') if self.verbose else None
 
+                os.makedirs(retry_tmp_dir, exist_ok=True)
                 df.to_csv(f'{retry_tmp_dir}tmp.csv', index=False)
                 df = pd.read_csv(f'{retry_tmp_dir}tmp.csv')
                 job_config = bigquery.LoadJobConfig(autodetect=True)
@@ -1028,6 +1029,10 @@ class YFStockPriceGetter:
             yf_history_params['interval'] = i
 
             if yf_history_params['threads']:
+
+                warnings.warn("""\n*** yf_history_params 'threads' is set to True.
+                               This threading parameter relies on yfinance threading, which is likely to return
+                               incorrect or buggy results! Consider setting this parameter to False. ***\n""")
 
                 yf_history_params['start'] = \
                     get_valid_yfinance_start_timestamp(interval=i, start=yf_history_params['start'])
