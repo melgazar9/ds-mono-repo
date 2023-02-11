@@ -1490,16 +1490,3 @@ def get_valid_yfinance_start_timestamp(interval, start='1950-01-01 00:00:00'):
     start = start.strftime('%Y-%m-%d')  # yfinance doesn't like strftime with hours minutes or seconds
 
     return start
-
-
-
-
-def simple_upload_to_snowflake():
-    tickers = ['AAPL', 'AMZN', 'GOOG', 'META', 'NFLX', 'SQ']
-    dfs2 = []
-    for t in tickers:
-        df_t = yf.Ticker(t).history(interval='1m', prepost=True, threads=False, start='2023-02-08').reset_index().pipe(lambda x: clean_columns(x))
-        df_t['yahoo_ticker'] = t
-        dfs2.append(df_t)
-    db = SnowflakeConnect()
-    db.connect()
