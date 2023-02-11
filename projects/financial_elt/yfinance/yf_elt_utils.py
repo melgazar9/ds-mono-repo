@@ -248,7 +248,7 @@ class YFinanceELT:
                     stock_price_getter._create_stock_prices_table_if_not_exists(table_name=f'stock_prices_{i}')
 
                     # for debugging purposes
-                    # df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(['AAPL', 'AMZN', 'META', 'GOOG', 'SQ', 'SPY', 'QQQ', 'NFLX', 'LNKD'])]
+                    df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(['AAPL', 'AMZN', 'META', 'GOOG', 'SQ', 'SPY', 'QQQ', 'NFLX', 'LNKD'])]
 
                     for ticker in df_tickers['yahoo_ticker'].tolist():
                         print(f'\nRunning ticker {ticker}\n') if self.verbose else None
@@ -298,7 +298,7 @@ class YFinanceELT:
             print('\n*** Running batch download ***\n')
 
             # for debugging purposes
-            # df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(['AAPL', 'AMZN', 'META', 'GOOG', 'SQ', 'SPY', 'QQQ', 'NFLX', 'LNKD'])]
+            df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(['AAPL', 'AMZN', 'META', 'GOOG', 'SQ', 'SPY', 'QQQ', 'NFLX', 'LNKD'])]
 
             stock_price_getter.batch_download_stock_price_history(
                 df_tickers['yahoo_ticker'].unique().tolist(),
@@ -876,7 +876,7 @@ class YFStockPriceGetter:
         df.loc[:, self.yahoo_ticker_colname] = ticker
         df.reset_index(inplace=True)
         df['timestamp_tz_aware'] = df['timestamp'].copy()
-        df.loc[:, 'timezone'] = df['timestamp_tz_aware'].dt.tz.astype(str)
+        df.loc[:, 'timezone'] = str(df['timestamp_tz_aware'].dt.tz)
         df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
         if self.convert_tz_aware_to_string:
             df['timestamp_tz_aware'] = df['timestamp_tz_aware'].astype(str)
@@ -1048,7 +1048,7 @@ class YFStockPriceGetter:
                 self.n_requests += 1
 
                 df_i['timestamp_tz_aware'] = df_i['timestamp'].copy()
-                df_i.loc[:, 'timezone'] = df_i['timestamp_tz_aware'].dt.tz.astype(str)
+                df_i.loc[:, 'timezone'] = str(df_i['timestamp_tz_aware'].dt.tz)
                 df_i['timestamp'] = pd.to_datetime(df_i['timestamp'], utc=True)
                 if self.convert_tz_aware_to_string:
                     df_i['timestamp_tz_aware'] = df_i['timestamp_tz_aware'].astype(str)
@@ -1096,7 +1096,7 @@ class YFStockPriceGetter:
                                 df_tmp.loc[:, self.yahoo_ticker_colname] = chunk[0]
                                 df_tmp.reset_index(inplace=True)
                                 df_tmp['timestamp_tz_aware'] = df_tmp['timestamp'].copy()
-                                df_tmp.loc[:, 'timezone'] = df_tmp['timestamp_tz_aware'].dt.tz.astype(str)
+                                df_tmp.loc[:, 'timezone'] = str(df_tmp['timestamp_tz_aware'].dt.tz)
                                 df_tmp['timestamp'] = pd.to_datetime(df_tmp['timestamp'], utc=True)
                                 if self.convert_tz_aware_to_string:
                                     df_tmp['timestamp_tz_aware'] = df_tmp['timestamp_tz_aware'].astype(str)
@@ -1137,7 +1137,7 @@ class YFStockPriceGetter:
                                 continue
 
                             df_tmp['timestamp_tz_aware'] = df_tmp['timestamp'].copy()
-                            df_tmp.loc[:, 'timezone'] = df_tmp['timestamp_tz_aware'].dt.tz.astype(str)
+                            df_tmp.loc[:, 'timezone'] = str(df_tmp['timestamp_tz_aware'].dt.tz)
                             df_tmp['timestamp'] = pd.to_datetime(df_tmp['timestamp'], utc=True)
                             if self.convert_tz_aware_to_string:
                                 df_tmp['timestamp_tz_aware'] = df_tmp['timestamp_tz_aware'].astype(str)
