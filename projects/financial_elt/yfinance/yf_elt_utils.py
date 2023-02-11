@@ -106,9 +106,7 @@ class YFinanceELT:
                 db_connect_params = dict(schema=self.schema, database=self.database)
                 self.db = SnowflakeConnect(**db_connect_params)
                 self.db.run_sql(f"CREATE DATABASE IF NOT EXISTS {self.database};")
-                self.db.run_sql(f"""
-                    CREATE SCHEMA IF NOT EXISTS {self.database}.{self.schema};
-                """)
+                self.db.run_sql(f"""CREATE SCHEMA IF NOT EXISTS {self.database}.{self.schema};""")
 
             if self.populate_bigquery and self.dwh != 'bigquery':
                 bq_connect_params = dict(schema=self.schema)
@@ -117,7 +115,7 @@ class YFinanceELT:
 
             if self.populate_snowflake and self.dwh != 'snowflake':
                 snowflake_connect_params = dict(schema=self.schema)
-                snowflake_connect_params['database'] = 'FINANCIAL_DB' if self.database is None else self.database
+                snowflake_connect_params['database'] = self.database
 
                 self.snowflake_client = SnowflakeConnect(**snowflake_connect_params)
                 self.snowflake_client.run_sql(f"CREATE DATABASE IF NOT EXISTS {snowflake_connect_params['database']};")
@@ -250,7 +248,7 @@ class YFinanceELT:
                     stock_price_getter._create_stock_prices_table_if_not_exists(table_name=f'stock_prices_{i}')
 
                     # for debugging purposes
-                    # df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(['AAPL', 'AMZN', 'META', 'GOOG', 'SQ', 'SPY', 'QQQ', 'NFLX', 'LNKD'])]
+                    df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(['AAPL', 'AMZN', 'META', 'GOOG', 'SQ', 'SPY', 'QQQ', 'NFLX', 'LNKD'])]
 
                     for ticker in df_tickers['yahoo_ticker'].tolist():
                         print(f'\nRunning ticker {ticker}\n') if self.verbose else None
@@ -300,7 +298,7 @@ class YFinanceELT:
             print('\n*** Running batch download ***\n')
 
             # for debugging purposes
-            # df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(['AAPL', 'AMZN', 'META', 'GOOG', 'SQ', 'SPY', 'QQQ', 'NFLX', 'LNKD'])]
+            df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(['AAPL', 'AMZN', 'META', 'GOOG', 'SQ', 'SPY', 'QQQ', 'NFLX', 'LNKD'])]
 
             stock_price_getter.batch_download_stock_price_history(
                 df_tickers['yahoo_ticker'].unique().tolist(),
@@ -381,7 +379,7 @@ class YFinanceELT:
                         stock_splits 
                       FROM 
                         {self.schema}.stock_prices_{interval};
-                """
+                    """
 
                 if self.dwh == 'mysql':
                     self.db.run_sql(query_dtype_fix)
@@ -393,13 +391,13 @@ class YFinanceELT:
                         self.db.run_sql(query)
 
                 df['timestamp_tz_aware'] = df['timestamp_tz_aware'].astype(str)
+
                 df.to_sql(f'stock_prices_{interval}',
                           con=con,
                           index=False,
                           if_exists='append',
                           schema=self.schema,
                           chunksize=16000)
-
 
         elif self.dwh == 'bigquery':
             print('\nUploading to BigQuery...\n') if self.verbose else None
@@ -516,14 +514,14 @@ class YFinanceELT:
                 QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC) = 1 
                 ORDER BY 
                   timestamp, yahoo_ticker, bloomberg_ticker, numerai_ticker
-                {');' if dwh_client.dwh_name == 'bigquery' else ';'} 
+                {');' if dwh_client.dwh_name == 'bigquery' else ';'}
             """
 
         if dwh_client.dwh_name != 'snowflake':
             dwh_client.run_sql(query_statements)
         else:
             # unfortunately snowflake doesn't support multiple query statements in a single API request...
-            # so we need to open and close multiple connections to the snowflake dwh and run each query
+            # so we need to run each query separately
 
             session_setting = dwh_client.keep_session_alive
             dwh_client.keep_session_alive = True
@@ -834,13 +832,13 @@ class YFStockPriceGetter:
                   yahoo_ticker STRING,
                   bloomberg_ticker STRING,
                   numerai_ticker STRING,
-                  open NUMBER,
-                  high NUMBER,
-                  low NUMBER,
-                  close NUMBER,
-                  volume NUMBER,
-                  dividends NUMBER,
-                  stock_splits NUMBER
+                  open FLOAT,
+                  high FLOAT,
+                  low FLOAT,
+                  close FLOAT,
+                  volume FLOAT,
+                  dividends FLOAT,
+                  stock_splits FLOAT
                   );
                 """)
         return
@@ -878,7 +876,7 @@ class YFStockPriceGetter:
         df.loc[:, self.yahoo_ticker_colname] = ticker
         df.reset_index(inplace=True)
         df['timestamp_tz_aware'] = df['timestamp'].copy()
-        df.loc[:, 'timezone'] = df['timestamp_tz_aware'].dt.tz
+        df.loc[:, 'timezone'] = df['timestamp_tz_aware'].dt.tz.astype(str)
         df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
         if self.convert_tz_aware_to_string:
             df['timestamp_tz_aware'] = df['timestamp_tz_aware'].astype(str)
@@ -1050,7 +1048,7 @@ class YFStockPriceGetter:
                 self.n_requests += 1
 
                 df_i['timestamp_tz_aware'] = df_i['timestamp'].copy()
-                df_i.loc[:, 'timezone'] = df_i['timestamp_tz_aware'].dt.tz
+                df_i.loc[:, 'timezone'] = df_i['timestamp_tz_aware'].dt.tz.astype(str)
                 df_i['timestamp'] = pd.to_datetime(df_i['timestamp'], utc=True)
                 if self.convert_tz_aware_to_string:
                     df_i['timestamp_tz_aware'] = df_i['timestamp_tz_aware'].astype(str)
@@ -1098,7 +1096,7 @@ class YFStockPriceGetter:
                                 df_tmp.loc[:, self.yahoo_ticker_colname] = chunk[0]
                                 df_tmp.reset_index(inplace=True)
                                 df_tmp['timestamp_tz_aware'] = df_tmp['timestamp'].copy()
-                                df_tmp.loc[:, 'timezone'] = df_tmp['timestamp_tz_aware'].dt.tz
+                                df_tmp.loc[:, 'timezone'] = df_tmp['timestamp_tz_aware'].dt.tz.astype(str)
                                 df_tmp['timestamp'] = pd.to_datetime(df_tmp['timestamp'], utc=True)
                                 if self.convert_tz_aware_to_string:
                                     df_tmp['timestamp_tz_aware'] = df_tmp['timestamp_tz_aware'].astype(str)
@@ -1139,7 +1137,7 @@ class YFStockPriceGetter:
                                 continue
 
                             df_tmp['timestamp_tz_aware'] = df_tmp['timestamp'].copy()
-                            df_tmp.loc[:, 'timezone'] = df_tmp['timestamp_tz_aware'].dt.tz
+                            df_tmp.loc[:, 'timezone'] = df_tmp['timestamp_tz_aware'].dt.tz.astype(str)
                             df_tmp['timestamp'] = pd.to_datetime(df_tmp['timestamp'], utc=True)
                             if self.convert_tz_aware_to_string:
                                 df_tmp['timestamp_tz_aware'] = df_tmp['timestamp_tz_aware'].astype(str)
@@ -1492,3 +1490,16 @@ def get_valid_yfinance_start_timestamp(interval, start='1950-01-01 00:00:00'):
     start = start.strftime('%Y-%m-%d')  # yfinance doesn't like strftime with hours minutes or seconds
 
     return start
+
+
+
+
+def simple_upload_to_snowflake():
+    tickers = ['AAPL', 'AMZN', 'GOOG', 'META', 'NFLX', 'SQ']
+    dfs2 = []
+    for t in tickers:
+        df_t = yf.Ticker(t).history(interval='1m', prepost=True, threads=False, start='2023-02-08').reset_index().pipe(lambda x: clean_columns(x))
+        df_t['yahoo_ticker'] = t
+        dfs2.append(df_t)
+    db = SnowflakeConnect()
+    db.connect()
