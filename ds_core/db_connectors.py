@@ -199,7 +199,7 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
                  warehouse=os.environ.get('SNOWFLAKE_WAREHOUSE'),
                  account=os.environ.get('SNOWFLAKE_ACCOUNT'),
                  role=os.environ.get('SNOWFLAKE_ROLE'),
-                 backend_connection='sqlalchemy',
+                 backend_engine='sqlalchemy',
                  engine_string=None,
                  keep_session_alive=False):
 
@@ -210,7 +210,7 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
         self.schema = schema
         self.warehouse = warehouse
         self.role = role
-        self.backend_connection = backend_connection
+        self.backend_engine = backend_engine
         self.engine_string = engine_string
         self.keep_session_alive = keep_session_alive
 
@@ -227,7 +227,7 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
             'role': self.role
         }
 
-        if self.backend_connection == 'sqlalchemy':
+        if self.backend_engine == 'sqlalchemy':
             if self.engine_string is not None:
                 self.engine_string = self.engine_string
             else:
@@ -255,7 +255,7 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
 
     def run_sql(self, query, **read_sql_kwargs):
         self.connect()
-        if self.backend_connection == 'sqlalchemy':
+        if self.backend_engine == 'sqlalchemy':
             if query.strip().lower().startswith('select'):
                 df = pd.read_sql(query, con=self.con, **read_sql_kwargs)
                 if not self.keep_session_alive:
