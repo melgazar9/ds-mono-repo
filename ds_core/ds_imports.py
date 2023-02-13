@@ -8,7 +8,9 @@ import multiprocessing as mp
 from functools import partial, reduce
 from collections import Counter
 from zipfile import ZipFile, ZIP_DEFLATED
-
+from urllib3.util.ssl_ import SSLContext
+if SSLContext is None:
+     from urllib3.contrib.pyopenssl import orig_util_SSLContext as SSLContext
 
 ### numeric libraries ###
 
