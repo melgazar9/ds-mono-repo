@@ -8,7 +8,7 @@ import multiprocessing as mp
 from functools import partial, reduce
 from collections import Counter
 from zipfile import ZipFile, ZIP_DEFLATED
-
+from configparser import ConfigParser
 
 ### numeric libraries ###
 

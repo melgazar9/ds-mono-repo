@@ -20,6 +20,7 @@ services:
       resources:
         limits:
           cpus: '6'
-          memory: 3000M
+          memory: 12000M
     volumes:
+      #- ../../.env:/app/.env
       - ../../ds_core:/app/ds_core
