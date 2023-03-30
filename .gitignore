@@ -24,3 +24,9 @@ venv
 **.idea
 **.gzip
 **catboost_info/
+**.env
+**config.yml
+**config.yaml
+**config.ini
+
+!**config_example.ini

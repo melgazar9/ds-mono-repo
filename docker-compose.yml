@@ -1,0 +1,33 @@
+version: '3'
+
+volumes:
+  ds-core:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ds_core
+
+services:
+  ds-monorepo-default:
+    container_name: ds-monorepo-default
+    image: ds-monorepo-default:latest
+    restart: always
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_ENV: production # change this to adjust which environments APIs are called
+    volumes:
+      - ds-core:.
+    env_file:
+      - .env
+    environment:
+      - DOCKER_DEFAULT_PLATFORM=linux/amd64
+    ports:
+      - 5000:5000
+    deploy:
+      resources:
+        limits:
+          cpus: '6'
+          memory: 3000M

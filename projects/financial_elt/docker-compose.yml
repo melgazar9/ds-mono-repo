@@ -1,0 +1,26 @@
+version: '3'
+
+services:
+  financial-elt:
+    container_name: financial-elt
+    image: financial-elt:latest
+    restart: always
+    build:
+      context: ../../
+      dockerfile: projects/financial_elt/Dockerfile
+      args:
+        APP_ENV: production # change this to adjust which environments APIs are called
+    env_file:
+      - .env
+    environment:
+      - DOCKER_DEFAULT_PLATFORM=linux/amd64
+    ports:
+      - 5000:5000
+    deploy:
+      resources:
+        limits:
+          cpus: '6'
+          memory: 12000M
+    volumes:
+      #- ../../.env:/app/.env
+      - ../../ds_core:/app/ds_core

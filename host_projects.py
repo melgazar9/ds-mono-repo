@@ -32,20 +32,6 @@ def healthcheck():
     with app.app_context():
         return make_response("Server is running...", 200)
 
-if PROJECTS_TO_HOST['financial_elt']['yfinance_elt']:
-    @app.route('/financial-elt/yfinance-elt', methods=['GET'])
-    def yfinance_elt():
-        with app.app_context():
-            project_dir = 'financial_elt/yfinance/'
-            run_command = 'python populate_database.py'
-            shell_command = f'cd {os.path.join(app.root_path)}/{project_dir}; {run_command};'
-            subprocess.run(shell_command, shell=True)
-            return make_response(f'Last ran project {project_dir} at {cur_timestamp(clean_string=False)}.', 200)
-
-    cron = json_string_to_dict(PROJECTS_TO_HOST['financial_elt']['yfinance_elt_cron'])
-    scheduler.add_job(yfinance_elt, trigger='cron', **cron)
-
-
 if PROJECTS_TO_HOST['numerai']['numerai_signals']:
     @app.route('/numerai-signals', methods=['GET'])
     def numerai_signals():
