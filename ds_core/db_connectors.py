@@ -50,7 +50,6 @@ class BigQueryConnect(metaclass=MetaclassRDBMSEnforcer):
 
     Parameters
     ----------
-    project_id: str of the project-id
     google_application_credentials: str of path where json credentials are stored from creating a service account
     database: str of the database or schema name
     job_config_params: dict of params passed to bigquery.QueryJobConfig.
@@ -124,6 +123,7 @@ class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
         backend_url: backend to use (e.g. mysqldb)
         string_extension: string to append the MySQL engine_string
         engine_string: str of the full extension URL. If this is provided all other parameters are ignored.
+        keep_session_alive: bool to keep session open after query executes
         """
 
         self.user = os.environ.get('MYSQL_USER') if user is None else user
@@ -161,6 +161,7 @@ class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
 
         engine = create_engine(self.engine_string, **kwargs)
         self.con = engine.connect()
+
         return self
 
     def run_sql(self, query, **read_sql_kwargs):
@@ -345,9 +346,13 @@ class MongoDBConnect(metaclass=MetaclassNoSQLEnforcer):
             'Init params for database and collection cannot be None!'
 
         self.connect()
+
         db = self.client[self.database]
         _collection = db[self.collection]
+
         self.data = [i for i in _collection.find(*args)]
+
         if not self.keep_session_alive:
             self.client.close()
+
         return self
