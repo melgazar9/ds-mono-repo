@@ -8,7 +8,10 @@ import pandas_market_calendars as pmc
 import dask
 from dask import delayed
 
-class YFinanceELT:
+
+
+class YFPriceELT:
+
     """
     Description:
     ------------
@@ -72,6 +75,7 @@ class YFinanceELT:
         Parameters
         ----------
         create_schema_if_not_exists: bool to create the schema if it doesn't exist
+
         """
 
         if create_schema_if_not_exists:
@@ -184,6 +188,7 @@ class YFinanceELT:
     def elt_stock_prices(self,
                          intervals_to_download=('1m', '2m', '5m', '1h', '1d'),
                          batch_download=False,
+                         write_to_db_after_interval_complete=True,
                          yf_params=None,
                          n_chunks=1):
         """
@@ -193,6 +198,9 @@ class YFinanceELT:
 
         Parameters
         ----------
+
+        intervals_to_download: tuple or list of intervals to download (e.g. ('1m', '1d') )
+
         batch_download: bool whether to download all tickers in batch and then populate the database
             default is False because batch downloading many tickers and populating a db has many downsides:
                 - if working on the cloud, it's significantly more expensive because a bigger instance is needded
@@ -205,6 +213,20 @@ class YFinanceELT:
                     if there exists timestamps in the db then delete them from the pandas df
                 3. append the db with that single tickers price data from the pandas df
                 4. alter db table: sort the db by timestamp and ticker
+
+        write_to_db_after_interval_complete: Bool whether to write to <database> after interval loop is complete
+            This is beneficial when bulk downloading as it will likely lead to memory errors when populating the dwh.
+
+            If write_to_db_after_interval_complete is False and batch_download is True:
+                then download all tickers and all intervals into a dictionary of dfs, then upload each df to the dwh
+            If write_to_db_after_interval_complete is True and batch_download is False:
+                then download all tickers with interval i to a dictionary of dfs, then only upload that interval to dwh
+                This is more memory efficient as it will wipe the interval df_i after each interval loop
+            If write_to_db_after_interval_complete is False and batch_download is False:
+                Then upload each ticker interval to the dwh
+                This is very slow since it uploads to the dwh after each API request
+            If write_to_db_after_interval_complete is True and batch_download is True:
+                Raise NotImplementedError
 
         yf_params: dict of yfinance params pass to yf.Ticker(<ticker>).history(**yf_params)
         n_chunks: int of the number of chunks to download per API request
@@ -232,7 +254,13 @@ class YFinanceELT:
         elif self.dwh == 'bigquery':
             con = self.db.client
 
+        if batch_download and write_to_db_after_interval_complete:
+            raise NotImplementedError('Cannot set write_to_db_after_interval_complete to True if batch_download is True')
+
         if not batch_download:
+            if write_to_db_after_interval_complete:
+                df_interval = pd.DataFrame()
+
             print('\n*** Running sequential download ***\n')
 
             yf_params = stock_price_getter.yf_params.copy()
@@ -281,7 +309,16 @@ class YFinanceELT:
                             df[v] = df[v].astype(k)
                         gc.collect()
 
-                        self._write_df_to_db(df=df, con=con, interval=i)
+                        if not write_to_db_after_interval_complete:
+                            self._write_df_to_db(df=df, con=con, interval=i)
+                        else:
+                            df_interval = pd.concat([df_interval, df], axis=0)
+
+                    if write_to_db_after_interval_complete:
+                        self._write_df_to_db(df=df_interval, con=con, interval=i)
+                        df_interval = pd.DataFrame()
+                    
+                    gc.collect()
 
                 if self.verbose:
                     for ftd in stock_price_getter.failed_ticker_downloads:
@@ -343,6 +380,11 @@ class YFinanceELT:
                 self._drop_index_constraint(interval=interval)
                 self.db.connect()
             try:
+                self.db.connect()
+                if self.dwh in ['mysql', 'snowflake']:
+                    con = self.db.con
+                elif self.dwh == 'bigquery':
+                    con = self.db.client
                 df.to_sql(f'stock_prices_{interval}',
                           con=con,
                           index=False,
@@ -391,6 +433,12 @@ class YFinanceELT:
                         self.db.run_sql(query)
 
                 df['timestamp_tz_aware'] = df['timestamp_tz_aware'].astype(str)
+
+                self.db.connect()
+                if self.dwh in ['mysql', 'snowflake']:
+                    con = self.db.con
+                elif self.dwh == 'bigquery':
+                    con = self.db.client
 
                 df.to_sql(f'stock_prices_{interval}',
                           con=con,
@@ -1282,171 +1330,7 @@ class TickerDownloader:
         return df_tickers
 
 
-class YFinanceFinancialsGetter:
 
-    def __init__(self, tickers):
-        self.tickers = [tickers] if isinstance(tickers, str) else tickers
-        assert isinstance(tickers, (tuple, list)), 'parameter tickers must be in the format str, list, or tuple'
-
-        self.financials_to_get = (
-            'actions',
-            'analysis',
-            'balance_sheet',
-            'calendar',
-            'cashflow',
-            'dividends',
-            'earnings',
-            'earnings_dates',
-            'financials',
-            'institutional_holders',
-            'major_holders',
-            'mutualfund_holders',
-            'quarterly_balance_sheet',
-            'quarterly_cashflow',
-            'quarterly_earnings',
-            'quarterly_financials',
-            'recommendations',
-            'shares',
-            'splits',
-            'sustainability'
-        )
-
-        self.dict_of_financials = dict()
-        for f in self.financials_to_get:
-            self.dict_of_financials[f] = pd.DataFrame()
-    def get_financials(self):
-        for ticker in self.tickers:
-            t = yf.Ticker(ticker)
-
-            self.dict_of_financials['actions'] = \
-                pd.concat([self.dict_of_financials['actions'],
-                           t.actions.reset_index().assign(ticker=ticker).pipe(lambda x: clean_columns(x))])
-
-            self.dict_of_financials['analysis'] = \
-                pd.concat([self.dict_of_financials['analysis'],
-                           t.analysis.reset_index().assign(ticker=ticker).pipe(lambda x: clean_columns(x))])
-
-            self.dict_of_financials['balance_sheet'] = \
-                pd.concat([self.dict_of_financials['balance_sheet'],
-                           t.balance_sheet\
-                            .T.rename_axis(index='date')\
-                            .reset_index()\
-                            .assign(ticker=ticker)\
-                            .pipe(lambda x: clean_columns(x))]
-                          )
-
-            self.dict_of_financials['calendar'] = \
-                pd.concat([self.dict_of_financials['calendar'],
-                          t.calendar.T.assign(ticker=ticker).pipe(lambda x: clean_columns(x))])
-
-            self.dict_of_financials['cashflow'] = \
-                pd.concat([self.dict_of_financials['cashflow'],
-                          t.cashflow.T\
-                           .rename_axis(index='date')\
-                           .reset_index()\
-                           .assign(ticker=ticker)\
-                           .pipe(lambda x: clean_columns(x))])
-
-            self.dict_of_financials['dividends'] = \
-                pd.concat([self.dict_of_financials['dividends'],
-                          t.dividends\
-                          .reset_index()\
-                          .assign(ticker=ticker)\
-                          .pipe(lambda x: clean_columns(x))])
-
-            self.dict_of_financials['earnings'] = \
-                pd.concat([self.dict_of_financials['earnings'],
-                           t.earnings.reset_index().assign(ticker=ticker).pipe(lambda x: clean_columns(x))])
-
-            self.dict_of_financials['earnings_dates'] = \
-                pd.concat([self.dict_of_financials['earnings_dates'],
-                          t.earnings_dates\
-                           .rename(columns={'Surprise(%)': 'surprise_pct'})\
-                           .reset_index()\
-                           .assign(ticker=ticker)\
-                           .pipe(lambda x: clean_columns(x))])
-
-            self.dict_of_financials['financials'] = \
-                pd.concat([self.dict_of_financials['financials'],
-                           t.financials \
-                            .T\
-                            .rename_axis(index='date') \
-                            .reset_index() \
-                            .assign(ticker=ticker)\
-                            .pipe(lambda x: clean_columns(x))])
-
-            self.dict_of_financials['institutional_holders'] = \
-                pd.concat([self.dict_of_financials['institutional_holders'],
-                           t.institutional_holders.rename(columns={'% Out': 'pct_out'}) \
-                            .assign(ticker=ticker) \
-                            .pipe(lambda x: clean_columns(x))])
-
-            self.dict_of_financials['major_holders'] = \
-                pd.concat([self.dict_of_financials['major_holders'],
-                           t.major_holders\
-                            .rename(columns={0: 'pct', 1: 'metadata'}) \
-                            .assign(ticker=ticker) \
-                            .pipe(lambda x: clean_columns(x))])
-
-            self.dict_of_financials['mutualfund_holders'] = \
-                pd.concat([self.dict_of_financials['mutualfund_holders'],
-                           t.mutualfund_holders \
-                            .rename(columns={'% Out': 'pct_out'})\
-                            .assign(ticker=ticker) \
-                            .pipe(lambda x: clean_columns(x))])
-
-            self.dict_of_financials['quarterly_balance_sheet'] = \
-                pd.concat([self.dict_of_financials['quarterly_balance_sheet'],
-                           t.quarterly_balance_sheet.T \
-                            .rename_axis(index='date')\
-                            .reset_index()\
-                            .assign(ticker=ticker) \
-                            .pipe(lambda x: clean_columns(x))])
-
-            self.dict_of_financials['quarterly_cashflow'] = \
-                pd.concat([self.dict_of_financials['quarterly_cashflow'],
-                           t.quarterly_cashflow.T \
-                            .rename_axis(index='date') \
-                            .reset_index()\
-                            .assign(ticker=ticker) \
-                            .pipe(lambda x: clean_columns(x))])
-
-            self.dict_of_financials['quarterly_earnings'] = \
-                pd.concat([self.dict_of_financials['quarterly_earnings'],
-                           t.quarterly_earnings \
-                            .reset_index() \
-                            .assign(ticker=ticker) \
-                            .pipe(lambda x: clean_columns(x))])
-
-            self.dict_of_financials['quarterly_financials'] = \
-                pd.concat([self.dict_of_financials['quarterly_financials'],
-                           t.quarterly_financials.T \
-                          .rename_axis(index='date') \
-                          .reset_index() \
-                          .assign(ticker=ticker) \
-                          .pipe(lambda x: clean_columns(x))])
-
-            self.dict_of_financials['recommendations'] = \
-                pd.concat([self.dict_of_financials['recommendations'],
-                           t.recommendations \
-                          .reset_index() \
-                          .assign(ticker=ticker) \
-                          .pipe(lambda x: clean_columns(x))])
-
-            self.dict_of_financials['shares'] = \
-                pd.concat([self.dict_of_financials['shares'],
-                           t.shares \
-                          .reset_index() \
-                          .assign(ticker=ticker) \
-                          .pipe(lambda x: clean_columns(x))])
-
-            self.dict_of_financials['sustainability'] = \
-                pd.concat([self.dict_of_financials['sustainability'],
-                           t.sustainability.T\
-                            .rename_axis(index='date')\
-                            .reset_index()
-                            .assign(ticker=ticker) \
-                            .pipe(lambda x: clean_columns(x))])
 
 
 ###### functions ######

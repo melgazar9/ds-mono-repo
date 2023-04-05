@@ -1,4 +1,4 @@
-from yf_elt_utils import *
+from yf_elt_stock_price_utils import *
 
 start = time.time()
 
@@ -8,13 +8,15 @@ yf_params = {'threads': False}
 
 ### run the pipeline ###
 
-pipeline = YFinanceELT(dwh='snowflake', num_workers=1)
+pipeline = YFPriceELT(dwh='snowflake', num_workers=1)
 
 pipeline.connect_to_db()
 
 pipeline.elt_stock_tickers()
-pipeline.elt_stock_prices(batch_download=True, intervals_to_download=intervals_to_download, yf_params=yf_params)
-
+pipeline.elt_stock_prices(batch_download=False,
+                          intervals_to_download=intervals_to_download,
+                          write_to_db_after_interval_complete=True,
+                          yf_params=yf_params)
 
 ### TODO: integrate fix missing tickers ###
 
