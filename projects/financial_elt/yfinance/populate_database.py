@@ -2,7 +2,7 @@ from yf_elt_stock_price_utils import *
 
 start = time.time()
 
-intervals_to_download = ('1m', '2m')
+intervals_to_download = ('1m', '2m', '5m', '1h', '1d')
 yf_params = {'threads': False}
 
 
