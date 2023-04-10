@@ -201,8 +201,7 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
                  account=os.environ.get('SNOWFLAKE_ACCOUNT'),
                  role=os.environ.get('SNOWFLAKE_ROLE'),
                  backend_engine='sqlalchemy',
-                 engine_string=None,
-                 keep_session_alive=False):
+                 engine_string=None):
 
         self.user = os.environ.get('SNOWFLAKE_USER') if user is None else user
         self.password = os.environ.get('SNOWFLAKE_PASSWORD') if password is None else password
@@ -213,7 +212,6 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
         self.role = role
         self.backend_engine = backend_engine
         self.engine_string = engine_string
-        self.keep_session_alive = keep_session_alive
 
         self.dwh_name = 'snowflake'
 
@@ -259,22 +257,16 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
         if self.backend_engine == 'sqlalchemy':
             if query.strip().lower().startswith('select'):
                 df = pd.read_sql(query, con=self.con, **read_sql_kwargs)
-                if not self.keep_session_alive:
-                    self.con.close()
                 return df
             else:
                 query = text(query)
                 self.con.execute(query)
-                if not self.keep_session_alive:
-                    self.con.close()
             return self
         else:
             cur = self.con.cursor()
             cur.execute(query)
             if query.strip().lower().startswith('select'):
                 df = cur.fetch_pandas_all()
-                if not self.keep_session_alive:
-                    self.con.close()
                 return df
         self.con.close()
         return self

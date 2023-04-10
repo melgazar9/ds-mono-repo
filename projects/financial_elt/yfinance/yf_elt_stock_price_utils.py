@@ -42,8 +42,9 @@ class YFPriceELT:
                  database='FINANCIAL_DB',
                  populate_bigquery=False,
                  populate_snowflake=False,
-                 convert_tz_aware_to_string=False,
+                 convert_tz_aware_to_string=True,
                  num_workers=1,
+                 debug_tickers=None,
                  verbose=True):
         self.dwh = dwh.lower()
         self.schema = schema
@@ -52,7 +53,12 @@ class YFPriceELT:
         self.populate_snowflake = populate_snowflake
         self.convert_tz_aware_to_string = convert_tz_aware_to_string
         self.num_workers = num_workers
+        self.debug_tickers = () if debug_tickers is None else self.debug_tickers
         self.verbose = verbose
+
+        # self.debug_tickers = ['AAPL', 'AMZN', 'GOOG', 'META', 'NFLX', 'SQ', 'BGA.AX', 'EUTLF', 'ZZZ.TO']
+
+        assert isinstance(self.debug_tickers, (tuple, list))
 
         self.df_dtype_mappings = {
             str: ['yahoo_ticker', 'numerai_ticker', 'bloomberg_ticker'],
@@ -276,7 +282,8 @@ class YFPriceELT:
                     stock_price_getter._create_stock_prices_table_if_not_exists(table_name=f'stock_prices_{i}')
 
                     # for debugging purposes
-                    # df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(['AAPL', 'AMZN', 'META', 'GOOG', 'SQ', 'SPY', 'QQQ', 'NFLX', 'LNKD'])]
+                    if len(self.debug_tickers):
+                        df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(self.debug_tickers)]
 
                     for ticker in df_tickers['yahoo_ticker'].tolist():
                         print(f'\nRunning ticker {ticker}\n') if self.verbose else None
@@ -335,7 +342,8 @@ class YFPriceELT:
             print('\n*** Running batch download ***\n')
 
             # for debugging purposes
-            # df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(['AAPL', 'AMZN', 'META', 'GOOG', 'SQ', 'SPY', 'QQQ', 'NFLX', 'LNKD'])]
+            if len(self.debug_tickers):
+                df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(self.debug_tickers)]
 
             stock_price_getter.batch_download_stock_price_history(
                 df_tickers['yahoo_ticker'].unique().tolist(),
@@ -571,8 +579,6 @@ class YFPriceELT:
             # unfortunately snowflake doesn't support multiple query statements in a single API request...
             # so we need to run each query separately
 
-            session_setting = dwh_client.keep_session_alive
-            dwh_client.keep_session_alive = True
             separate_query_statements = query_statements.split(';')
             for query in separate_query_statements[0:-1]:
                 query = query.replace('\n', '').replace('  ', '') + ';'
@@ -580,7 +586,6 @@ class YFPriceELT:
                 dwh_client.run_sql(query)
 
             dwh_client.con.close()
-            dwh_client.keep_session_alive = session_setting
 
         if create_timestamp_index:
             if dwh_client.dwh_name == 'mysql':
@@ -981,7 +986,6 @@ class YFStockPriceGetter:
                                      intervals_to_download=intervals_to_download,
                                      yf_history_params=yf_history_params)
         else:
-            self.db_con.keep_session_alive = True
             # dask.config.set(scheduler='processes')  # fails because of pickling error
             nunique_tickers = len(set(tickers))
             chunk_size = int(len(tickers) / self.num_workers)
