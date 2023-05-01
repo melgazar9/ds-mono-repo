@@ -113,7 +113,7 @@ class YFPriceELT:
                 if self.database is None:
                     self.database = 'FINANCIAL_DB'
 
-                db_connect_params = dict(schema=self.schema, database=self.database)
+                db_connect_params.update(dict(schema=self.schema, database=self.database))
                 self.db = SnowflakeConnect(**db_connect_params)
                 self.db.run_sql(f"CREATE DATABASE IF NOT EXISTS {self.database};")
                 self.db.run_sql(f"""CREATE SCHEMA IF NOT EXISTS {self.database}.{self.schema};""")
@@ -142,7 +142,12 @@ class YFPriceELT:
         if self.dwh in ['mysql', 'snowflake']:
             print('\nOverwriting df_tickers to database...\n') if self.verbose else None
 
-            df_tickers.to_sql('tickers', con=self.db.con, if_exists='replace', index=False, chunksize=16000)
+            df_tickers.to_sql('tickers',
+                              con=self.db.con,
+                              if_exists='replace',
+                              index=False,
+                              method='multi',
+                              chunksize=16000)
 
         if self.populate_bigquery or self.dwh == 'bigquery':
             job_config = bigquery.job.LoadJobConfig(write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE)
@@ -188,6 +193,7 @@ class YFPriceELT:
                               if_exists='replace',
                               index=False,
                               schema=self.schema,
+                              method='multi',
                               chunksize=16000)
         return
 
@@ -305,7 +311,7 @@ class YFPriceELT:
                             yf_history_params=yf_params
                         )
 
-                        if not df.shape[0]:
+                        if df is not None and not df.shape[0]:
                             continue
 
                         df = pd.merge(df, df_tickers, on='yahoo_ticker', how='left')
@@ -398,6 +404,7 @@ class YFPriceELT:
                           index=False,
                           if_exists='append',
                           schema=self.schema,
+                          method='multi',
                           chunksize=16000)
             except:
                 # Note: when setting self.dwh='snowflake' this will more than likely error out, but
@@ -453,6 +460,7 @@ class YFPriceELT:
                           index=False,
                           if_exists='append',
                           schema=self.schema,
+                          method='multi',
                           chunksize=16000)
 
         elif self.dwh == 'bigquery':
@@ -503,6 +511,7 @@ class YFPriceELT:
                               if_exists='append',
                               schema=self.schema,
                               index=False,
+                              method='multi',
                               chunksize=16000)
 
                 print(f'\nDeduping snowflake stock_prices_{interval}...\n') if self.verbose else None
@@ -919,7 +928,7 @@ class YFStockPriceGetter:
 
             self.n_requests += 1
 
-            if not df.shape[0]:
+            if df is not None and not df.shape[0]:
                 self.failed_ticker_downloads[yf_history_params['interval']].append(ticker)
                 return pd.DataFrame(columns=self.column_order)
         except:

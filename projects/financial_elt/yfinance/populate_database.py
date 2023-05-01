@@ -10,13 +10,15 @@ yf_params = {'threads': False}
 
 pipeline = YFPriceELT(dwh='snowflake', num_workers=1)
 
-pipeline.connect_to_db()
+pipeline.connect_to_db(connect_args={'CLIENT_KEEP_SESSION_ALIVE': True})
 
 pipeline.elt_stock_tickers()
 pipeline.elt_stock_prices(batch_download=False,
                           intervals_to_download=intervals_to_download,
                           write_to_db_after_interval_complete=True,
                           yf_params=yf_params)
+
+pipeline.db.con.close()
 
 ### TODO: integrate fix missing tickers ###
 
