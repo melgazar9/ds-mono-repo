@@ -958,9 +958,10 @@ class YFStockPriceGetter:
                         FROM
                           information_schema.tables
                         WHERE
-                          table_schema = '{self.db_con.schema}'
+                          lower(table_schema) = '{self.db_con.schema}'
                         """
                     ).pipe(lambda x: clean_columns(x))
+
             elif self.dwh == 'bigquery':
                 existing_tables = \
                     self.db_con.run_sql(
@@ -971,6 +972,8 @@ class YFStockPriceGetter:
                           `{self.db_con.schema}.INFORMATION_SCHEMA.TABLES`;
                         """
                     ).pipe(lambda x: clean_columns(x))
+
+            existing_tables['table_name'] = existing_tables['table_name'].str.lower()
 
             if f'{table_name}' in existing_tables['table_name'].tolist():
                 self.stored_tickers = \
