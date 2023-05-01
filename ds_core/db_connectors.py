@@ -201,7 +201,8 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
                  account=os.environ.get('SNOWFLAKE_ACCOUNT'),
                  role=os.environ.get('SNOWFLAKE_ROLE'),
                  backend_engine='sqlalchemy',
-                 engine_string=None):
+                 engine_string=None,
+                 connect_args=None):
 
         self.user = os.environ.get('SNOWFLAKE_USER') if user is None else user
         self.password = os.environ.get('SNOWFLAKE_PASSWORD') if password is None else password
@@ -212,8 +213,8 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
         self.role = role
         self.backend_engine = backend_engine
         self.engine_string = engine_string
-
         self.dwh_name = 'snowflake'
+        self.connect_args = connect_args
 
     def connect(self):
         snowflake_connection_params = {
@@ -225,6 +226,11 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
             'warehouse': self.warehouse,
             'role': self.role
         }
+
+        if self.connect_args:
+            snowflake_connection_params.update(self.connect_args)
+        else:
+            self.connect_args = {}
 
         if self.backend_engine == 'sqlalchemy':
             if self.engine_string is not None:
@@ -246,7 +252,8 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
                     self.engine_string = self.engine_string + f'?warehouse={self.warehouse}'
                 if self.role is not None:
                     self.engine_string = self.engine_string = self.engine_string + f'?role={self.role}'
-            engine = create_engine(self.engine_string)
+
+            engine = create_engine(self.engine_string, connect_args=self.connect_args)
             self.con = engine.connect()
         else:
             self.con = snowflake.connector.connect(**snowflake_connection_params)
@@ -255,17 +262,16 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
     def run_sql(self, query, **read_sql_kwargs):
         self.connect()
         if self.backend_engine == 'sqlalchemy':
-            if query.strip().lower().startswith('select'):
+            if query.strip().lower().startswith('select') or query.strip().lower().startswith('with'):
                 df = pd.read_sql(query, con=self.con, **read_sql_kwargs)
                 return df
             else:
                 query = text(query)
                 self.con.execute(query)
-            return self
         else:
             cur = self.con.cursor()
             cur.execute(query)
-            if query.strip().lower().startswith('select'):
+            if query.strip().lower().startswith('select') or query.strip().lower().startswith('with'):
                 df = cur.fetch_pandas_all()
                 return df
         self.con.close()

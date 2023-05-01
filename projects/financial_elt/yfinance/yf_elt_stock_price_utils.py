@@ -9,9 +9,7 @@ import dask
 from dask import delayed
 
 
-
 class YFPriceELT:
-
     """
     Description:
     ------------
@@ -244,7 +242,8 @@ class YFPriceELT:
         n_chunks: int of the number of chunks to download per API request
         """
 
-        intervals_to_download = (intervals_to_download,) if isinstance(intervals_to_download, str) else intervals_to_download
+        intervals_to_download = (intervals_to_download,) if isinstance(intervals_to_download,
+                                                                       str) else intervals_to_download
 
         df_tickers = \
             self.db.run_sql(f"SELECT yahoo_ticker, bloomberg_ticker, numerai_ticker FROM {self.schema}.tickers;")
@@ -267,7 +266,8 @@ class YFPriceELT:
             con = self.db.client
 
         if batch_download and write_to_db_after_interval_complete:
-            raise NotImplementedError('Cannot set write_to_db_after_interval_complete to True if batch_download is True')
+            raise NotImplementedError(
+                'Cannot set write_to_db_after_interval_complete to True if batch_download is True')
 
         if not batch_download:
             if write_to_db_after_interval_complete:
@@ -304,6 +304,7 @@ class YFPriceELT:
                             start_date = '1950-01-01'
 
                         print(f'\nStart date for ticker {ticker} is {start_date}\n') if self.verbose else None
+
                         yf_params['start'] = get_valid_yfinance_start_timestamp(interval=i, start=start_date)
 
                         df = stock_price_getter.download_single_stock_price_history(
@@ -330,7 +331,7 @@ class YFPriceELT:
                     if write_to_db_after_interval_complete:
                         self._write_df_to_db(df=df_interval, con=con, interval=i)
                         df_interval = pd.DataFrame()
-                    
+
                     gc.collect()
 
                 if self.verbose:
@@ -534,6 +535,7 @@ class YFPriceELT:
         if 'dedupe' in idx_cols['INDEX_NAME'].tolist():
             self.db.run_sql(f"ALTER TABLE stock_prices_{interval} DROP INDEX dedupe;")
         return
+
     def _dedupe_yf_stock_price_interval(self, interval, create_timestamp_index=True, dwh_client=None):
 
         ### need to perform table deduping because yfinance timestamp restrictions don't allow minutes as input ###
@@ -730,6 +732,7 @@ class YFPriceELT:
 
         return
 
+
 class YFStockPriceGetter:
     """
 
@@ -923,8 +926,8 @@ class YFStockPriceGetter:
         try:
             df = \
                 t.history(**yf_history_params) \
-                 .rename_axis(index='timestamp') \
-                 .pipe(lambda x: clean_columns(x))
+                    .rename_axis(index='timestamp') \
+                    .pipe(lambda x: clean_columns(x))
 
             self.n_requests += 1
 
@@ -1031,8 +1034,8 @@ class YFStockPriceGetter:
                         self.dict_of_dfs[i] = \
                             pd.concat([
                                 self.dict_of_dfs[i].reset_index(drop=True),
-                                output_list[j][i].reset_index(drop=True)])\
-                              .reset_index(drop=True)
+                                output_list[j][i].reset_index(drop=True)]) \
+                                .reset_index(drop=True)
             elif parallel_backend == 'multiprocessing':
                 raise NotImplementedError('\nSetting parallel_backend to multiprocessing is currently unstable.\n')
                 # pool = mp.Pool(self.num_workers)
@@ -1045,7 +1048,6 @@ class YFStockPriceGetter:
                 self.db_con.con.close()
 
         return self
-
 
     def _batch_download(self, tickers, intervals_to_download=('1m', '2m', '5m', '1h', '1d'), yf_history_params=None):
         """
@@ -1105,9 +1107,9 @@ class YFStockPriceGetter:
                     t = yf.Tickers(tickers)
                 df_i = \
                     t.history(**yf_history_params) \
-                     .stack() \
-                     .rename_axis(index=['timestamp', self.yahoo_ticker_colname]) \
-                     .reset_index()
+                        .stack() \
+                        .rename_axis(index=['timestamp', self.yahoo_ticker_colname]) \
+                        .reset_index()
 
                 self.n_requests += 1
 
@@ -1148,8 +1150,8 @@ class YFStockPriceGetter:
                                 t = yf.Ticker(chunk[0])
                                 df_tmp = \
                                     t.history(**yf_history_params) \
-                                     .rename_axis(index='timestamp') \
-                                     .pipe(lambda x: clean_columns(x))
+                                        .rename_axis(index='timestamp') \
+                                        .pipe(lambda x: clean_columns(x))
 
                                 self.n_requests += 1
 
@@ -1189,10 +1191,10 @@ class YFStockPriceGetter:
                             t = yf.Tickers(chunk)
                             df_tmp = \
                                 t.history(**yf_history_params) \
-                                 .stack() \
-                                 .rename_axis(index=['timestamp', self.yahoo_ticker_colname]) \
-                                 .reset_index() \
-                                 .pipe(lambda x: clean_columns(x))
+                                    .stack() \
+                                    .rename_axis(index=['timestamp', self.yahoo_ticker_colname]) \
+                                    .reset_index() \
+                                    .pipe(lambda x: clean_columns(x))
 
                             self.n_requests += 1
 
@@ -1305,7 +1307,7 @@ class TickerDownloader:
 
         numerai_yahoo_tickers = \
             cls.download_numerai_signals_ticker_map() \
-               .rename(columns={'yahoo': 'yahoo_ticker', 'ticker': 'numerai_ticker'})
+                .rename(columns={'yahoo': 'yahoo_ticker', 'ticker': 'numerai_ticker'})
 
         df1 = pd.merge(df_pts_tickers, numerai_yahoo_tickers, on='yahoo_ticker', how='left').set_index('yahoo_ticker')
         df2 = pd.merge(numerai_yahoo_tickers, df_pts_tickers, on='yahoo_ticker', how='left').set_index('yahoo_ticker')
@@ -1330,7 +1332,7 @@ class TickerDownloader:
             df_tickers_wide.reset_index() \
                 [['yahoo_ticker', 'google_ticker', 'bloomberg_ticker', 'numerai_ticker', 'yahoo_ticker_old']] \
                 .sort_values(
-                    by=['yahoo_ticker', 'google_ticker', 'bloomberg_ticker', 'numerai_ticker', 'yahoo_ticker_old']) \
+                by=['yahoo_ticker', 'google_ticker', 'bloomberg_ticker', 'numerai_ticker', 'yahoo_ticker_old']) \
                 .drop_duplicates()
 
         df_tickers.loc[:, 'yahoo_valid_pts'] = False
@@ -1344,9 +1346,6 @@ class TickerDownloader:
         ] = True
 
         return df_tickers
-
-
-
 
 
 ###### functions ######
