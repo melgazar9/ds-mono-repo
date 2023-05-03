@@ -31,6 +31,11 @@ class YFPriceETL:
     convert_tz_aware_to_string: bool whether to change the data type of timestamp_tz_aware to a string
             likely need to set to True when using a MySQL database. Postgres and cloud based platforms like BigQuery
             and Snowflake should be robust to tz-aware timestamps.
+    num_workers: int of number of threads to use when downloading yfinance stock price data
+    debug_ticker: array or tuple of tickers to debug in debug mode
+    write_method: str of the method to write the stock price df to the db / dwh
+    to_sql_chunksize: int of chunksize to use when writing the df to the db / dwh
+    write_pandas_threads: only used if write_method='write_pandas' - the number of threads to use called in write_pandas
     verbose: bool to print steps in stdout
     """
 
@@ -43,7 +48,9 @@ class YFPriceETL:
                  convert_tz_aware_to_string=True,
                  num_workers=1,
                  debug_tickers=None,
-                 write_method='multi',
+                 write_method='write_pandas',
+                 to_sql_chunksize=16000,
+                 write_pandas_threads=6,
                  verbose=True):
         self.dwh = dwh.lower()
         self.schema = schema
@@ -54,6 +61,8 @@ class YFPriceETL:
         self.num_workers = num_workers
         self.debug_tickers = () if debug_tickers is None else debug_tickers
         self.write_method = write_method
+        self.to_sql_chunksize = to_sql_chunksize
+        self.write_pandas_threads = write_pandas_threads
         self.verbose = verbose
 
         # self.debug_tickers = ['AAPL', 'AMZN', 'GOOG', 'META', 'NFLX', 'SQ', 'BGA.AX', 'EUTLF', 'ZZZ.TO']
@@ -139,18 +148,48 @@ class YFPriceETL:
     def etl_stock_tickers(self):
         ticker_downloader = TickerDownloader()
         df_tickers = ticker_downloader.download_valid_tickers()
+
         if self.dwh in ['mysql', 'snowflake']:
             print('\nOverwriting df_tickers to database...\n') if self.verbose else None
 
-            if self.write_method == pd_writer:
+            if self.write_method in [pd_writer, 'write_pandas']:
                 df_tickers.columns = df_tickers.columns.str.upper()
 
-            df_tickers.to_sql('tickers',
-                              con=self.db.con,
-                              if_exists='replace',
-                              index=False,
-                              method=self.write_method,
-                              chunksize=10000)
+            if self.write_method.lower() != 'write_pandas':
+                df_tickers.to_sql('tickers',
+                                  con=self.db.con,
+                                  if_exists='replace',
+                                  index=False,
+                                  method=self.write_method,
+                                  chunksize=self.to_sql_chunksize)
+            else:
+                if self.dwh == 'snowflake':
+                    original_backend = self.db.backend_engine
+                    self.db.backend_engine = 'snowflake_connector'
+                    self.db.connect()
+                    write_pandas(df=df_tickers,
+                                 conn=self.db.con,
+                                 database=self.db.database.upper(),
+                                 schema=self.db.schema.upper(),
+                                 table_name='TICKERS',
+                                 chunk_size=self.to_sql_chunksize,
+                                 compression='gzip',
+                                 parallel=self.write_pandas_threads,
+                                 overwrite=True,
+                                 auto_create_table=True)
+                    self.db.backend_engine = original_backend
+                else:
+                    self.db.connect()
+                    write_pandas(df=df_tickers,
+                                 conn=self.db.con,
+                                 database=self.db.database,
+                                 schema=self.db.schema,
+                                 table_name='tickers',
+                                 chunk_size=self.to_sql_chunksize,
+                                 compression='gzip',
+                                 parallel=self.write_pandas_threads,
+                                 overwrite=True,
+                                 auto_create_table=True)
 
         if self.populate_bigquery or self.dwh == 'bigquery':
             job_config = bigquery.job.LoadJobConfig(write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE)
@@ -192,16 +231,37 @@ class YFPriceETL:
         if self.populate_snowflake and self.dwh != 'snowflake':
             self.snowflake_client.connect()
 
-            if self.write_method == pd_writer:
+            if self.write_method in [pd_writer, 'write_pandas']:
                 df_tickers.columns = df_tickers.columns.str.upper()
 
-            df_tickers.to_sql('tickers',
-                              con=self.snowflake_client.con,
-                              if_exists='replace',
-                              index=False,
-                              schema=self.schema,
-                              method=self.write_method,
-                              chunksize=10000)
+            if self.write_method.lower() != 'write_pandas':
+                df_tickers.to_sql('tickers',
+                                  con=self.snowflake_client.con,
+                                  if_exists='replace',
+                                  index=False,
+                                  schema=self.schema,
+                                  method=self.write_method,
+                                  chunksize=self.to_sql_chunksize)
+            else:
+                original_backend = self.snowflake_client.backend_engine
+                self.snowflake_client.backend_engine = 'snowflake_connector'
+                self.snowflake_client.connect()
+                write_pandas(df=df_tickers,
+                             conn=self.snowflake_client.con,
+                             database=self.snowflake_client.database.upper(),
+                             schema=self.snowflake_client.schema.upper(),
+                             table_name='TICKERS',
+                             chunk_size=self.to_sql_chunksize,
+                             compression='gzip',
+                             parallel=self.write_pandas_threads,
+                             overwrite=True,
+                             auto_create_table=True)
+
+                self.snowflake_client.backend_engine = original_backend
+                self.snowflake_client.con.close()
+
+            self.snowflake_client.con.close()
+
         return
 
     def etl_stock_prices(self,
@@ -404,22 +464,39 @@ class YFPriceETL:
                 self._drop_index_constraint(interval=interval)
                 self.db.connect()
             try:
-                self.db.connect()
-                if self.dwh in ['mysql', 'snowflake']:
-                    con = self.db.con
-                elif self.dwh == 'bigquery':
-                    con = self.db.client
-
-                if self.write_method == pd_writer:
+                if self.dwh == 'snowflake' and self.write_method in [pd_writer, 'write_pandas']:
                     df.columns = df.columns.str.upper()
 
-                df.to_sql(f'stock_prices_{interval}',
-                          con=con,
-                          index=False,
-                          if_exists='append',
-                          schema=self.schema,
-                          method=self.write_method,
-                          chunksize=16000)
+                if self.dwh == 'snowflake' and self.write_method == 'write_pandas':
+                    original_backend = self.db.backend_engine
+                    self.db.backend_engine = 'snowflake_connector'
+                    self.db.connect()
+                    write_pandas(df=df,
+                                 conn=self.db.con,
+                                 database=self.db.database.upper(),
+                                 schema=self.db.schema.upper(),
+                                 table_name=f'stock_prices_{interval}'.upper(),
+                                 chunk_size=self.to_sql_chunksize,
+                                 compression='gzip',
+                                 parallel=self.write_pandas_threads,
+                                 overwrite=False,
+                                 auto_create_table=True)
+                    self.db.backend_engine = original_backend
+
+                else:
+                    self.db.connect()
+                    if self.dwh in ['mysql', 'snowflake']:
+                        con = self.db.con
+                    elif self.dwh == 'bigquery':
+                        con = self.db.client
+
+                    df.to_sql(f'stock_prices_{interval}',
+                              con=con,
+                              index=False,
+                              if_exists='append',
+                              schema=self.schema,
+                              method=self.write_method,
+                              chunksize=self.chunksize)
             except:
                 # Note: when setting self.dwh='snowflake' this will more than likely error out, but
                 # I'll try the below commands anyway. It's best to set dwh='mysql' and then populate
@@ -463,22 +540,40 @@ class YFPriceETL:
 
                 df['timestamp_tz_aware'] = df['timestamp_tz_aware'].astype(str)
 
-                self.db.connect()
-                if self.dwh in ['mysql', 'snowflake']:
-                    con = self.db.con
-                elif self.dwh == 'bigquery':
-                    con = self.db.client
-
-                if self.write_method == pd_writer:
+                if self.write_method in [pd_writer, 'write_pandas']:
                     df.columns = df.columns.str.upper()
 
-                df.to_sql(f'stock_prices_{interval}',
-                          con=con,
-                          index=False,
-                          if_exists='append',
-                          schema=self.schema,
-                          method=self.write_method,
-                          chunksize=10000)
+                if self.dwh == 'snowflake' and self.write_method == 'write_pandas':
+                    original_backend = self.db.backend_engine
+                    self.db.backend_engine = 'snowflake_connector'
+                    self.db.connect()
+                    write_pandas(df=df,
+                                 conn=self.db.con,
+                                 database=self.db.database.upper(),
+                                 schema=self.db.schema.upper(),
+                                 table_name=f'stock_prices_{interval}'.upper(),
+                                 chunk_size=self.to_sql_chunksize,
+                                 compression='gzip',
+                                 parallel=self.write_pandas_threads,
+                                 overwrite=False,
+                                 auto_create_table=True)
+
+                    self.db.backend_engine = original_backend
+
+                else:
+                    self.db.connect()
+                    if self.dwh in ['mysql', 'snowflake']:
+                        con = self.db.con
+                    elif self.dwh == 'bigquery':
+                        con = self.db.client
+
+                    df.to_sql(f'stock_prices_{interval}',
+                              con=con,
+                              index=False,
+                              if_exists='append',
+                              schema=self.schema,
+                              method=self.write_method,
+                              chunksize=self.to_sql_chunksize)
 
         elif self.dwh == 'bigquery':
             print('\nUploading to BigQuery...\n') if self.verbose else None
@@ -523,18 +618,36 @@ class YFPriceETL:
             if self.populate_snowflake and self.dwh != 'snowflake':
                 print(f'\nPopulating data from {self.dwh} to snowflake...\n') if self.verbose else None
 
-                self.snowflake_client.connect()
-
-                if self.write_method == pd_writer:
+                if self.write_method in [pd_writer, 'write_pandas']:
                     df_tmp.columns = df_tmp.columns.str.upper()
 
-                df_tmp.to_sql(f'stock_prices_{interval}',
-                              con=self.snowflake_client.con,
-                              if_exists='append',
-                              schema=self.schema,
-                              index=False,
-                              method=self.write_method,
-                              chunksize=10000)
+                if self.write_method == 'write_pandas':
+                    original_backend = self.snowflake_client.backend_engine
+                    self.snowflake_client.backend_engine = 'snowflake_connector'
+                    self.snowflake_client.connect()
+                    write_pandas(df=df,
+                                 conn=self.snowflake_client.con,
+                                 database=self.snowflake_client.database.upper(),
+                                 schema=self.snowflake_client.schema.upper(),
+                                 table_name=f'stock_prices_{interval}'.upper(),
+                                 chunk_size=self.to_sql_chunksize,
+                                 compression='gzip',
+                                 parallel=self.write_pandas_threads,
+                                 overwrite=False,
+                                 auto_create_table=True)
+
+                    self.snowflake_client.backend_engine = original_backend
+                    self.snowflake_client.con.close()
+
+                else:
+                    self.snowflake_client.connect()
+                    df_tmp.to_sql(f'stock_prices_{interval}',
+                                  con=self.snowflake_client.con,
+                                  if_exists='append',
+                                  schema=self.schema,
+                                  index=False,
+                                  method=self.write_method,
+                                  chunksize=self.to_sql_chunksize)
 
                 print(f'\nDeduping snowflake stock_prices_{interval}...\n') if self.verbose else None
                 self._dedupe_yf_stock_price_interval(interval=interval,

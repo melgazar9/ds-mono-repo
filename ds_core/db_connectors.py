@@ -257,6 +257,7 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
             self.con = engine.connect()
         else:
             self.con = snowflake.connector.connect(**snowflake_connection_params)
+
         return self
 
     def run_sql(self, query, **read_sql_kwargs):

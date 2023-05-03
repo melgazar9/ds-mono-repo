@@ -10,7 +10,7 @@ yf_params = {'threads': False}
 
 pipeline = YFPriceETL(dwh='snowflake', num_workers=1)
 
-pipeline.connect_to_db(connect_args={'CLIENT_KEEP_SESSION_ALIVE': True})
+pipeline.connect_to_db()
 
 pipeline.etl_stock_tickers()
 pipeline.etl_stock_prices(batch_download=False,
@@ -20,7 +20,7 @@ pipeline.etl_stock_prices(batch_download=False,
 
 pipeline.db.con.close()
 
-### TODO: integrate fix missing tickers ###
+### TODO: integrate fix missing ticker timestamps ###
 
 # start_fix = time.time()
 
