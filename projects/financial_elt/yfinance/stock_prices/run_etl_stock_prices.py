@@ -1,4 +1,4 @@
-from etl_price_utils import *
+from etl_stock_price_utils import *
 
 start = time.time()
 
@@ -8,7 +8,7 @@ yf_params = {'threads': False}
 
 ### run the pipeline ###
 
-pipeline = YFPriceETL(dwh='snowflake', num_workers=1)
+pipeline = YFPriceETL(dwh='snowflake', num_workers=1, write_method=pd_writer)
 
 pipeline.connect_to_db(connect_args={'CLIENT_KEEP_SESSION_ALIVE': True})
 

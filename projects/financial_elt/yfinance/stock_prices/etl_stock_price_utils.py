@@ -43,6 +43,7 @@ class YFPriceETL:
                  convert_tz_aware_to_string=True,
                  num_workers=1,
                  debug_tickers=None,
+                 write_method='multi',
                  verbose=True):
         self.dwh = dwh.lower()
         self.schema = schema
@@ -52,6 +53,7 @@ class YFPriceETL:
         self.convert_tz_aware_to_string = convert_tz_aware_to_string
         self.num_workers = num_workers
         self.debug_tickers = () if debug_tickers is None else debug_tickers
+        self.write_method = write_method
         self.verbose = verbose
 
         # self.debug_tickers = ['AAPL', 'AMZN', 'GOOG', 'META', 'NFLX', 'SQ', 'BGA.AX', 'EUTLF', 'ZZZ.TO']
@@ -140,12 +142,15 @@ class YFPriceETL:
         if self.dwh in ['mysql', 'snowflake']:
             print('\nOverwriting df_tickers to database...\n') if self.verbose else None
 
+            if self.write_method == pd_writer:
+                df_tickers.columns = df_tickers.columns.str.upper()
+
             df_tickers.to_sql('tickers',
                               con=self.db.con,
                               if_exists='replace',
                               index=False,
-                              method='multi',
-                              chunksize=16000)
+                              method=self.write_method,
+                              chunksize=10000)
 
         if self.populate_bigquery or self.dwh == 'bigquery':
             job_config = bigquery.job.LoadJobConfig(write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE)
@@ -186,13 +191,17 @@ class YFPriceETL:
 
         if self.populate_snowflake and self.dwh != 'snowflake':
             self.snowflake_client.connect()
+
+            if self.write_method == pd_writer:
+                df_tickers.columns = df_tickers.columns.str.upper()
+
             df_tickers.to_sql('tickers',
                               con=self.snowflake_client.con,
                               if_exists='replace',
                               index=False,
                               schema=self.schema,
-                              method='multi',
-                              chunksize=16000)
+                              method=self.write_method,
+                              chunksize=10000)
         return
 
     def etl_stock_prices(self,
@@ -400,12 +409,16 @@ class YFPriceETL:
                     con = self.db.con
                 elif self.dwh == 'bigquery':
                     con = self.db.client
+
+                if self.write_method == pd_writer:
+                    df.columns = df.columns.str.upper()
+
                 df.to_sql(f'stock_prices_{interval}',
                           con=con,
                           index=False,
                           if_exists='append',
                           schema=self.schema,
-                          method='multi',
+                          method=self.write_method,
                           chunksize=16000)
             except:
                 # Note: when setting self.dwh='snowflake' this will more than likely error out, but
@@ -456,13 +469,16 @@ class YFPriceETL:
                 elif self.dwh == 'bigquery':
                     con = self.db.client
 
+                if self.write_method == pd_writer:
+                    df.columns = df.columns.str.upper()
+
                 df.to_sql(f'stock_prices_{interval}',
                           con=con,
                           index=False,
                           if_exists='append',
                           schema=self.schema,
-                          method='multi',
-                          chunksize=16000)
+                          method=self.write_method,
+                          chunksize=10000)
 
         elif self.dwh == 'bigquery':
             print('\nUploading to BigQuery...\n') if self.verbose else None
@@ -506,14 +522,19 @@ class YFPriceETL:
 
             if self.populate_snowflake and self.dwh != 'snowflake':
                 print(f'\nPopulating data from {self.dwh} to snowflake...\n') if self.verbose else None
+
                 self.snowflake_client.connect()
+
+                if self.write_method == pd_writer:
+                    df_tmp.columns = df_tmp.columns.str.upper()
+
                 df_tmp.to_sql(f'stock_prices_{interval}',
                               con=self.snowflake_client.con,
                               if_exists='append',
                               schema=self.schema,
                               index=False,
-                              method='multi',
-                              chunksize=16000)
+                              method=self.write_method,
+                              chunksize=10000)
 
                 print(f'\nDeduping snowflake stock_prices_{interval}...\n') if self.verbose else None
                 self._dedupe_yf_stock_price_interval(interval=interval,

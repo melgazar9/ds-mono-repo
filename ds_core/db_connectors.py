@@ -1,7 +1,7 @@
 from ds_core.ds_utils import *
 from sqlalchemy import create_engine, text
 import snowflake.connector
-from snowflake.connector.pandas_tools import write_pandas
+from snowflake.connector.pandas_tools import write_pandas, pd_writer
 import pandas_gbq as pdg
 from google.cloud import bigquery
 from pymongo import MongoClient

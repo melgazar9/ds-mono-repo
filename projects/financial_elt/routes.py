@@ -19,7 +19,7 @@ def healthcheck():
 def yfinance_etl_prices():
     with app.app_context():
         project_dir = 'yfinance/stock_prices'
-        run_command = 'python run_etl_prices.py'
+        run_command = 'python run_etl_stock_prices.py'
         shell_command = f'cd {os.path.join(app.root_path)}/{project_dir}; {run_command};'
         subprocess.run(shell_command, shell=True)
         return make_response(f'Last ran project {project_dir} at {cur_timestamp(clean_string=False)}.', 200)
