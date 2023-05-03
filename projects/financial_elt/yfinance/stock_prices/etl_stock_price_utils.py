@@ -381,7 +381,7 @@ class YFPriceETL:
                             yf_history_params=yf_params
                         )
 
-                        if df is not None and not df.shape[0]:
+                        if df is None or not df.shape[0]:
                             continue
 
                         df = pd.merge(df, df_tickers, on='yahoo_ticker', how='left')
