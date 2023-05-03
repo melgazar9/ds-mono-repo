@@ -15,11 +15,11 @@ def healthcheck():
         return make_response("Server is running...", 200)
 
 
-@app.route('/financial-elt/yfinance-elt', methods=['GET'])
-def yfinance_elt():
+@app.route('/financial-elt/yfinance/stock-prices', methods=['GET'])
+def yfinance_etl_prices():
     with app.app_context():
-        project_dir = 'yfinance/'
-        run_command = 'python populate_database.py'
+        project_dir = 'yfinance/stock_prices'
+        run_command = 'python run_etl_prices.py'
         shell_command = f'cd {os.path.join(app.root_path)}/{project_dir}; {run_command};'
         subprocess.run(shell_command, shell=True)
         return make_response(f'Last ran project {project_dir} at {cur_timestamp(clean_string=False)}.', 200)

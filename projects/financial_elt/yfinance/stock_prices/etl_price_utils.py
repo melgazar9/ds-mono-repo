@@ -9,12 +9,12 @@ import dask
 from dask import delayed
 
 
-class YFPriceELT:
+class YFPriceETL:
     """
     Description:
     ------------
-    Responsible for yfinance extracting and loading yfinance data (The E and L in ELT).
-    Extracts data from instances of yfinance object and loads data into a MySQL database.
+    Responsible for yfinance ETL
+    Extracts data from instances of yfinance object, applies minor transformations, and loads data into a db or dwh.
     If writing a custom DB connector class the method names must contain "connect" and "run_sql"
         connect must connect to the DB and run_sql must run sql queries with read and write privileges
 
@@ -51,7 +51,7 @@ class YFPriceELT:
         self.populate_snowflake = populate_snowflake
         self.convert_tz_aware_to_string = convert_tz_aware_to_string
         self.num_workers = num_workers
-        self.debug_tickers = () if debug_tickers is None else self.debug_tickers
+        self.debug_tickers = () if debug_tickers is None else debug_tickers
         self.verbose = verbose
 
         # self.debug_tickers = ['AAPL', 'AMZN', 'GOOG', 'META', 'NFLX', 'SQ', 'BGA.AX', 'EUTLF', 'ZZZ.TO']
@@ -134,7 +134,7 @@ class YFPriceELT:
         self.db.connect()
         return self
 
-    def elt_stock_tickers(self):
+    def etl_stock_tickers(self):
         ticker_downloader = TickerDownloader()
         df_tickers = ticker_downloader.download_valid_tickers()
         if self.dwh in ['mysql', 'snowflake']:
@@ -195,7 +195,7 @@ class YFPriceELT:
                               chunksize=16000)
         return
 
-    def elt_stock_prices(self,
+    def etl_stock_prices(self,
                          intervals_to_download=('1m', '2m', '5m', '1h', '1d'),
                          batch_download=False,
                          write_to_db_after_interval_complete=True,

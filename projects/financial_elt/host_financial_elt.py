@@ -10,9 +10,9 @@ config.read('config.ini')
 
 scheduler = BackgroundScheduler()
 
-if ast.literal_eval(config['YFINANCE_ELT']['host_yfinance_elt']):
-    cron = json_string_to_dict(config['YFINANCE_ELT']['yfinance_elt_cron'])
-    scheduler.add_job(yfinance_elt, trigger='cron', **cron)
+if ast.literal_eval(config['YF_STOCK_PRICE_ETL']['host_yf_stock_price_etl']):
+    cron = json_string_to_dict(config['YF_STOCK_PRICE_ETL']['yfinance_stock_price_etl_cron'])
+    scheduler.add_job(yfinance_etl_prices, trigger='cron', **cron)
 
 
 if __name__ == "__main__":

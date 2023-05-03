@@ -264,15 +264,18 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
         if self.backend_engine == 'sqlalchemy':
             if query.strip().lower().startswith('select') or query.strip().lower().startswith('with'):
                 df = pd.read_sql(query, con=self.con, **read_sql_kwargs)
+                self.con.close()
                 return df
             else:
                 query = text(query)
                 self.con.execute(query)
+                self.con.close()
         else:
             cur = self.con.cursor()
             cur.execute(query)
             if query.strip().lower().startswith('select') or query.strip().lower().startswith('with'):
                 df = cur.fetch_pandas_all()
+                self.con.close()
                 return df
         self.con.close()
         return self
