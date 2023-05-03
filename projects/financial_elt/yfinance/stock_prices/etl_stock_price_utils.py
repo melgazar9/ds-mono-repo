@@ -207,6 +207,7 @@ class YFPriceETL:
                      yahoo_valid_numerai BOOL
                     )
                 """)
+
                 self.db.client.load_table_from_dataframe(df_tickers, f'{self.schema}.tickers', job_config=job_config)
 
             elif self.populate_bigquery:
@@ -311,8 +312,8 @@ class YFPriceETL:
         n_chunks: int of the number of chunks to download per API request
         """
 
-        intervals_to_download = (intervals_to_download,) if isinstance(intervals_to_download,
-                                                                       str) else intervals_to_download
+        intervals_to_download = \
+            (intervals_to_download,) if isinstance(intervals_to_download, str) else intervals_to_download
 
         df_tickers = \
             self.db.run_sql(f"SELECT yahoo_ticker, bloomberg_ticker, numerai_ticker FROM {self.schema}.tickers;")
@@ -335,8 +336,7 @@ class YFPriceETL:
             con = self.db.client
 
         if batch_download and write_to_db_after_interval_complete:
-            raise NotImplementedError(
-                'Cannot set write_to_db_after_interval_complete to True if batch_download is True')
+            raise NotImplementedError('Cannot set write_to_db_after_interval_complete=True if batch_download=True')
 
         if not batch_download:
             if write_to_db_after_interval_complete:
@@ -457,7 +457,7 @@ class YFPriceETL:
                 gc.collect()
         return
 
-    def _write_df_to_db(self, df, con, interval, retry_tmp_dir=os.path.expanduser('~/tmp')):
+    def _write_df_to_db(self, df, con, interval, retry_tmp_dir=os.path.expanduser('~/.cache/tmp')):
         print(f'\nWriting to database {self.dwh}...\n') if self.verbose else None
         if self.dwh in ['mysql', 'snowflake']:
             if self.dwh == 'mysql':

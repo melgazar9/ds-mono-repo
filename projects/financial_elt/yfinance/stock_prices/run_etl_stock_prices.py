@@ -8,7 +8,7 @@ yf_params = {'threads': False}
 
 ### run the pipeline ###
 
-pipeline = YFPriceETL(dwh='snowflake', num_workers=1)
+pipeline = YFPriceETL(dwh='bigquery', num_workers=1)
 
 pipeline.connect_to_db()
 
