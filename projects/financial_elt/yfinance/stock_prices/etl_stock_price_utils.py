@@ -20,10 +20,10 @@ class YFPriceETL:
 
     Parameters
     ----------
-    dwh: str of the data warehouse name to connect to when calling self.connect_to_db()
-        supported data warehouses are MySQL, BigQuery, and Snowflake
     schema: str of the schema name to create and dump data to within the data warehouse (e.g. 'yfinance')
     database: str of the database name - currently only used when dwh='snowflake'
+    populate_mysql: bool to append MySQL with data dumped to db (dwh).
+        MySQL tables will add index constraint & dedupe after each interval loop (e.g. after each '1d', '1m', etc...)
     populate_bigquery: bool to append BigQuery with data dumped to db (dwh).
         BigQuery tables will be deduped after each interval loop (e.g. after each '1d', '1m', etc...)
     populate_snowflake: bool to append Snowflake with data dumped to db (dwh).
@@ -32,7 +32,7 @@ class YFPriceETL:
             likely need to set to True when using a MySQL database. Postgres and cloud based platforms like BigQuery
             and Snowflake should be robust to tz-aware timestamps.
     num_workers: int of number of threads to use when downloading yfinance stock price data
-    debug_ticker: array or tuple of tickers to debug in debug mode
+    debug_tickers: array or tuple of tickers to debug in debug mode
     write_method: str of the method to write the stock price df to the db / dwh
     to_sql_chunksize: int of chunksize to use when writing the df to the db / dwh
     write_pandas_threads: only used if write_method='write_pandas' - the number of threads to use called in write_pandas
@@ -158,17 +158,13 @@ class YFPriceETL:
         return self
 
 
-    def connect_to_dwhs(self, create_schema_if_not_exists=True):
+    def connect_to_dwhs(self):
         """
         Description
         -----------
-        Connect to database
-
-        Parameters
-        ----------
-        create_schema_if_not_exists: bool to create the schema if it doesn't exist
-
+        Connect to dwhs determined by which populate parameters are true when initializing the class
         """
+
         if self.populate_mysql:
             self._connect_to_mysql()
             self.dwh_connections['mysql'] = self.mysql_client
@@ -446,6 +442,17 @@ class YFPriceETL:
         return
 
     def _write_df_to_all_dbs(self, df, interval):
+        """
+        Description
+        -----------
+        Write dataframe of specified interval to the dwhs supplied in initialization (e.g. populate_snowflake, etc).
+        Tables will be stored to self.schema.stock_prices_<interval> in the dwh
+
+        Parameters:
+            df: pandas df of stock price data
+            interval: str of the interval that was pulled from yfinance (e.g. '1m')
+        """
+
         if self.populate_mysql:
             self._write_to_mysql(df=df, interval=interval)
             self._dedupe_mysql_table(interval=interval)
@@ -460,6 +467,15 @@ class YFPriceETL:
         return self
 
     def _get_query_dtype_fix(self, interval):
+        """
+        Description
+        -----------
+        Static query dtype fix that is called by other methods
+
+        Parameters:
+            interval: str of the interval that was pulled from yfinance (e.g. '1m')
+        """
+
         query_dtype_fix = f"""
             DROP TABLE IF EXISTS {self.schema}.tmp_table; 
             CREATE TABLE {self.schema}.tmp_table AS 
@@ -484,6 +500,17 @@ class YFPriceETL:
         return query_dtype_fix
 
     def _write_to_mysql(self, df, interval):
+        """
+        Description
+        -----------
+        Write dataframe of specified interval to the MySQL.
+        Tables will be stored to self.schema.stock_prices_<interval> in MySQL.
+
+        Parameters:
+            df: pandas df of stock price data
+            interval: str of the interval that was pulled from yfinance (e.g. '1m')
+        """
+
         print(f'\nWriting to database MySQL...\n') if self.verbose else None
         self._drop_mysql_index_constraint(interval=interval)
         method = 'multi' if self.write_method == 'write_pandas' else self.write_method
@@ -520,6 +547,15 @@ class YFPriceETL:
         return self
 
     def _dedupe_mysql_table(self, interval):
+        """
+        Description
+        -----------
+        Query that dedupes MySQL table stock_price_<interval> by timestamp, yahoo_ticker
+
+        Parameters:
+            interval: str of the interval that was pulled from yfinance (e.g. '1m')
+        """
+
         print(f'\nDeduping MySQL table stock_prices_{interval}...\n') if self.verbose else None
 
         query_statements = f"""
@@ -549,7 +585,18 @@ class YFPriceETL:
 
         return self
 
-    def _write_to_snowflake(self, df, interval, retry_cache_dir=os.path.expanduser('~/.cache/tmp')):
+    def _write_to_snowflake(self, df, interval):
+        """
+        Description
+        -----------
+        Write dataframe of specified interval to the Snowflake.
+        Tables will be stored to self.schema.stock_prices_<interval> in Snowflake.
+
+        Parameters:
+            df: pandas df of stock price data
+            interval: str of the interval that was pulled from yfinance (e.g. '1m')
+        """
+
         print(f'\nWriting to Snowflake...\n') if self.verbose else None
 
         try:
@@ -628,6 +675,15 @@ class YFPriceETL:
         return self
 
     def _dedupe_snowflake_table(self, interval):
+        """
+        Description
+        -----------
+        Query that dedupes Snowflake table stock_price_<interval> by timestamp, yahoo_ticker
+
+        Parameters:
+            interval: str of the interval that was pulled from yfinance (e.g. '1m')
+        """
+
         self.snowflake_client.run_sql(f"USE {self.snowflake_client.database}")
         initial_syntax = f"INSERT OVERWRITE INTO {self.schema}.stock_prices_{interval} "
         query_statements = f"""
@@ -667,6 +723,17 @@ class YFPriceETL:
         return self
 
     def _write_to_bigquery(self, df, interval, retry_cache_dir=os.path.expanduser('~/.cache/bigquery')):
+        """
+        Description
+        -----------
+        Write dataframe of specified interval to the BigQuery.
+        Tables will be stored to self.schema.stock_prices_<interval> in BigQuery.
+
+        Parameters:
+            df: pandas df of stock price data
+            interval: str of the interval that was pulled from yfinance (e.g. '1m')
+        """
+
         print(f'\nWriting to BigQuery...\n') if self.verbose else None
 
         try:
@@ -686,6 +753,15 @@ class YFPriceETL:
         return self
 
     def _dedupe_bigquery_table(self, interval):
+        """
+        Description
+        -----------
+        Query that dedupes BigQuery table stock_price_<interval> by timestamp, yahoo_ticker
+
+        Parameters:
+            interval: str of the interval that was pulled from yfinance (e.g. '1m')
+        """
+
         initial_syntax = f"CREATE OR REPLACE TABLE {self.schema}.stock_prices_{interval} AS ("
         query_statements = f"""
             {initial_syntax}
@@ -717,6 +793,14 @@ class YFPriceETL:
         return self
 
     def _drop_mysql_index_constraint(self, interval):
+        """
+        Description
+        -----------
+        Query that drops MySQL index constraint on table stock_price_<interval>.
+
+        Parameters:
+            interval: str of the interval that was pulled from yfinance (e.g. '1m')
+        """
         idx_cols = \
             self.mysql_client.run_sql(f"""
                 SELECT
@@ -733,6 +817,12 @@ class YFPriceETL:
 
     ### TODO: integrate fix missing tickers: define methods below ###
     def get_market_calendar(self):
+        """
+        Description
+        -----------
+        Get pandas market calendar to determine when the market was open / closed.
+        """
+
         date_range = \
             pd.date_range(start='1950-01-01', end=datetime.today().strftime('%Y-%m-%d'))
 
@@ -845,19 +935,16 @@ class YFStockPriceGetter:
     Parameters
     ----------
     dwh_conns: dict of db engine connections ( e.g. {'mysql': <mysql-connection>} )
-
     yf_params: dict - passed to yf.Ticker(<ticker>).history(**yf_params)
             set threads = True for faster performance, but tickers will fail, scipt may hang
             set threads = False for slower performance, but more tickers will succeed
-
     schema: str of the schema to connect to
-
     num_workers: int of number of workers to use on machine
-
     n_chunks: int of number of stock prices to process at once
         IMPORTANT: setting n_chunks > 1 may have some loss of data integrity (yfinance issue)
-
     yahoo_ticker_colname: str of column name to set of output yahoo ticker columns
+    convert_tz_aware_to_string: bool whether to convert tz_aware timestamp to string in the stock price df.
+    verbose: bool whether to log most steps to stdout
     """
 
     def __init__(self,
@@ -867,7 +954,7 @@ class YFStockPriceGetter:
                  num_workers=1,
                  n_chunks=1,
                  yahoo_ticker_colname='yahoo_ticker',
-                 convert_tz_aware_to_string=False,
+                 convert_tz_aware_to_string=True,
                  verbose=False):
         self.dwh_conns = dwh_conns
         self.yf_params = {} if yf_params is None else yf_params
@@ -910,6 +997,11 @@ class YFStockPriceGetter:
         return
 
     def _request_limit_check(self):
+        """
+        Description
+        -----------
+        Check if too many requests were made to yfinance within their allowed number of requests.
+        """
         self.request_start_timestamp = datetime.now()
         self.current_runtime_seconds = (datetime.now() - self.request_start_timestamp).seconds
 
@@ -938,7 +1030,7 @@ class YFStockPriceGetter:
         for dwh_name in self.dwh_conns.keys():
             if dwh_name == 'mysql':
                 if self.convert_tz_aware_to_string:
-                    tz_aware_col = 'timestamp_tz_aware VARCHAR(32) NOT NULL'
+                    tz_aware_col = 'timestamp_tz_aware CHAR(32) NOT NULL'
                 else:
                     tz_aware_col = 'timestamp_tz_aware DATETIME NOT NULL'
 
@@ -1010,6 +1102,16 @@ class YFStockPriceGetter:
         return self
 
     def download_single_stock_price_history(self, ticker, yf_history_params=None):
+        """
+        Description
+        -----------
+        Download a single stock price ticker from the yfinance python library.
+        Minor transformations happen:
+            - Add column yahoo_ticker to show which ticker has been pulled
+            - Set start date to the minimum start date allowed by yfinance for that ticker (passed in yf_history_params)
+            - Clean column names
+            - Set tz_aware timestamp column to be a string
+        """
         yf_history_params = self.yf_params.copy() if yf_history_params is None else yf_history_params.copy()
 
         assert 'interval' in yf_history_params.keys(), 'must pass interval parameter to yf_history_params'
@@ -1338,12 +1440,23 @@ class YFStockPriceGetter:
 
 
 class TickerDownloader:
+    """
+    Description
+    -----------
+    Class to download PyTickerSymbols, Yahoo, and Numerai ticker symbols into a single dataframe.
+    A mapping between all symbols is returned when calling the method download_valid_tickers().
+    """
 
     def __init__(self):
         pass
 
     @staticmethod
     def download_pts_tickers():
+        """
+        Description
+        -----------
+        Download py-ticker-symbols tickers
+        """
         pts = PyTickerSymbols()
         all_getters = list(filter(
             lambda x: (
@@ -1378,6 +1491,11 @@ class TickerDownloader:
             numerai_ticker_link='https://numerai-signals-public-data.s3-us-west-2.amazonaws.com/signals_ticker_map_w_bbg.csv',
             yahoo_ticker_colname='yahoo',
             verbose=True):
+        """
+        Description
+        -----------
+        Download numerai to yahoo ticker mapping
+        """
 
         ticker_map = pd.read_csv(numerai_ticker_link)
         eligible_tickers = pd.Series(napi.ticker_universe(), name='bloomberg_ticker')
@@ -1403,6 +1521,11 @@ class TickerDownloader:
 
     @classmethod
     def download_valid_tickers(cls):
+        """
+        Description
+        -----------
+        Download the valid tickers from py-ticker-symbols
+        """
         # napi = numerapi.SignalsAPI(os.environ.get('NUMERAI_PUBLIC_KEY'), os.environ.get('NUMERAI_PRIVATE_KEY'))
 
         df_pts_tickers = cls.download_pts_tickers()
