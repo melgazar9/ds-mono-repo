@@ -5,17 +5,19 @@ start = time.time()
 intervals_to_download = ('1m', '2m', '5m', '1h', '1d')
 yf_params = {'threads': False}
 
-
 ### run the pipeline ###
 
-pipeline = YFPriceETL(populate_snowflake=True, populate_mysql=True, populate_bigquery=True, num_workers=1, debug_tickers=['AAPL', 'MSFT', 'SQ'])
+pipeline = YFPriceETL(populate_mysql=False,
+                      populate_snowflake=False,
+                      populate_bigquery=True,
+                      num_workers=1)
 
 pipeline.connect_to_dwhs()
 
 pipeline.etl_stock_tickers()
 pipeline.etl_stock_prices(batch_download=False,
                           intervals_to_download=intervals_to_download,
-                          write_to_db_after_interval_complete=False,
+                          write_to_db_after_interval_complete=True,
                           yf_params=yf_params)
 
 pipeline.close_dwh_connections()
