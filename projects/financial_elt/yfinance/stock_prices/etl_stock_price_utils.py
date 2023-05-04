@@ -40,9 +40,9 @@ class YFPriceETL:
     """
 
     def __init__(self,
-                 dwh='mysql',
                  schema='yfinance',
                  database='FINANCIAL_DB',
+                 populate_mysql=False,
                  populate_bigquery=False,
                  populate_snowflake=False,
                  convert_tz_aware_to_string=True,
@@ -52,9 +52,9 @@ class YFPriceETL:
                  to_sql_chunksize=16000,
                  write_pandas_threads=6,
                  verbose=True):
-        self.dwh = dwh.lower()
-        self.schema = schema
+        self.schema = 'yfinance' if schema is None else schema
         self.database = database
+        self.populate_mysql = populate_mysql
         self.populate_bigquery = populate_bigquery
         self.populate_snowflake = populate_snowflake
         self.convert_tz_aware_to_string = convert_tz_aware_to_string
@@ -75,13 +75,90 @@ class YFPriceETL:
             np.integer: ['volume']
         }
 
-        self.create_timestamp_index = True if self.dwh == 'mysql' else False
-
+        self.dwh_connections = dict()
+        self.mysql_client = None
         self.snowflake_client = None
-        self.bq_client = None
-        self.db = None
+        self.bigquery_client = None
 
-    def connect_to_db(self, create_schema_if_not_exists=True, **db_connect_params):
+        self.create_timestamp_index_dbs = ('mysql',)
+
+    def _connect_to_snowflake(self, snowflake_connect_params=None):
+        if self.populate_snowflake:
+            if snowflake_connect_params is None:
+                snowflake_connect_params = \
+                    dict(
+                        user=os.environ.get('SNOWFLAKE_USER'),
+                        password=os.environ.get('SNOWFLAKE_PASSWORD'),
+                        warehouse=os.environ.get('SNOWFLAKE_WAREHOUSE'),
+                        account=os.environ.get('SNOWFLAKE_ACCOUNT'),
+                        database=os.environ.get('SNOWFLAKE_DATABASE'),
+                        schema=os.environ.get('SNOWFLAKE_SCHEMA')
+                    )
+
+            if self.database is None:
+                self.database = 'FINANCIAL_DB'
+
+            if snowflake_connect_params['schema'] is None:
+                snowflake_connect_params['schema'] = self.schema
+
+            snowflake_connect_params.update(dict(database=self.database))
+            self.snowflake_client = SnowflakeConnect(**snowflake_connect_params)
+            self.snowflake_client.run_sql(f"CREATE DATABASE IF NOT EXISTS {self.database};")
+            self.snowflake_client.run_sql(f"""CREATE SCHEMA IF NOT EXISTS {self.database}.{self.schema};""")
+            self.snowflake_client.connect()
+        return self
+
+    def _connect_to_bigquery(self, bigquery_connect_params=None):
+        if self.populate_bigquery:
+            if bigquery_connect_params is None:
+                bigquery_connect_params = dict(
+                    google_application_credentials=os.environ.get('GOOGLE_APPLICATION_CREDENTIALS'),
+                    schema=os.environ.get('BIGQUERY_SCHEMA')
+                )
+
+            if bigquery_connect_params['schema'] is None:
+                bigquery_connect_params['schema'] = self.schema
+
+            self.bigquery_client = BigQueryConnect(**bigquery_connect_params)
+            self.bigquery_client.run_sql(f"CREATE SCHEMA IF NOT EXISTS {self.schema};")
+            self.bigquery_client.connect()
+        return self
+
+    def _connect_to_mysql(self, mysql_connect_params=None):
+        if self.populate_mysql:
+            if mysql_connect_params is None:
+                mysql_connect_params = \
+                    dict(
+                        user=os.environ.get('MYSQL_USER'),
+                        password=os.environ.get('MYSQL_PASSWORD'),
+                        host=os.environ.get('MYSQL_HOST')
+                    )
+
+            try:
+                self.mysql_client = MySQLConnect(**mysql_connect_params)
+                self.mysql_client.run_sql(f"CREATE SCHEMA IF NOT EXISTS {self.schema};")
+                self.mysql_client.schema = self.schema
+            except:
+                try:
+                    warnings.warn("""\n
+                        Error connecting to empty schema string ''.
+                        Connecting to schema 'mysql' instead.
+                        To disable this set the schema to some other value when instantiating the object.
+                    \n""")
+
+                    mysql_connect_params['schema'] = 'mysql'
+                    self.mysql_client = MySQLConnect(**mysql_connect_params)
+                    self.mysql_client.run_sql(f"CREATE SCHEMA IF NOT EXISTS {self.schema};")
+                    mysql_connect_params['schema'] = self.schema
+                    self.mysql_client = MySQLConnect(**mysql_connect_params)
+                    self.mysql_client.connect()
+                except:
+                    raise ValueError("Could not connect to MySQL")
+
+        return self
+
+
+    def connect_to_dwhs(self, create_schema_if_not_exists=True):
         """
         Description
         -----------
@@ -92,145 +169,68 @@ class YFPriceETL:
         create_schema_if_not_exists: bool to create the schema if it doesn't exist
 
         """
+        if self.populate_mysql:
+            self._connect_to_mysql()
+            self.dwh_connections['mysql'] = self.mysql_client
 
-        if create_schema_if_not_exists:
-            if 'schema' not in db_connect_params:
-                db_connect_params['schema'] = self.schema
+        if self.populate_snowflake:
+            self._connect_to_snowflake()
+            self.dwh_connections['snowflake'] = self.snowflake_client
 
-            if self.dwh == 'mysql':
-                try:
-                    self.db = MySQLConnect(**db_connect_params)
-                    self.db.run_sql(f"CREATE SCHEMA IF NOT EXISTS {self.schema};")
-                except:
-                    warnings.warn("""\n
-                    Error connecting to empty schema string ''.
-                    Connecting to schema 'mysql' instead.
-                    To disable this set the schema to some other value when instantiating the object.
-                    \n""")
-                    db_tmp = db_connect_params['schema']
-                    db_connect_params['schema'] = 'mysql'
-                    self.db = MySQLConnect(**db_connect_params)
-                    self.db.run_sql(f"CREATE SCHEMA IF NOT EXISTS {self.schema};")
-                    db_connect_params['schema'] = db_tmp
-                    self.db = MySQLConnect(**db_connect_params)
+        if self.populate_bigquery:
+            self._connect_to_bigquery()
+            self.dwh_connections['bigquery'] = self.bigquery_client
 
-            elif self.dwh == 'bigquery':
-                self.db = BigQueryConnect(**db_connect_params)
-                self.db.run_sql(f"CREATE SCHEMA IF NOT EXISTS {self.schema};")
-
-            elif self.dwh == 'snowflake':
-                if self.database is None:
-                    self.database = 'FINANCIAL_DB'
-
-                db_connect_params.update(dict(schema=self.schema, database=self.database))
-                self.db = SnowflakeConnect(**db_connect_params)
-                self.db.run_sql(f"CREATE DATABASE IF NOT EXISTS {self.database};")
-                self.db.run_sql(f"""CREATE SCHEMA IF NOT EXISTS {self.database}.{self.schema};""")
-
-            if self.populate_bigquery and self.dwh != 'bigquery':
-                bq_connect_params = dict(schema=self.schema)
-                self.bq_client = BigQueryConnect(**bq_connect_params)
-                self.bq_client.run_sql(f"CREATE SCHEMA IF NOT EXISTS {self.schema};")
-
-            if self.populate_snowflake and self.dwh != 'snowflake':
-                snowflake_connect_params = dict(schema=self.schema)
-                snowflake_connect_params['database'] = self.database
-
-                self.snowflake_client = SnowflakeConnect(**snowflake_connect_params)
-                self.snowflake_client.run_sql(f"CREATE DATABASE IF NOT EXISTS {snowflake_connect_params['database']};")
-                self.snowflake_client.run_sql(f"""
-                    CREATE SCHEMA IF NOT EXISTS {snowflake_connect_params['database']}.{self.schema};
-                """)
-
-        self.db.connect()
         return self
+
+    def close_dwh_connections(self):
+        for con in self.dwh_connections.keys():
+            if con in ['mysql', 'snowflake']:
+                self.dwh_connections[con].con.close()
+            else:
+                self.dwh_connections[con].client.close()
+        return self
+
 
     def etl_stock_tickers(self):
         ticker_downloader = TickerDownloader()
         df_tickers = ticker_downloader.download_valid_tickers()
+        print(f'\nOverwriting df_tickers to database(s): {self.dwh_connections.keys()}...\n') if self.verbose else None
 
-        if self.dwh in ['mysql', 'snowflake']:
-            print('\nOverwriting df_tickers to database...\n') if self.verbose else None
+        if self.populate_mysql:
+            print('\nOverwriting df_tickers to MySQL...\n') if self.verbose else None
+            method = 'multi' if self.write_method == 'write_pandas' else self.write_method
+            self.mysql_client.connect()
+            df_tickers.to_sql('tickers',
+                              schema=self.schema,
+                              con=self.mysql_client.con,
+                              if_exists='replace',
+                              index=False,
+                              method=method,
+                              chunksize=self.to_sql_chunksize)
 
-            if self.write_method in [pd_writer, 'write_pandas']:
-                df_tickers.columns = df_tickers.columns.str.upper()
+        if self.populate_bigquery:
+            print('\nOverwriting df_tickers to BigQuery...\n') if self.verbose else None
 
-            if self.write_method.lower() != 'write_pandas':
-                df_tickers.to_sql('tickers',
-                                  con=self.db.con,
-                                  if_exists='replace',
-                                  index=False,
-                                  method=self.write_method,
-                                  chunksize=self.to_sql_chunksize)
-            else:
-                if self.dwh == 'snowflake':
-                    original_backend = self.db.backend_engine
-                    self.db.backend_engine = 'snowflake_connector'
-                    self.db.connect()
-                    write_pandas(df=df_tickers,
-                                 conn=self.db.con,
-                                 database=self.db.database.upper(),
-                                 schema=self.db.schema.upper(),
-                                 table_name='TICKERS',
-                                 chunk_size=self.to_sql_chunksize,
-                                 compression='gzip',
-                                 parallel=self.write_pandas_threads,
-                                 overwrite=True,
-                                 auto_create_table=True)
-                    self.db.backend_engine = original_backend
-                else:
-                    self.db.connect()
-                    write_pandas(df=df_tickers,
-                                 conn=self.db.con,
-                                 database=self.db.database,
-                                 schema=self.db.schema,
-                                 table_name='tickers',
-                                 chunk_size=self.to_sql_chunksize,
-                                 compression='gzip',
-                                 parallel=self.write_pandas_threads,
-                                 overwrite=True,
-                                 auto_create_table=True)
-
-        if self.populate_bigquery or self.dwh == 'bigquery':
             job_config = bigquery.job.LoadJobConfig(write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE)
-
-            if self.dwh == 'bigquery':
-                self.db.run_sql(f"""
-                    CREATE TABLE IF NOT EXISTS {self.schema}.tickers
-                    (
-                     yahoo_ticker STRING,
-                     google_ticker STRING,
-                     bloomberg_ticker STRING,
-                     numerai_ticker STRING,
-                     yahoo_ticker_old STRING,
-                     yahoo_valid_pts BOOL,
-                     yahoo_valid_numerai BOOL
-                    )
-                """)
-
-                self.db.client.load_table_from_dataframe(df_tickers, f'{self.schema}.tickers', job_config=job_config)
-
-            elif self.populate_bigquery:
-                self.bq_client.run_sql(f"""
-                                    CREATE TABLE IF NOT EXISTS {self.schema}.tickers
-                                    (
-                                     yahoo_ticker STRING,
-                                     google_ticker STRING,
-                                     bloomberg_ticker STRING,
-                                     numerai_ticker STRING,
-                                     yahoo_ticker_old STRING,
-                                     yahoo_valid_pts INT,
-                                     yahoo_valid_numerai INT
-                                    )
-                                """)
-
-                self.bq_client.client.load_table_from_dataframe(
-                    df_tickers,
-                    f'{self.schema}.tickers', job_config=job_config
+            self.bigquery_client.run_sql(f"""
+                CREATE TABLE IF NOT EXISTS {self.schema}.tickers
+                (
+                 yahoo_ticker STRING,
+                 google_ticker STRING,
+                 bloomberg_ticker STRING,
+                 numerai_ticker STRING,
+                 yahoo_ticker_old STRING,
+                 yahoo_valid_pts BOOL,
+                 yahoo_valid_numerai BOOL
                 )
+            """)
 
-        if self.populate_snowflake and self.dwh != 'snowflake':
-            self.snowflake_client.connect()
+            self.bigquery_client. \
+                client.load_table_from_dataframe(df_tickers, f'{self.schema}.tickers', job_config=job_config)
+
+        if self.populate_snowflake:
+            print('\nOverwriting df_tickers to Snowflake...\n') if self.verbose else None
 
             if self.write_method in [pd_writer, 'write_pandas']:
                 df_tickers.columns = df_tickers.columns.str.upper()
@@ -240,7 +240,6 @@ class YFPriceETL:
                                   con=self.snowflake_client.con,
                                   if_exists='replace',
                                   index=False,
-                                  schema=self.schema,
                                   method=self.write_method,
                                   chunksize=self.to_sql_chunksize)
             else:
@@ -257,18 +256,14 @@ class YFPriceETL:
                              parallel=self.write_pandas_threads,
                              overwrite=True,
                              auto_create_table=True)
-
                 self.snowflake_client.backend_engine = original_backend
-                self.snowflake_client.con.close()
 
-            self.snowflake_client.con.close()
-
-        return
+        return self
 
     def etl_stock_prices(self,
                          intervals_to_download=('1m', '2m', '5m', '1h', '1d'),
                          batch_download=False,
-                         write_to_db_after_interval_complete=True,
+                         write_to_db_after_interval_complete=False,
                          yf_params=None,
                          n_chunks=1):
         """
@@ -312,31 +307,27 @@ class YFPriceETL:
         n_chunks: int of the number of chunks to download per API request
         """
 
+        if batch_download and write_to_db_after_interval_complete:
+            raise NotImplementedError('Cannot set write_to_db_after_interval_complete=True if batch_download=True')
+
         intervals_to_download = \
             (intervals_to_download,) if isinstance(intervals_to_download, str) else intervals_to_download
 
+        self.db_client = \
+            [i for i in [self.mysql_client, self.bigquery_client, self.snowflake_client] if i is not None][0]
+
         df_tickers = \
-            self.db.run_sql(f"SELECT yahoo_ticker, bloomberg_ticker, numerai_ticker FROM {self.schema}.tickers;")
+            self.db_client.run_sql(f"SELECT yahoo_ticker, bloomberg_ticker, numerai_ticker FROM {self.schema}.tickers;")
 
         column_order = ['timestamp', 'timestamp_tz_aware', 'timezone', 'yahoo_ticker', 'bloomberg_ticker',
                         'numerai_ticker', 'open', 'high', 'low', 'close', 'volume', 'dividends', 'stock_splits']
 
         stock_price_getter = \
-            YFStockPriceGetter(dwh=self.dwh,
-                               db_con=self.db,
+            YFStockPriceGetter(dwh_conns=self.dwh_connections,
                                convert_tz_aware_to_string=self.convert_tz_aware_to_string,
                                num_workers=self.num_workers,
                                yf_params=yf_params,
                                verbose=self.verbose)
-
-        self.db.connect()
-        if self.dwh in ['mysql', 'snowflake']:
-            con = self.db.con
-        elif self.dwh == 'bigquery':
-            con = self.db.client
-
-        if batch_download and write_to_db_after_interval_complete:
-            raise NotImplementedError('Cannot set write_to_db_after_interval_complete=True if batch_download=True')
 
         if not batch_download:
             if write_to_db_after_interval_complete:
@@ -393,12 +384,12 @@ class YFPriceETL:
                         gc.collect()
 
                         if not write_to_db_after_interval_complete:
-                            self._write_df_to_db(df=df, con=con, interval=i)
+                            self._write_df_to_all_dbs(df=df, interval=i)
                         else:
                             df_interval = pd.concat([df_interval, df], axis=0)
 
                     if write_to_db_after_interval_complete:
-                        self._write_df_to_db(df=df_interval, con=con, interval=i)
+                        self._write_df_to_all_dbs(df=df_interval, interval=i)
                         df_interval = pd.DataFrame()
 
                     gc.collect()
@@ -450,214 +441,284 @@ class YFPriceETL:
 
                 df = df[column_order]
 
-                print(f'\nPopulating {self.dwh} database with interval {i} data...\n') if self.verbose else None
-
-                self.db.connect()
-                self._write_df_to_db(df=df, con=con, interval=i)
+                self._write_df_to_all_dbs(df=df, interval=i)
                 gc.collect()
         return
 
-    def _write_df_to_db(self, df, con, interval, retry_tmp_dir=os.path.expanduser('~/.cache/tmp')):
-        print(f'\nWriting to database {self.dwh}...\n') if self.verbose else None
-        if self.dwh in ['mysql', 'snowflake']:
-            if self.dwh == 'mysql':
-                self._drop_index_constraint(interval=interval)
-                self.db.connect()
-            try:
-                if self.dwh == 'snowflake' and self.write_method in [pd_writer, 'write_pandas']:
-                    df.columns = df.columns.str.upper()
+    def _write_df_to_all_dbs(self, df, interval):
+        if self.populate_mysql:
+            self._write_to_mysql(df=df, interval=interval)
+            self._dedupe_mysql_table(interval=interval)
 
-                if self.dwh == 'snowflake' and self.write_method == 'write_pandas':
-                    original_backend = self.db.backend_engine
-                    self.db.backend_engine = 'snowflake_connector'
-                    self.db.connect()
-                    write_pandas(df=df,
-                                 conn=self.db.con,
-                                 database=self.db.database.upper(),
-                                 schema=self.db.schema.upper(),
-                                 table_name=f'stock_prices_{interval}'.upper(),
-                                 chunk_size=self.to_sql_chunksize,
-                                 compression='gzip',
-                                 parallel=self.write_pandas_threads,
-                                 overwrite=False,
-                                 auto_create_table=True)
-                    self.db.backend_engine = original_backend
+        if self.populate_snowflake:
+            self._write_to_snowflake(df=df, interval=interval)
+            self._dedupe_snowflake_table(interval=interval)
 
-                else:
-                    self.db.connect()
-                    if self.dwh in ['mysql', 'snowflake']:
-                        con = self.db.con
-                    elif self.dwh == 'bigquery':
-                        con = self.db.client
+        if self.populate_bigquery:
+            self._write_to_bigquery(df=df, interval=interval)
+            self._dedupe_bigquery_table(interval=interval)
+        return self
 
-                    df.to_sql(f'stock_prices_{interval}',
-                              con=con,
-                              index=False,
-                              if_exists='append',
-                              schema=self.schema,
-                              method=self.write_method,
-                              chunksize=self.chunksize)
-            except:
-                # Note: when setting self.dwh='snowflake' this will more than likely error out, but
-                # I'll try the below commands anyway. It's best to set dwh='mysql' and then populate
-                # snowflake and/or bigquery from there.
-                # Initially handle dtypes as strings and later transform dtypes with dbt.
+    def _get_query_dtype_fix(self, interval):
+        query_dtype_fix = f"""
+            DROP TABLE IF EXISTS {self.schema}.tmp_table; 
+            CREATE TABLE {self.schema}.tmp_table AS 
+              SELECT 
+                timestamp, 
+                CAST(timestamp_tz_aware AS CHAR(32)) AS timestamp_tz_aware, 
+                timezone, 
+                yahoo_ticker, 
+                bloomberg_ticker,  
+                numerai_ticker, 
+                open, 
+                high, 
+                low, 
+                close, 
+                volume, 
+                dividends, 
+                stock_splits 
+              FROM 
+                {self.schema}.stock_prices_{interval};
+            """
 
-                warnings.warn("""
-                    Could not directly populate database with df.
-                    This is likely because of the timestamp_tz_aware column. Converting it to string...
-                    """)
+        return query_dtype_fix
 
-                query_dtype_fix = f"""
-                    DROP TABLE IF EXISTS {self.schema}.tmp_table; 
-                    CREATE TABLE {self.schema}.tmp_table AS 
-                      SELECT 
-                        timestamp, 
-                        CAST(timestamp_tz_aware AS VARCHAR(32)) AS timestamp_tz_aware, 
-                        timezone, 
-                        yahoo_ticker, 
-                        bloomberg_ticker,  
-                        numerai_ticker, 
-                        open, 
-                        high, 
-                        low, 
-                        close, 
-                        volume, 
-                        dividends, 
-                        stock_splits 
-                      FROM 
-                        {self.schema}.stock_prices_{interval};
-                    """
+    def _write_to_mysql(self, df, interval):
+        print(f'\nWriting to database MySQL...\n') if self.verbose else None
+        self._drop_mysql_index_constraint(interval=interval)
+        method = 'multi' if self.write_method == 'write_pandas' else self.write_method
+        try:
+            self.mysql_client.connect()
+            df.to_sql(f'stock_prices_{interval}',
+                      con=self.mysql_client.con,
+                      index=False,
+                      if_exists='append',
+                      schema=self.schema,
+                      method=method,
+                      chunksize=self.to_sql_chunksize)
+        except:
+            warnings.warn("""
+                        Could not directly populate database with df.
+                        This is likely because of the timestamp_tz_aware column. Converting it to string...
+                        """)
 
-                if self.dwh == 'mysql':
-                    self.db.run_sql(query_dtype_fix)
-                elif self.dwh == 'snowflake':
-                    separate_query_statements = query_dtype_fix.split(';')
-                    for query in separate_query_statements[0:-1]:
-                        query = query.replace('\n', '').replace('  ', '') + ';'
-                        print(f'\n\nquery: {query}\n\n') if self.verbose else None
-                        self.db.run_sql(query)
+            query_dtype_fix = self._get_query_dtype_fix(interval=interval)
+            self.mysql_client.run_sql(query_dtype_fix)
 
-                df['timestamp_tz_aware'] = df['timestamp_tz_aware'].astype(str)
+            df['timestamp_tz_aware'] = df['timestamp_tz_aware'].astype(str)
 
-                if self.write_method in [pd_writer, 'write_pandas']:
-                    df.columns = df.columns.str.upper()
+            self.mysql_client.connect()
+            df.to_sql(f'stock_prices_{interval}',
+                      con=self.mysql_client.con,
+                      index=False,
+                      if_exists='append',
+                      schema=self.schema,
+                      method=method,
+                      chunksize=self.to_sql_chunksize)
 
-                if self.dwh == 'snowflake' and self.write_method == 'write_pandas':
-                    original_backend = self.db.backend_engine
-                    self.db.backend_engine = 'snowflake_connector'
-                    self.db.connect()
-                    write_pandas(df=df,
-                                 conn=self.db.con,
-                                 database=self.db.database.upper(),
-                                 schema=self.db.schema.upper(),
-                                 table_name=f'stock_prices_{interval}'.upper(),
-                                 chunk_size=self.to_sql_chunksize,
-                                 compression='gzip',
-                                 parallel=self.write_pandas_threads,
-                                 overwrite=False,
-                                 auto_create_table=True)
-
-                    self.db.backend_engine = original_backend
-
-                else:
-                    self.db.connect()
-                    if self.dwh in ['mysql', 'snowflake']:
-                        con = self.db.con
-                    elif self.dwh == 'bigquery':
-                        con = self.db.client
-
-                    df.to_sql(f'stock_prices_{interval}',
-                              con=con,
-                              index=False,
-                              if_exists='append',
-                              schema=self.schema,
-                              method=self.write_method,
-                              chunksize=self.to_sql_chunksize)
-
-        elif self.dwh == 'bigquery':
-            print('\nUploading to BigQuery...\n') if self.verbose else None
-            try:
-                df.to_gbq(f'{self.schema}.stock_prices_{interval}', if_exists='append')
-            except:
-                print('\nCould not directly upload df to bigquery! '
-                      'Dumping to csv, loading, then trying again via bigquery client...\n') if self.verbose else None
-
-                os.makedirs(retry_tmp_dir, exist_ok=True)
-                df.to_csv(f'{retry_tmp_dir}tmp.csv', index=False)
-                df = pd.read_csv(f'{retry_tmp_dir}tmp.csv')
-                job_config = bigquery.LoadJobConfig(autodetect=True)
-                table_id = f'{self.db.client.project}.{self.schema}.stock_prices{interval}'
-                self.db.client.load_table_from_dataframe(df, table_id, job_config=job_config).result()
-                subprocess.run('rm ~/tmp.csv', shell=True)
         gc.collect()
+        return self
 
-        print(f'\nDeduping database table stock_prices_{interval}...\n') if self.verbose else None
+    def _dedupe_mysql_table(self, interval):
+        print(f'\nDeduping MySQL table stock_prices_{interval}...\n') if self.verbose else None
 
-        self._dedupe_yf_stock_price_interval(interval=interval, create_timestamp_index=self.create_timestamp_index)
+        query_statements = f"""
+            ALTER TABLE {self.schema}.stock_prices_{interval} ADD COLUMN to_keep BOOLEAN;
+            ALTER TABLE {self.schema}.stock_prices_{interval} 
+            ADD CONSTRAINT dedupe UNIQUE (timestamp, yahoo_ticker, to_keep);
+            UPDATE IGNORE {self.schema}.stock_prices_{interval} SET to_keep = true;
+            DELETE FROM {self.schema}.stock_prices_{interval} WHERE to_keep IS NULL;
+            ALTER TABLE {self.schema}.stock_prices_{interval} DROP to_keep;
+            """
 
-        if (self.populate_bigquery and self.dwh != 'bigquery') or \
-                (self.populate_snowflake and self.dwh != 'snowflake'):
+        self.mysql_client.run_sql(query_statements)
 
-            df_tmp = self.db.run_sql(f"SELECT * FROM {self.schema}.stock_prices_{interval}")
+        # create index on timestamp column
+        idx_cols = self.mysql_client.run_sql(f"""
+                SELECT
+                  *
+                FROM
+                  information_schema.statistics
+                WHERE
+                  table_schema = '{self.mysql_client.schema}'
+                  AND table_name = 'stock_prices_{interval}'
+            """)
 
-            print(f'\nConverting dtypes for interval {interval}...\n') if self.verbose else None
-            for k, v in self.df_dtype_mappings.items():
-                df_tmp[v] = df_tmp[v].astype(k)
-            gc.collect()
+        if 'timestamp' not in idx_cols['COLUMN_NAME'].tolist():
+            self.mysql_client.run_sql(f"CREATE INDEX ts ON {self.schema}.stock_prices_{interval} (timestamp);")
 
-            if self.populate_bigquery and self.dwh != 'bigquery':
-                print(f'\nPopulating data from {self.dwh} to bigquery...\n') if self.verbose else None
-                df_tmp.to_gbq(f'{self.schema}.stock_prices_{interval}', if_exists='append')
+        return self
 
-                print(f'\nDeduping bigquery stock_prices_{interval}...\n') if self.verbose else None
-                self._dedupe_yf_stock_price_interval(interval=interval,
-                                                     create_timestamp_index=self.create_timestamp_index,
-                                                     dwh_client=self.bq_client)
+    def _write_to_snowflake(self, df, interval, retry_cache_dir=os.path.expanduser('~/.cache/tmp')):
+        print(f'\nWriting to Snowflake...\n') if self.verbose else None
 
-            if self.populate_snowflake and self.dwh != 'snowflake':
-                print(f'\nPopulating data from {self.dwh} to snowflake...\n') if self.verbose else None
+        try:
+            if self.write_method in [pd_writer, 'write_pandas']:
+                df.columns = df.columns.str.upper()
 
-                if self.write_method in [pd_writer, 'write_pandas']:
-                    df_tmp.columns = df_tmp.columns.str.upper()
+            if self.write_method == 'write_pandas':
+                original_backend = self.snowflake_client.backend_engine
+                del self.snowflake_client
+                self.connect_to_dwhs()
+                self.snowflake_client.backend_engine = 'snowflake_connector'
+                self.snowflake_client.connect()
+                write_pandas(df=df,
+                             conn=self.snowflake_client.con,
+                             database=self.snowflake_client.database.upper(),
+                             schema=self.snowflake_client.schema.upper(),
+                             table_name=f'stock_prices_{interval}'.upper(),
+                             chunk_size=self.to_sql_chunksize,
+                             compression='gzip',
+                             parallel=self.write_pandas_threads,
+                             overwrite=False,
+                             auto_create_table=True)
+                self.snowflake_client.backend_engine = original_backend
+            else:
+                self.snowflake_client.connect()
+                df.to_sql(f'stock_prices_{interval}',
+                          con=self.snowflake_client.con,
+                          index=False,
+                          if_exists='append',
+                          schema=self.schema,
+                          method=self.write_method,
+                          chunksize=self.chunksize)
+        except:
+            warnings.warn("""
+                        Could not directly populate database with df.
+                        This is likely because of the timestamp_tz_aware column. Converting it to string...
+                        """)
 
-                if self.write_method == 'write_pandas':
-                    original_backend = self.snowflake_client.backend_engine
-                    self.snowflake_client.backend_engine = 'snowflake_connector'
-                    self.snowflake_client.connect()
-                    write_pandas(df=df,
-                                 conn=self.snowflake_client.con,
-                                 database=self.snowflake_client.database.upper(),
-                                 schema=self.snowflake_client.schema.upper(),
-                                 table_name=f'stock_prices_{interval}'.upper(),
-                                 chunk_size=self.to_sql_chunksize,
-                                 compression='gzip',
-                                 parallel=self.write_pandas_threads,
-                                 overwrite=False,
-                                 auto_create_table=True)
+            query_dtype_fix = self._get_query_dtype_fix(interval=interval)
+            separate_query_statements = query_dtype_fix.split(';')
+            for query in separate_query_statements[0:-1]:
+                query = query.replace('\n', '').replace('  ', '') + ';'
+                print(f'\n\nquery: {query}\n\n') if self.verbose else None
+                self.snowflake_client.run_sql(query)
 
-                    self.snowflake_client.backend_engine = original_backend
-                    self.snowflake_client.con.close()
+            df['timestamp_tz_aware'] = df['timestamp_tz_aware'].astype(str)
 
-                else:
-                    self.snowflake_client.connect()
-                    df_tmp.to_sql(f'stock_prices_{interval}',
-                                  con=self.snowflake_client.con,
-                                  if_exists='append',
-                                  schema=self.schema,
-                                  index=False,
-                                  method=self.write_method,
-                                  chunksize=self.to_sql_chunksize)
+            if self.write_method in [pd_writer, 'write_pandas']:
+                df.columns = df.columns.str.upper()
 
-                print(f'\nDeduping snowflake stock_prices_{interval}...\n') if self.verbose else None
-                self._dedupe_yf_stock_price_interval(interval=interval,
-                                                     create_timestamp_index=self.create_timestamp_index,
-                                                     dwh_client=self.snowflake_client)
-        return
+            if self.write_method == 'write_pandas':
+                original_backend = self.snowflake_client.backend_engine
+                self.snowflake_client.backend_engine = 'snowflake_connector'
+                self.snowflake_client.connect()
+                write_pandas(df=df,
+                             conn=self.snowflake_client.con,
+                             database=self.snowflake_client.database.upper(),
+                             schema=self.snowflake_client.schema.upper(),
+                             table_name=f'stock_prices_{interval}'.upper(),
+                             chunk_size=self.to_sql_chunksize,
+                             compression='gzip',
+                             parallel=self.write_pandas_threads,
+                             overwrite=False,
+                             auto_create_table=True)
 
-    def _drop_index_constraint(self, interval):
+                self.snowflake_client.backend_engine = original_backend
+
+            else:
+                df.to_sql(f'stock_prices_{interval}',
+                          con=self.snowflake_client.con,
+                          index=False,
+                          if_exists='append',
+                          schema=self.schema,
+                          method=self.write_method,
+                          chunksize=self.to_sql_chunksize)
+        return self
+
+    def _dedupe_snowflake_table(self, interval):
+        self.snowflake_client.run_sql(f"USE {self.snowflake_client.database}")
+        initial_syntax = f"INSERT OVERWRITE INTO {self.schema}.stock_prices_{interval} "
+        query_statements = f"""
+                    {initial_syntax}
+                    SELECT 
+                      timestamp, 
+                      timestamp_tz_aware, 
+                      timezone, 
+                      yahoo_ticker, 
+                      bloomberg_ticker, 
+                      numerai_ticker, 
+                      open, 
+                      high, 
+                      low, 
+                      close, 
+                      volume, 
+                      dividends, 
+                      stock_splits 
+                    FROM 
+                      {self.schema}.stock_prices_{interval} 
+                    QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC) = 1 
+                    ORDER BY 
+                      timestamp, yahoo_ticker, bloomberg_ticker, numerai_ticker;
+                """
+
+        separate_query_statements = query_statements.split(';')
+        for query in separate_query_statements[0:-1]:
+            query = query.replace('\n', '').replace('  ', '') + ';'
+            print(f'\n\nQuery: {query}\n\n') if self.verbose else None
+            self.snowflake_client.run_sql(query)
+
+        self.snowflake_client.con.close()
+
+        if 'snowflake' in self.create_timestamp_index_dbs:
+            raise NotImplementedError('No need to create timestamp indices on bigquery or snowflake.')
+
+        return self
+
+    def _write_to_bigquery(self, df, interval, retry_cache_dir=os.path.expanduser('~/.cache/bigquery')):
+        print(f'\nWriting to BigQuery...\n') if self.verbose else None
+
+        try:
+            df.to_gbq(f'{self.schema}.stock_prices_{interval}', if_exists='append')
+        except:
+            print('\nCould not directly upload df to bigquery! '
+                  'Dumping to csv, loading, then trying again via bigquery client...\n') if self.verbose else None
+
+            os.makedirs(retry_cache_dir, exist_ok=True)
+            df.to_csv(f'{retry_cache_dir}/tmp.csv', index=False)
+            df = pd.read_csv(f'{retry_cache_dir}/tmp.csv')
+            job_config = bigquery.LoadJobConfig(autodetect=True)
+            table_id = f'{self.bigquery_client.client.project}.{self.schema}.stock_prices_{interval}'
+            self.bigquery_client.client.load_table_from_dataframe(df, table_id, job_config=job_config).result()
+            subprocess.run(f'rm {retry_cache_dir}/tmp.csv', shell=True)
+        gc.collect()
+        return self
+
+    def _dedupe_bigquery_table(self, interval):
+        initial_syntax = f"CREATE OR REPLACE TABLE {self.schema}.stock_prices_{interval} AS ("
+        query_statements = f"""
+            {initial_syntax}
+            SELECT 
+              timestamp, 
+              timestamp_tz_aware, 
+              timezone, 
+              yahoo_ticker, 
+              bloomberg_ticker, 
+              numerai_ticker, 
+              open, 
+              high, 
+              low, 
+              close, 
+              volume, 
+              dividends, 
+              stock_splits 
+            FROM 
+              {self.schema}.stock_prices_{interval} 
+            QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC) = 1 
+            ORDER BY 
+              timestamp, yahoo_ticker, bloomberg_ticker, numerai_ticker
+            );
+        """
+        self.bigquery_client.run_sql(query_statements)
+
+        if 'bigquery' in self.create_timestamp_index_dbs:
+            raise NotImplementedError('No need to create timestamp indices on bigquery.')
+        return self
+
+    def _drop_mysql_index_constraint(self, interval):
         idx_cols = \
-            self.db.run_sql(f"""
+            self.mysql_client.run_sql(f"""
                 SELECT
                   *
                 FROM
@@ -667,89 +728,7 @@ class YFPriceETL:
                   AND table_name = 'stock_prices_{interval}'
             """)
         if 'dedupe' in idx_cols['INDEX_NAME'].tolist():
-            self.db.run_sql(f"ALTER TABLE stock_prices_{interval} DROP INDEX dedupe;")
-        return
-
-    def _dedupe_yf_stock_price_interval(self, interval, create_timestamp_index=True, dwh_client=None):
-
-        ### need to perform table deduping because yfinance timestamp restrictions don't allow minutes as input ###
-
-        dwh_client = self.db if dwh_client is None else dwh_client
-
-        if dwh_client.dwh_name == 'snowflake':
-            dwh_client.run_sql(f"USE {self.database}")
-
-        if dwh_client.dwh_name == 'mysql':
-            query_statements = f"""
-                ALTER TABLE {self.schema}.stock_prices_{interval} ADD COLUMN to_keep BOOLEAN;
-                ALTER TABLE {self.schema}.stock_prices_{interval} 
-                ADD CONSTRAINT dedupe UNIQUE (timestamp, yahoo_ticker, to_keep);
-                UPDATE IGNORE {self.schema}.stock_prices_{interval} SET to_keep = true;
-                DELETE FROM {self.schema}.stock_prices_{interval} WHERE to_keep IS NULL;
-                ALTER TABLE {self.schema}.stock_prices_{interval} DROP to_keep;
-            """
-
-        elif dwh_client.dwh_name in ['bigquery', 'snowflake']:
-            if dwh_client.dwh_name == 'bigquery':
-                initial_syntax = f"CREATE OR REPLACE TABLE {self.schema}.stock_prices_{interval} AS ("
-            elif dwh_client.dwh_name == 'snowflake':
-                initial_syntax = f"INSERT OVERWRITE INTO {self.schema}.stock_prices_{interval} "
-            query_statements = f"""
-                {initial_syntax}
-                SELECT 
-                  timestamp, 
-                  timestamp_tz_aware, 
-                  timezone, 
-                  yahoo_ticker, 
-                  bloomberg_ticker, 
-                  numerai_ticker, 
-                  open, 
-                  high, 
-                  low, 
-                  close, 
-                  volume, 
-                  dividends, 
-                  stock_splits 
-                FROM 
-                  {self.schema}.stock_prices_{interval} 
-                QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC) = 1 
-                ORDER BY 
-                  timestamp, yahoo_ticker, bloomberg_ticker, numerai_ticker
-                {');' if dwh_client.dwh_name == 'bigquery' else ';'}
-            """
-
-        if dwh_client.dwh_name != 'snowflake':
-            dwh_client.run_sql(query_statements)
-        else:
-            # unfortunately snowflake doesn't support multiple query statements in a single API request...
-            # so we need to run each query separately
-
-            separate_query_statements = query_statements.split(';')
-            for query in separate_query_statements[0:-1]:
-                query = query.replace('\n', '').replace('  ', '') + ';'
-                print(f'\n\nQuery: {query}\n\n') if self.verbose else None
-                dwh_client.run_sql(query)
-
-            dwh_client.con.close()
-
-        if create_timestamp_index:
-            if dwh_client.dwh_name == 'mysql':
-                idx_cols = dwh_client.run_sql(f"""
-                        SELECT
-                          *
-                        FROM
-                          information_schema.statistics
-                        WHERE
-                          table_schema = '{dwh_client.schema}'
-                          AND table_name = 'stock_prices_{interval}'
-                    """)
-
-                if 'timestamp' not in idx_cols['COLUMN_NAME'].tolist():
-                    dwh_client.run_sql(f"CREATE INDEX ts ON stock_prices_{interval} (timestamp);")
-            elif dwh_client in ['bigquery', 'snowflake']:
-                raise NotImplementedError('No need to create timestamp indices on bigquery or snowflake.')
-
-        # dwh_client.run_sql(f"DROP TABLE {self.schema}_bk.stock_prices_{interval}_bk;")
+            self.mysql_client.run_sql(f"ALTER TABLE {self.schema}.stock_prices_{interval} DROP INDEX dedupe;")
         return
 
     ### TODO: integrate fix missing tickers: define methods below ###
@@ -807,13 +786,7 @@ class YFPriceETL:
             '3mo': 2628000 * 3
         }
 
-        self.db.connect()
-        if self.dwh in ['mysql', 'snowflake']:
-            con = self.db.con
-        elif self.dwh == 'bigquery':
-            con = self.db.client
-
-        df = self.db.run_sql(
+        df = self.db_client.run_sql(
             f"select distinct timestamp, yahoo_ticker from {self.schema}.stock_prices_{interval_to_fix}"
         )
 
@@ -839,7 +812,7 @@ class YFPriceETL:
         fixed_datasets = {}
         for i in intervals_to_fix:
             if tickers_to_fix is None:
-                tickers = self.db.run_sql(
+                tickers = self.db_client.run_sql(
                     f"select distinct(yahoo_ticker) from {self.schema}.stock_prices_{i}"
                 )['yahoo_ticker'].unique().tolist()
             else:
@@ -859,10 +832,9 @@ class YFPriceETL:
 
         for k in fixed_datasets.keys():
             print(f'\nWriting fixed dataset {k} to db...\n') if self.verbose else None
-            self._write_df_to_db(fixed_datasets[k], self.db.con, k)
+            self._write_df_to_all_dbs(fixed_datasets[k], k)
 
             print(f'\nDeduping fixed dataset {k}...\n') if self.verbose else None
-            self._dedupe_yf_stock_price_interval(k)
 
         return
 
@@ -872,21 +844,13 @@ class YFStockPriceGetter:
 
     Parameters
     ----------
-    dwh: str of db engine - currently only 'mysql' and 'bigquery' has been tested
+    dwh_conns: dict of db engine connections ( e.g. {'mysql': <mysql-connection>} )
 
     yf_params: dict - passed to yf.Ticker(<ticker>).history(**yf_params)
             set threads = True for faster performance, but tickers will fail, scipt may hang
             set threads = False for slower performance, but more tickers will succeed
 
-    db_con: database connection object to mysql using MySQLConnect class
-        disabled if None - it won't search a MySQL DB for missing tickers.
-        when db is successfully connected:
-            if ticker isn't found in MySQL db table, then set the start date to '1950-01-01' for that specific ticker
-            else use default params
-        Note: To use this parameter, a MySQL database needs to be set up, which stores the output tables into a schema
-            called 'yfinance' when calling YFinanceEL().el_stock_prices()
-
-    schema: str of the schema to connect to --- ignored if db_con is None
+    schema: str of the schema to connect to
 
     num_workers: int of number of workers to use on machine
 
@@ -897,18 +861,16 @@ class YFStockPriceGetter:
     """
 
     def __init__(self,
-                 dwh='mysql',
+                 dwh_conns=None,
                  yf_params=None,
-                 db_con=None,
                  schema='yfinance',
                  num_workers=1,
                  n_chunks=1,
                  yahoo_ticker_colname='yahoo_ticker',
                  convert_tz_aware_to_string=False,
                  verbose=False):
-        self.dwh = dwh
+        self.dwh_conns = dwh_conns
         self.yf_params = {} if yf_params is None else yf_params
-        self.db_con = db_con
         self.schema = schema
         self.num_workers = num_workers
         self.n_chunks = n_chunks
@@ -941,6 +903,10 @@ class YFStockPriceGetter:
 
         self.n_requests = 0
         self.failed_ticker_downloads = {}
+
+        if self.dwh_conns is None:
+            raise ValueError("Parameter dwh_conns is required to run this process.")
+
         return
 
     def _request_limit_check(self):
@@ -969,78 +935,79 @@ class YFStockPriceGetter:
         table_name: str name of the table to be created
         """
 
-        if self.dwh == 'mysql':
-            if self.convert_tz_aware_to_string:
-                tz_aware_col = 'timestamp_tz_aware VARCHAR(32) NOT NULL'
-            else:
-                tz_aware_col = 'timestamp_tz_aware DATETIME NOT NULL'
+        for dwh_name in self.dwh_conns.keys():
+            if dwh_name == 'mysql':
+                if self.convert_tz_aware_to_string:
+                    tz_aware_col = 'timestamp_tz_aware VARCHAR(32) NOT NULL'
+                else:
+                    tz_aware_col = 'timestamp_tz_aware DATETIME NOT NULL'
 
-            self.db_con.run_sql(f"""
-                CREATE TABLE IF NOT EXISTS {table_name} (
-                  timestamp DATETIME NOT NULL,
-                  {tz_aware_col},
-                  timezone VARCHAR(32),
-                  yahoo_ticker VARCHAR(32),
-                  bloomberg_ticker VARCHAR(32),
-                  numerai_ticker VARCHAR(32),
-                  open DECIMAL(38, 12),
-                  high DECIMAL(38, 12),
-                  low DECIMAL(38, 12),
-                  close DECIMAL(38, 12),
-                  volume DECIMAL(38, 12),
-                  dividends DECIMAL(38, 12),
-                  stock_splits DECIMAL(38, 12)
-                  )
-                  ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-                """)
+                self.dwh_conns[dwh_name].run_sql(f"""
+                    CREATE TABLE IF NOT EXISTS {self.schema}.{table_name} (
+                      timestamp DATETIME NOT NULL,
+                      {tz_aware_col},
+                      timezone VARCHAR(32),
+                      yahoo_ticker VARCHAR(32),
+                      bloomberg_ticker VARCHAR(32),
+                      numerai_ticker VARCHAR(32),
+                      open DECIMAL(38, 12),
+                      high DECIMAL(38, 12),
+                      low DECIMAL(38, 12),
+                      close DECIMAL(38, 12),
+                      volume DECIMAL(38, 12),
+                      dividends DECIMAL(38, 12),
+                      stock_splits DECIMAL(38, 12)
+                      )
+                      ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+                    """)
 
-        elif self.dwh == 'bigquery':
-            tz_aware_dtype = "STRING" if self.convert_tz_aware_to_string else "TIMESTAMP"
+            elif dwh_name == 'bigquery':
+                tz_aware_dtype = "STRING" if self.convert_tz_aware_to_string else "TIMESTAMP"
 
-            self.job_config = \
-                bigquery.LoadJobConfig(
-                    schema=[
-                        bigquery.SchemaField(name="timestamp", field_type="TIMESTAMP"),
-                        bigquery.SchemaField(name="timestamp_tz_aware", field_type=tz_aware_dtype),
-                        bigquery.SchemaField(name="timezone", field_type="STRING"),
-                        bigquery.SchemaField(name="yahoo_ticker", field_type="STRING"),
-                        bigquery.SchemaField(name="bloomberg_ticker", field_type="STRING"),
-                        bigquery.SchemaField(name="numerai_ticker", field_type="STRING"),
-                        bigquery.SchemaField(name="open", field_type="NUMERIC"),
-                        bigquery.SchemaField(name="high", field_type="NUMERIC"),
-                        bigquery.SchemaField(name="low", field_type="NUMERIC"),
-                        bigquery.SchemaField(name="close", field_type="NUMERIC"),
-                        bigquery.SchemaField(name="volume", field_type="INTEGER"),
-                        bigquery.SchemaField(name="dividends", field_type="NUMERIC"),
-                        bigquery.SchemaField(name="stock_splits", field_type="NUMERIC")
-                    ],
-                    autodetect=False
-                )
+                self.job_config = \
+                    bigquery.LoadJobConfig(
+                        schema=[
+                            bigquery.SchemaField(name="timestamp", field_type="TIMESTAMP"),
+                            bigquery.SchemaField(name="timestamp_tz_aware", field_type=tz_aware_dtype),
+                            bigquery.SchemaField(name="timezone", field_type="STRING"),
+                            bigquery.SchemaField(name="yahoo_ticker", field_type="STRING"),
+                            bigquery.SchemaField(name="bloomberg_ticker", field_type="STRING"),
+                            bigquery.SchemaField(name="numerai_ticker", field_type="STRING"),
+                            bigquery.SchemaField(name="open", field_type="NUMERIC"),
+                            bigquery.SchemaField(name="high", field_type="NUMERIC"),
+                            bigquery.SchemaField(name="low", field_type="NUMERIC"),
+                            bigquery.SchemaField(name="close", field_type="NUMERIC"),
+                            bigquery.SchemaField(name="volume", field_type="INTEGER"),
+                            bigquery.SchemaField(name="dividends", field_type="NUMERIC"),
+                            bigquery.SchemaField(name="stock_splits", field_type="NUMERIC")
+                        ],
+                        autodetect=False
+                    )
 
-        elif self.dwh == 'snowflake':
-            if self.convert_tz_aware_to_string:
-                tz_aware_col = 'timestamp_tz_aware STRING NOT NULL'
-            else:
-                tz_aware_col = 'timestamp_tz_aware TIMESTAMP_TZ NOT NULL'
+            elif dwh_name == 'snowflake':
+                if self.convert_tz_aware_to_string:
+                    tz_aware_col = 'timestamp_tz_aware STRING NOT NULL'
+                else:
+                    tz_aware_col = 'timestamp_tz_aware TIMESTAMP_TZ NOT NULL'
 
-            self.db_con.run_sql(f"""
-                CREATE TABLE IF NOT EXISTS {table_name} (
-                  timestamp TIMESTAMP_NTZ NOT NULL,
-                  {tz_aware_col},
-                  timezone STRING,
-                  yahoo_ticker STRING,
-                  bloomberg_ticker STRING,
-                  numerai_ticker STRING,
-                  open FLOAT,
-                  high FLOAT,
-                  low FLOAT,
-                  close FLOAT,
-                  volume FLOAT,
-                  dividends FLOAT,
-                  stock_splits FLOAT
-                  );
-                """)
-        return
+                self.dwh_conns[dwh_name].run_sql(f"""
+                    CREATE TABLE IF NOT EXISTS {table_name} (
+                      timestamp TIMESTAMP_NTZ NOT NULL,
+                      {tz_aware_col},
+                      timezone STRING,
+                      yahoo_ticker STRING,
+                      bloomberg_ticker STRING,
+                      numerai_ticker STRING,
+                      open FLOAT,
+                      high FLOAT,
+                      low FLOAT,
+                      close FLOAT,
+                      volume FLOAT,
+                      dividends FLOAT,
+                      stock_splits FLOAT
+                      );
+                    """)
+        return self
 
     def download_single_stock_price_history(self, ticker, yf_history_params=None):
         yf_history_params = self.yf_params.copy() if yf_history_params is None else yf_history_params.copy()
@@ -1085,28 +1052,28 @@ class YFStockPriceGetter:
     def _get_max_stored_ticker_timestamps(self, table_name):
         self.stored_tickers = pd.DataFrame(columns=['yahoo_ticker', 'max_timestamp'])
 
-        if self.db_con is not None:
-            if self.dwh in ['mysql', 'snowflake']:
+        for dwh_name in self.dwh_conns.keys():
+            if dwh_name in ['mysql', 'snowflake']:
                 existing_tables = \
-                    self.db_con.run_sql(
+                    self.dwh_conns[dwh_name].run_sql(
                         f"""
                         SELECT
                           DISTINCT(table_name)
                         FROM
                           information_schema.tables
                         WHERE
-                          lower(table_schema) = '{self.db_con.schema}'
+                          lower(table_schema) = '{self.dwh_conns[dwh_name].schema}'
                         """
                     ).pipe(lambda x: clean_columns(x))
 
-            elif self.dwh == 'bigquery':
+            elif dwh_name == 'bigquery':
                 existing_tables = \
-                    self.db_con.run_sql(
+                    self.dwh_conns[dwh_name].run_sql(
                         f"""
                         SELECT
                           DISTINCT(table_name)
                         FROM
-                          `{self.db_con.schema}.INFORMATION_SCHEMA.TABLES`;
+                          `{self.dwh_conns[dwh_name].schema}.INFORMATION_SCHEMA.TABLES`;
                         """
                     ).pipe(lambda x: clean_columns(x))
 
@@ -1114,12 +1081,12 @@ class YFStockPriceGetter:
 
             if f'{table_name}' in existing_tables['table_name'].tolist():
                 self.stored_tickers = \
-                    self.db_con.run_sql(f"""
+                    self.dwh_conns[dwh_name].run_sql(f"""
                         SELECT
                             yahoo_ticker,
                             MAX(timestamp) AS max_timestamp
                         FROM
-                            {self.db_con.schema}.{table_name}
+                            {self.dwh_conns[dwh_name].schema}.{table_name}
                         GROUP BY 1
                         """)
         return self
@@ -1178,8 +1145,9 @@ class YFStockPriceGetter:
                 #     args=(tickers, intervals_to_download, yf_history_params)
                 # )
 
-            if self.dwh in ['mysql', 'snowflake']:
-                self.db_con.con.close()
+            for dwh_name in self.dwh_conns.keys():
+                if dwh_name in ['mysql', 'snowflake']:
+                    self.dwh_conns[dwh_name].con.close()
 
         return self
 
@@ -1266,7 +1234,7 @@ class YFStockPriceGetter:
                     try:
                         if self.n_chunks == 1 or len(chunk) == 1:
                             try:
-                                if self.db_con is not None:
+                                if list(self.dwh_conns.keys())[0] is not None:
                                     if chunk[0] not in self.stored_tickers['yahoo_ticker'].tolist():
                                         yf_history_params['start'] = get_valid_yfinance_start_timestamp(i)
                                     else:
@@ -1307,7 +1275,7 @@ class YFStockPriceGetter:
                                 self.failed_ticker_downloads[i].append(chunk)
                                 continue
                         else:
-                            if self.db_con is not None:
+                            if list(self.dwh_conns.keys())[0] is not None:
                                 if any(x for x in chunk if x not in self.stored_tickers['yahoo_ticker'].tolist()):
                                     yf_history_params['start'] = get_valid_yfinance_start_timestamp(i)
                                 else:

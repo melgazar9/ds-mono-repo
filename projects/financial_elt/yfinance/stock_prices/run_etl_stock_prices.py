@@ -8,17 +8,17 @@ yf_params = {'threads': False}
 
 ### run the pipeline ###
 
-pipeline = YFPriceETL(dwh='bigquery', num_workers=1)
+pipeline = YFPriceETL(populate_snowflake=True, populate_mysql=True, populate_bigquery=True, num_workers=1, debug_tickers=['AAPL', 'MSFT', 'SQ'])
 
-pipeline.connect_to_db()
+pipeline.connect_to_dwhs()
 
 pipeline.etl_stock_tickers()
 pipeline.etl_stock_prices(batch_download=False,
                           intervals_to_download=intervals_to_download,
-                          write_to_db_after_interval_complete=True,
+                          write_to_db_after_interval_complete=False,
                           yf_params=yf_params)
 
-pipeline.db.con.close()
+pipeline.close_dwh_connections()
 
 ### TODO: integrate fix missing ticker timestamps ###
 
