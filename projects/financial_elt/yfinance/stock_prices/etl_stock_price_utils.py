@@ -606,7 +606,8 @@ class YFPriceETL:
             if self.write_method == 'write_pandas':
                 original_backend = self.snowflake_client.backend_engine
                 del self.snowflake_client
-                self.connect_to_dwhs()
+                self._connect_to_snowflake()
+                self.dwh_connections['snowflake'] = self.snowflake_client
                 self.snowflake_client.backend_engine = 'snowflake_connector'
                 self.snowflake_client.connect()
                 write_pandas(df=df,
@@ -620,6 +621,7 @@ class YFPriceETL:
                              overwrite=False,
                              auto_create_table=True)
                 self.snowflake_client.backend_engine = original_backend
+
             else:
                 self.snowflake_client.connect()
                 df.to_sql(f'stock_prices_{interval}',
