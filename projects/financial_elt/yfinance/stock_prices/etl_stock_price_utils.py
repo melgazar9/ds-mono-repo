@@ -225,6 +225,23 @@ class YFPriceETL:
             self.bigquery_client. \
                 client.load_table_from_dataframe(df_tickers, f'{self.schema}.tickers', job_config=job_config)
 
+            self.bigquery_client.run_sql(f"""
+                CREATE OR REPLACE TABLE {self.schema}.tickers AS (
+                SELECT 
+                  yahoo_ticker,
+                  google_ticker,
+                  bloomberg_ticker,
+                  numerai_ticker,
+                  yahoo_ticker_old,
+                  yahoo_valid_pts,
+                  yahoo_valid_numerai
+                FROM 
+                  {self.schema}.tickers  
+                ORDER BY 
+                  1, 2, 3, 4, 5, 6, 7
+                );
+            """)
+
         if self.populate_snowflake:
             print('\nOverwriting df_tickers to Snowflake...\n') if self.verbose else None
 
