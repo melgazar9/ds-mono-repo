@@ -376,7 +376,12 @@ class YFPriceETL:
 
                         print(f'\nConverting dtypes in df_{i} for ticker {ticker}\n') if self.verbose else None
                         for k, v in self.df_dtype_mappings.items():
-                            df[v] = df[v].astype(k)
+                            try:
+                                df[v] = df[v].astype(k)
+                            except:
+                                for numeric_col in df.select_dtypes(np.number).columns:
+                                    df[numeric_col] = df[numeric_col].bfill().ffill().fillna(0)
+                                df[v] = df[v].astype(k)
                         gc.collect()
 
                         if not write_to_db_after_interval_complete:
