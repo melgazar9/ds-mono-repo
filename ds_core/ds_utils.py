@@ -146,3 +146,37 @@ def json_string_to_dict(json_string):
                     raise AssertionError('String parsing failed!')
 
     return string_as_dict
+
+def get_timestamps_from_dir(directory):
+    if not directory.endswith('/'):
+        directory = f"{directory}/"
+
+    list_of_files = filter(os.path.isfile, glob(directory + '*'))
+    list_of_files = sorted(list_of_files, key=os.path.getmtime)
+
+    df_files = pd.DataFrame()
+    for file_path in list_of_files:
+        modified_timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(os.path.getmtime(file_path)))
+        df_tmp = pd.DataFrame({'file_path': [file_path], 'last_modified': [modified_timestamp]})
+        df_files = pd.concat([df_files, df_tmp], axis=0)
+
+    df_files.drop_duplicates(inplace=True)
+    df_files['last_modified'] = pd.to_datetime(df_files['last_modified'])
+    return df_files
+
+def remove_old_files(directory,
+                     start_timestamp=datetime.now(),
+                     lookback_days=7,
+                     exception_files=('.gitignore', '.gitkeep')):
+
+    df_files = get_timestamps_from_dir(directory)
+    min_keep_timestamp = pd.to_datetime(start_timestamp - pd.Timedelta(days=lookback_days))
+
+    files_to_delete = df_files[df_files['last_modified'] < min_keep_timestamp]['file_path'].tolist()
+    files_to_keep = [ef for ef in exception_files if [f for f in files_to_delete if f.endswith(ef)]]
+    files_to_delete = [i for i in files_to_delete if i not in files_to_keep]
+
+    ### delete the files ###
+
+    subprocess.run(f"cd {directory} && rm -rf {' '.join(files_to_delete)}", shell=True)
+    return

@@ -8,8 +8,6 @@ services:
     build:
       context: ../../
       dockerfile: projects/financial_elt/Dockerfile
-      args:
-        APP_ENV: production # change this to adjust which environments APIs are called
     env_file:
       - .env
     environment:

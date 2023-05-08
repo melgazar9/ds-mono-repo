@@ -7,7 +7,7 @@ app.url_map.strict_slashes = False
 
 @app.route('/')
 def index():
-    return 'Hello Flask App :)'
+    return 'Financial ELT is running :)'
 
 @app.route('/healthcheck', methods=['GET'])
 def healthcheck():

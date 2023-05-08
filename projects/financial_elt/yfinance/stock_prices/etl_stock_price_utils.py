@@ -872,6 +872,7 @@ class YFPriceETL:
 
     def is_good_dataset(self, interval):
         """
+        TODO: this method is not finished
         Return True if the dataset has no missing timestamps for a specific ticker interval
         """
 
@@ -879,6 +880,7 @@ class YFPriceETL:
 
     def _fix_missing_ticker_interval(self, interval_to_fix, yf_params):
         """
+        TODO: this method is not finished
         Logic lives here to fix missing ticker intervals for specific interval
         """
 
@@ -908,6 +910,7 @@ class YFPriceETL:
 
     def fix_missing_ticker_intervals(self, intervals_to_fix, yf_params, max_attempts=3, tickers_to_fix=None):
         """
+        TODO: this method is not finished
         For each interval in intervals_to_fix, call self._fix_missing_ticker_interval
         """
 
