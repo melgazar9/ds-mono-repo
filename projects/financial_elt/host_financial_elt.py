@@ -10,7 +10,10 @@ config.read('config.ini')
 
 scheduler = BackgroundScheduler()
 
+projects_to_host = []
+
 if ast.literal_eval(config['YF_STOCK_PRICE_ETL']['host_yf_stock_price_etl']):
+    projects_to_host.append('yfinance_stock_prices')
     cron = json_string_to_dict(config['YF_STOCK_PRICE_ETL']['yfinance_stock_price_etl_cron'])
     scheduler.add_job(yfinance_etl_prices, trigger='cron', **cron)
 
@@ -20,7 +23,7 @@ if __name__ == "__main__":
     PORT = 5000
     logging.root.setLevel(logging.DEBUG)
     logging.info(f'Server is listening on port {PORT}')
-    logging.info(f'Hosting projects {config}')
+    logging.info(f'Hosting Financial-ELT Projects: {projects_to_host}')
 
     scheduler.start()
 
