@@ -34,6 +34,6 @@ pipeline.close_dwh_connections()
 
 # remove old log files
 if 'logs' in os.listdir():
-    remove_old_files('logs/')
+    remove_old_contents('logs')
 
 print(f'\nTotal time took {round((time.time() - start) / 60, 3)} minutes.\n')
