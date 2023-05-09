@@ -12,10 +12,10 @@
   - `config.ini` has configurations for each project such as scheduling parameters
   - `routes.py` contains all routes for each sub-app.
   - `.env` contains credentials and secret information. See `.env_example` for an example.
-- The `dbt` directory handles all transformations after the data has been populated in the dwh using the dbt tool
+- The `dbt` directory handles all transformations after the data has been populated in the dwh using the dbt tool.
 - The `financials` directory handles yfinance financials (e.g earnings, quarterly reports, expenses, etc...).
-- The `stock_prices` directory handles yfinance stock price ETL
-  - Load stock prices into a pandas dataframe
+- The `stock_prices` directory handles yfinance stock price ETL.
+  - Load stock prices into a pandas dataframe.
   - Apply minor transformations such as:
     - Add yahoo_ticker column
     - Handle UTC timestamp and tz-aware timestamp columns
@@ -24,8 +24,9 @@
 **Installation**
 
 - BigQuery and Snowflake are fully supported, however MySQL may not work for all `dbt` transformations.
-- If `BigQuery` in target, then set `GOOGLE_APPLICATION_CREDENTIALS` to the location of the `t-emissary-XXX.json` in the `.env`.
-- If `Snowflake` in target, then set Snowflake credentials in the `.env`.
+- In `host_financial_elt.py`:
+  - If `bigquery` in `projects_to_host`, then set `GOOGLE_APPLICATION_CREDENTIALS` to the location of the `t-emissary-XXX.json` in the `.env`.
+  - If `snowflake` in `projects_to_host`, then set Snowflake credentials in the `.env`.
 - If using target as MySQL, as mentioned not all dbt transformations are currently supported. However, for `etl_stock_prices`, see below for installation requirements:
   - On Linux you'll likely need to run the below command before continuing with `pip install -r requirements.txt`
     - Ubuntu / Debian: `sudo apt-get install python3-dev default-libmysqlclient-dev build-essential`
