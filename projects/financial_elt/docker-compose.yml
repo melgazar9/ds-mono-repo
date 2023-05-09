@@ -8,8 +8,6 @@ services:
     build:
       context: ../../
       dockerfile: projects/financial_elt/Dockerfile
-      args:
-        APP_ENV: production # change this to adjust which environments APIs are called
     env_file:
       - .env
     environment:
@@ -20,7 +18,6 @@ services:
       resources:
         limits:
           cpus: '6'
-          memory: 12000M
+          memory: 28000M
     volumes:
-      #- ../../.env:/app/.env
       - ../../ds_core:/app/ds_core

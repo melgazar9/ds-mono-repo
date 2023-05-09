@@ -1,6 +1,12 @@
 apscheduler==3.9.1
 beautifulsoup4==4.11.1
+cryptography==40.0.2
 dask==2022.12.0
+db-dtypes==1.1.0
+dbt-bigquery==1.5.0
+dbt-core==1.5.0
+dbt-extractor==0.4.1
+dbt-snowflake==1.5.0
 dill==0.3.5.1
 -e ../..
 feather-format==0.4.1
@@ -24,13 +30,14 @@ numerapi==2.12.7
 numpy==1.23.2
 pandas==1.5.1
 pandas-datareader==0.10.0
-pandas-gbq==0.17.9
+pandas-gbq==0.19.1
 pandas-market-calendars==4.1.1
 plotly==5.11.0
-pyarrow==8.0.0
+protobuf==4.21.6
+pyarrow==10.0.1
 pymongo==4.2.0
 pymongo[srv]==4.2.0
-pyOpenSSL==22.0.0
+pyOpenSSL==23.1.1
 pytickersymbols==1.9.0
 PyYAML==6.0
 requests==2.28.1
@@ -39,8 +46,8 @@ seaborn==0.12.1
 setuptools==65.6.3
 simplejson==3.17.6
 skimpy==0.0.6
-snowflake-connector-python==2.7.11
-snowflake-sqlalchemy==1.4.4
+snowflake-connector-python==3.0.3
+snowflake-sqlalchemy==1.4.7
 statsmodels==0.13.2
 SQLAlchemy==1.4.44
 tenacity==8.1.0

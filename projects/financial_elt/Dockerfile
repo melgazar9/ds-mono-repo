@@ -2,12 +2,7 @@ FROM amd64/python:3.9.16-slim-buster
 
 ARG CI=true
 
-# Receive input from --build arg
-ARG APP_ENV
-ENV APP_ENV=$APP_ENV
-RUN echo build and runtime APP_ENV: $APP_ENV
 RUN env
-
 ENV APP_HOME=/app
 ENV PYTHONUNBUFFERED=1
 RUN env
