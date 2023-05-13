@@ -2,13 +2,13 @@ from etl_stock_price_utils import *
 
 start = time.time()
 
-intervals_to_download = ('1m', '2m', '5m', '1h', '1d')
+intervals_to_download = ('1m')
 yf_params = {'threads': False}
 
 ### run the pipeline ###
 
 pipeline = YFPriceETL(populate_mysql=False,
-                      populate_snowflake=False,
+                      populate_snowflake=True,
                       populate_bigquery=True,
                       num_workers=1)
 

@@ -370,7 +370,7 @@ class YFPriceETL:
                             start_date = \
                                 stored_tickers[
                                     stored_tickers['yahoo_ticker'] == ticker \
-                                    ]['max_timestamp'] \
+                                    ]['query_start_timestamp'] \
                                     .min() \
                                     .strftime('%Y-%m-%d')
                         else:
@@ -1179,7 +1179,7 @@ class YFStockPriceGetter:
         return df
 
     def _get_max_stored_ticker_timestamps(self, table_name):
-        self.stored_tickers = pd.DataFrame(columns=['yahoo_ticker', 'max_timestamp'])
+        self.stored_tickers = pd.DataFrame(columns=['yahoo_ticker'])
 
         for dwh_name in self.dwh_conns.keys():
             if dwh_name in ['mysql', 'snowflake']:
@@ -1209,15 +1209,22 @@ class YFStockPriceGetter:
             existing_tables['table_name'] = existing_tables['table_name'].str.lower()
 
             if f'{table_name}' in existing_tables['table_name'].tolist():
-                self.stored_tickers = \
+                tmp_stored_tickers = \
                     self.dwh_conns[dwh_name].run_sql(f"""
                         SELECT
                             yahoo_ticker,
-                            MAX(timestamp) AS max_timestamp
+                            MAX(timestamp) AS {dwh_name}_max_timestamp
                         FROM
                             {self.dwh_conns[dwh_name].schema}.{table_name}
                         GROUP BY 1
                         """)
+                self.stored_tickers = pd.merge(self.stored_tickers, tmp_stored_tickers, how='outer', on='yahoo_ticker')
+
+        self.stored_tickers['query_start_timestamp'] = \
+            self.stored_tickers[[i for i in self.stored_tickers.columns if i.endswith('max_timestamp')]]\
+                .apply(lambda x: pd.to_datetime(x.fillna('1970-01-01 00:00:00'), utc=True))\
+                .min(axis=1)
+
         return self
 
     def batch_download_stock_price_history(self,
@@ -1369,7 +1376,7 @@ class YFStockPriceGetter:
                                     else:
                                         yf_history_params['start'] = \
                                             self.stored_tickers[self.stored_tickers['yahoo_ticker'] == chunk[0]][
-                                                'max_timestamp'].min().strftime('%Y-%m-%d')
+                                                'query_start_timestamp'].min().strftime('%Y-%m-%d')
 
                                 yf_history_params['start'] = \
                                     get_valid_yfinance_start_timestamp(interval=i, start=yf_history_params['start'])
@@ -1410,7 +1417,7 @@ class YFStockPriceGetter:
                                 else:
                                     yf_history_params['start'] = \
                                         self.stored_tickers[self.stored_tickers['yahoo_ticker'].isin(chunk)][
-                                            'max_timestamp'].min().strftime('%Y-%m-%d')
+                                            'query_start_timestamp'].min().strftime('%Y-%m-%d')
 
                             yf_history_params['start'] = \
                                 get_valid_yfinance_start_timestamp(interval=i, start=yf_history_params['start'])
