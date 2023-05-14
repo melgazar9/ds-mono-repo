@@ -8,7 +8,7 @@ yf_params = {'threads': False}
 ### run the pipeline ###
 
 pipeline = YFPriceETL(populate_mysql=False,
-                      populate_snowflake=True,
+                      populate_snowflake=False,
                       populate_bigquery=True,
                       num_workers=1)
 
