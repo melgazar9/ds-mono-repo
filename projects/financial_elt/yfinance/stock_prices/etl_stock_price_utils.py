@@ -183,6 +183,7 @@ class YFPriceETL:
         for con in self.dwh_connections.keys():
             if con in ['mysql', 'snowflake']:
                 self.dwh_connections[con].con.close()
+                self.engine.dispose()
             else:
                 self.dwh_connections[con].client.close()
         return self

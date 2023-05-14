@@ -137,6 +137,8 @@ class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
         self.keep_session_alive = keep_session_alive
 
         self.dwh_name = 'mysql'
+        self.engine = None
+        self.con = None
 
     def connect(self, **kwargs):
         if self.engine_string is not None:
@@ -159,8 +161,8 @@ class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
             if self.string_extension is not None:
                 self.engine_string = self.engine_string + self.string_extension
 
-        engine = create_engine(self.engine_string, **kwargs)
-        self.con = engine.connect()
+        self.engine = create_engine(self.engine_string, **kwargs)
+        self.con = self.engine.connect()
 
         return self
 
@@ -170,12 +172,14 @@ class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
             df = pd.read_sql(query, con=self.con, **read_sql_kwargs)
             if not self.keep_session_alive:
                 self.con.close()
+                self.engine.dispose()
             return df
         else:
             query = text(query)
             self.con.execute(query)
             if not self.keep_session_alive:
                 self.con.close()
+                self.engine.dispose()
         return self
 
 
@@ -213,8 +217,11 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
         self.role = role
         self.backend_engine = backend_engine
         self.engine_string = engine_string
-        self.dwh_name = 'snowflake'
         self.connect_args = connect_args
+
+        self.dwh_name = 'snowflake'
+        self.con = None
+        self.engine = None
 
     def connect(self):
         snowflake_connection_params = {
@@ -253,8 +260,8 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
                 if self.role is not None:
                     self.engine_string = self.engine_string = self.engine_string + f'?role={self.role}'
 
-            engine = create_engine(self.engine_string, connect_args=self.connect_args)
-            self.con = engine.connect()
+            self.engine = create_engine(self.engine_string, connect_args=self.connect_args)
+            self.con = self.engine.connect()
         else:
             self.con = snowflake.connector.connect(**snowflake_connection_params)
 
@@ -266,19 +273,23 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
             if query.strip().lower().startswith('select') or query.strip().lower().startswith('with'):
                 df = pd.read_sql(query, con=self.con, **read_sql_kwargs)
                 self.con.close()
+                self.engine.dispose()
                 return df
             else:
                 query = text(query)
                 self.con.execute(query)
                 self.con.close()
+                self.engine.dispose()
         else:
             cur = self.con.cursor()
             cur.execute(query)
             if query.strip().lower().startswith('select') or query.strip().lower().startswith('with'):
                 df = cur.fetch_pandas_all()
                 self.con.close()
+                self.engine.dispose()
                 return df
         self.con.close()
+        self.engine.dispose()
         return self
 
 
