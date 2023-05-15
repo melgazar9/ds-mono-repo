@@ -56,8 +56,8 @@ class BigQueryConnect(metaclass=MetaclassRDBMSEnforcer):
     """
 
     def __init__(self,
-                 google_application_credentials=os.environ.get('GOOGLE_APPLICATION_CREDENTIALS'),
-                 schema=os.environ.get('BIGQUERY_SCHEMA'),
+                 google_application_credentials=os.getenv('GOOGLE_APPLICATION_CREDENTIALS'),
+                 schema=os.getenv('BIGQUERY_SCHEMA'),
                  job_config_params=None):
         self.google_application_credentials = google_application_credentials
         self.schema = schema
@@ -97,10 +97,10 @@ class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
     """
 
     def __init__(self,
-                 user=os.environ.get('MYSQL_USER'),
-                 password=os.environ.get('MYSQL_PASSWORD'),
-                 host=os.environ.get('MYSQL_HOST'),
-                 schema=os.environ.get('MYSQL_SCHEMA'),
+                 user=os.getenv('MYSQL_USER'),
+                 password=os.getenv('MYSQL_PASSWORD'),
+                 host=os.getenv('MYSQL_HOST'),
+                 schema=os.getenv('MYSQL_SCHEMA'),
                  charset='utf8',
                  backend_url='mysqldb',
                  string_extension='mb4&binary_prefix=true',
@@ -126,9 +126,9 @@ class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
         keep_session_alive: bool to keep session open after query executes
         """
 
-        self.user = os.environ.get('MYSQL_USER') if user is None else user
-        self.password = os.environ.get('MYSQL_PASSWORD') if password is None else password
-        self.host = os.environ.get('MYSQL_HOST') if host is None else host
+        self.user = os.getenv('MYSQL_USER') if user is None else user
+        self.password = os.getenv('MYSQL_PASSWORD') if password is None else password
+        self.host = os.getenv('MYSQL_HOST') if host is None else host
         self.schema = schema
         self.charset = charset
         self.backend_url = backend_url
@@ -197,20 +197,20 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
     """
 
     def __init__(self,
-                 user=os.environ.get('SNOWFLAKE_USER'),
-                 password=os.environ.get('SNOWFLAKE_PASSWORD'),
-                 database=os.environ.get('SNOWFLAKE_DATABASE'),
-                 schema=os.environ.get('SNOWFLAKE_SCHEMA'),
-                 warehouse=os.environ.get('SNOWFLAKE_WAREHOUSE'),
-                 account=os.environ.get('SNOWFLAKE_ACCOUNT'),
-                 role=os.environ.get('SNOWFLAKE_ROLE'),
+                 user=os.getenv('SNOWFLAKE_USER'),
+                 password=os.getenv('SNOWFLAKE_PASSWORD'),
+                 database=os.getenv('SNOWFLAKE_DATABASE'),
+                 schema=os.getenv('SNOWFLAKE_SCHEMA'),
+                 warehouse=os.getenv('SNOWFLAKE_WAREHOUSE'),
+                 account=os.getenv('SNOWFLAKE_ACCOUNT'),
+                 role=os.getenv('SNOWFLAKE_ROLE'),
                  backend_engine='sqlalchemy',
                  engine_string=None,
                  connect_args=None):
 
-        self.user = os.environ.get('SNOWFLAKE_USER') if user is None else user
-        self.password = os.environ.get('SNOWFLAKE_PASSWORD') if password is None else password
-        self.account = os.environ.get('SNOWFLAKE_ACCOUNT') if account is None else account
+        self.user = os.getenv('SNOWFLAKE_USER') if user is None else user
+        self.password = os.getenv('SNOWFLAKE_PASSWORD') if password is None else password
+        self.account = os.getenv('SNOWFLAKE_ACCOUNT') if account is None else account
         self.database = database
         self.schema = schema
         self.warehouse = warehouse
@@ -336,13 +336,13 @@ class MongoDBConnect(metaclass=MetaclassNoSQLEnforcer):
 
         if mongodb_connection_string is None:
             if self.env.lower().startswith('dev'):
-                self.mongodb_connection_string = os.environ.get("MONGODB_DEV_STRING")
+                self.mongodb_connection_string = os.getenv("MONGODB_DEV_STRING")
             elif self.env.lower().startswith('stag'):
-                self.mongodb_connection_string = os.environ.get("MONGODB_STAGING_STRING")
+                self.mongodb_connection_string = os.getenv("MONGODB_STAGING_STRING")
             elif self.env.lower().startswith('test'):
-                self.mongodb_connection_string = os.environ.get("MONGODB_TESTING_STRING")
+                self.mongodb_connection_string = os.getenv("MONGODB_TESTING_STRING")
             elif self.env.lower().startswith('prod'):
-                self.mongodb_connection_string = os.environ.get("MONGODB_PRODUCTION_STRING")
+                self.mongodb_connection_string = os.getenv("MONGODB_PRODUCTION_STRING")
         else:
             self.mongodb_connection_string = mongodb_connection_string
 
