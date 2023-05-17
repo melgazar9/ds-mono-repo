@@ -5,7 +5,8 @@ from snowflake.connector.pandas_tools import write_pandas, pd_writer
 import pandas_gbq as pdg
 from google.cloud import bigquery
 from pymongo import MongoClient
-
+from snowflake.sqlalchemy import URL as sqlalchemy_snowflake_url
+# from sqlalchemy import URL  # todo
 
 class RDBMSConnect:
 
@@ -243,22 +244,7 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
             if self.engine_string is not None:
                 self.engine_string = self.engine_string
             else:
-                self.engine_string = "snowflake://"
-
-                if self.user is not None:
-                    self.engine_string = self.engine_string + self.user
-                if self.password is not None:
-                    self.engine_string = self.engine_string + f':{self.password}'
-                if self.account is not None:
-                    self.engine_string = self.engine_string + f'@{self.account}'
-                if self.database is not None and self.database != '':
-                    self.engine_string = self.engine_string + f'/{self.database}'
-                if self.schema is not None and self.schema != '':
-                    self.engine_string = self.engine_string + f'/{self.schema}'
-                if self.warehouse is not None:
-                    self.engine_string = self.engine_string + f'?warehouse={self.warehouse}'
-                if self.role is not None:
-                    self.engine_string = self.engine_string = self.engine_string + f'?role={self.role}'
+                self.engine_string = sqlalchemy_snowflake_url(**snowflake_connection_params)
 
             self.engine = create_engine(self.engine_string, connect_args=self.connect_args)
             self.con = self.engine.connect()
