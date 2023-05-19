@@ -289,7 +289,7 @@ class NoSQLConnect:
         raise ValueError('method connect must be overridden.')
 
     def disconnect(self):
-        raise ValueError('method connect must be overridden.')
+        raise ValueError('method disconnect must be overridden.')
 
     def find(self):
         raise ValueError('method run_sql must be overridden.')
