@@ -6,7 +6,7 @@ import pandas_gbq as pdg
 from google.cloud import bigquery
 from pymongo import MongoClient
 from snowflake.sqlalchemy import URL as sqlalchemy_snowflake_url
-# from sqlalchemy import URL  # todo
+from sqlalchemy.engine import URL  # todo
 
 class RDBMSConnect:
 
@@ -71,15 +71,22 @@ class BigQueryConnect(metaclass=MetaclassRDBMSEnforcer):
         self.job_config = bigquery.QueryJobConfig(**self.job_config_params)
         return self
 
+    def disconnect(self):
+        self.client.close()
+        return self
+
     def run_sql(self, query, return_result=True, use_pd_gbq=True):
         self.connect()
         if query.strip().lower().startswith('select') and use_pd_gbq:
             df = pdg.read_gbq(query)
+            self.disconnect()
             return df
         else:
             job = self.client.query(query, job_config=self.job_config)
             if return_result:
-                return job.result()
+                result = job.result()
+                self.disconnect()
+                return result
         return
 
 
@@ -102,9 +109,7 @@ class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
                  password=os.getenv('MYSQL_PASSWORD'),
                  host=os.getenv('MYSQL_HOST'),
                  schema=os.getenv('MYSQL_SCHEMA'),
-                 charset='utf8',
-                 backend_url='mysqldb',
-                 string_extension='mb4&binary_prefix=true',
+                 drivername='mysql',
                  engine_string=None,
                  keep_session_alive=False):
 
@@ -120,9 +125,7 @@ class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
         user: MySQL username
         password: MySQL password
         host: MySQL host
-        charset: MySQL charset
-        backend_url: backend to use (e.g. mysqldb)
-        string_extension: string to append the MySQL engine_string
+        drivername: backend to use (e.g. mysqldb)
         engine_string: str of the full extension URL. If this is provided all other parameters are ignored.
         keep_session_alive: bool to keep session open after query executes
         """
@@ -131,9 +134,7 @@ class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
         self.password = os.getenv('MYSQL_PASSWORD') if password is None else password
         self.host = os.getenv('MYSQL_HOST') if host is None else host
         self.schema = schema
-        self.charset = charset
-        self.backend_url = backend_url
-        self.string_extension = string_extension
+        self.drivername = drivername
         self.engine_string = engine_string
         self.keep_session_alive = keep_session_alive
 
@@ -145,26 +146,23 @@ class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
         if self.engine_string is not None:
             self.engine_string = self.engine_string
         else:
-            self.engine_string = "mysql://"
+            mysql_connection_params = {
+                'drivername': self.drivername,
+                'username': self.user,
+                'password': self.password,
+                'host': self.host
+            }
 
-            if self.backend_url is not None:
-                self.engine_string = self.engine_string.replace('mysql://', f'mysql+{self.backend_url}://')
-            if self.user is not None:
-                self.engine_string = self.engine_string + self.user
-            if self.password is not None:
-                self.engine_string = self.engine_string + f':{self.password}'
-            if self.host is not None:
-                self.engine_string = self.engine_string + f'@{self.host}'
-            if self.schema is not None and self.schema != '':
-                self.engine_string = self.engine_string + f'/{self.schema}'
-            if self.charset is not None:
-                self.engine_string = self.engine_string + f'?charset={self.charset}'
-            if self.string_extension is not None:
-                self.engine_string = self.engine_string + self.string_extension
+            self.engine_string = URL(**mysql_connection_params)
 
         self.engine = create_engine(self.engine_string, **kwargs)
         self.con = self.engine.connect()
 
+        return self
+
+    def disconnect(self):
+        self.con.close()
+        self.engine.dispose()
         return self
 
     def run_sql(self, query, **read_sql_kwargs):
@@ -172,15 +170,13 @@ class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
         if query.strip().lower().startswith('select'):
             df = pd.read_sql(query, con=self.con, **read_sql_kwargs)
             if not self.keep_session_alive:
-                self.con.close()
-                self.engine.dispose()
+                self.disconnect()
             return df
         else:
             query = text(query)
             self.con.execute(query)
             if not self.keep_session_alive:
-                self.con.close()
-                self.engine.dispose()
+                self.disconnect()
         return self
 
 
@@ -235,6 +231,8 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
             'role': self.role
         }
 
+        snowflake_connection_params = {k: v for k, v in snowflake_connection_params.items() if v is not None}
+
         if self.connect_args:
             snowflake_connection_params.update(self.connect_args)
         else:
@@ -253,29 +251,30 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
 
         return self
 
+    def disconnect(self):
+        self.con.close()
+        self.engine.dispose()
+        return self
+
     def run_sql(self, query, **read_sql_kwargs):
         self.connect()
         if self.backend_engine == 'sqlalchemy':
             if query.strip().lower().startswith('select') or query.strip().lower().startswith('with'):
                 df = pd.read_sql(query, con=self.con, **read_sql_kwargs)
-                self.con.close()
-                self.engine.dispose()
+                self.disconnect()
                 return df
             else:
                 query = text(query)
                 self.con.execute(query)
-                self.con.close()
-                self.engine.dispose()
+                self.disconnect()
         else:
             cur = self.con.cursor()
             cur.execute(query)
             if query.strip().lower().startswith('select') or query.strip().lower().startswith('with'):
                 df = cur.fetch_pandas_all()
-                self.con.close()
-                self.engine.dispose()
+                self.disconnect()
                 return df
-        self.con.close()
-        self.engine.dispose()
+        self.disconnect()
         return self
 
 
@@ -287,6 +286,9 @@ class NoSQLConnect:
         pass
 
     def connect(self):
+        raise ValueError('method connect must be overridden.')
+
+    def disconnect(self):
         raise ValueError('method connect must be overridden.')
 
     def find(self):
@@ -334,10 +336,15 @@ class MongoDBConnect(metaclass=MetaclassNoSQLEnforcer):
 
         self.dwh_name = 'mongodb'
         self.data = None
+        self.client = None
 
     def connect(self):
         self.client = MongoClient(self.mongodb_connection_string)
         self.client.connect()
+        return self
+
+    def disconnect(self):
+        self.client.close()
         return self
 
     def find(self, *args):
@@ -352,6 +359,6 @@ class MongoDBConnect(metaclass=MetaclassNoSQLEnforcer):
         self.data = [i for i in _collection.find(*args)]
 
         if not self.keep_session_alive:
-            self.client.close()
+            self.disconnect()
 
         return self

@@ -181,11 +181,7 @@ class YFPriceETL:
 
     def close_dwh_connections(self):
         for con in self.dwh_connections.keys():
-            if con in ['mysql', 'snowflake']:
-                self.dwh_connections[con].con.close()
-                self.engine.dispose()
-            else:
-                self.dwh_connections[con].client.close()
+            self.dwh_connections[con].disconnect()
         return self
 
 
@@ -740,7 +736,7 @@ class YFPriceETL:
             print(f'\n\nQuery: {query}\n\n') if self.verbose else None
             self.snowflake_client.run_sql(query)
 
-        self.snowflake_client.con.close()
+        self.snowflake_client.disconnect()
 
         if 'snowflake' in self.create_timestamp_index_dbs:
             raise NotImplementedError('No need to create timestamp indices on bigquery or snowflake.')
@@ -1284,7 +1280,7 @@ class YFStockPriceGetter:
 
             for dwh_name in self.dwh_conns.keys():
                 if dwh_name in ['mysql', 'snowflake']:
-                    self.dwh_conns[dwh_name].con.close()
+                    self.dwh_conns[dwh_name].disconnect()
 
         return self
 
