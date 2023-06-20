@@ -1,4 +1,4 @@
-from apscheduler.schedulers.background import BlockingScheduler
+from apscheduler.schedulers.background import BackgroundScheduler, BlockingScheduler
 from waitress import serve
 from routes import *
 
@@ -8,7 +8,7 @@ config.read('config.ini')
 
 ### Run app ###
 
-scheduler = BlockingScheduler()
+scheduler = BackgroundScheduler(job_defaults={'max_instances': 3})  # BlockingScheduler()
 
 projects_to_host = []
 
