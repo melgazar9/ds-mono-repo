@@ -17,7 +17,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '6'
+          cpus: '2'
           memory: 28000M
     volumes:
       - ../../ds_core:/app/ds_core
