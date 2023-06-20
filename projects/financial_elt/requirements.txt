@@ -1,3 +1,4 @@
+-e ../..
 apscheduler==3.9.1
 beautifulsoup4==4.11.1
 cryptography==40.0.2
@@ -8,7 +9,6 @@ dbt-core==1.5.0
 dbt-extractor==0.4.1
 dbt-snowflake==1.5.0
 dill==0.3.5.1
--e ../..
 feather-format==0.4.1
 Flask==2.2.3
 flask-sqlalchemy==3.0.3
