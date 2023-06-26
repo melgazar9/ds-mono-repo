@@ -1,6 +1,6 @@
 ### common python imports ###
 
-import os, time, sys, gc, yagmail, re, json, itertools, warnings, configparser, inspect, subprocess, ast, logging
+import os, time, sys, gc, yagmail, re, json, itertools, warnings, inspect, subprocess, ast, logging
 from glob import glob
 from datetime import datetime, timedelta
 from flatten_json import flatten as flatten_json
