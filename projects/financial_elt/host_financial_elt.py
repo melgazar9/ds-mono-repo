@@ -1,4 +1,4 @@
-from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.background import BackgroundScheduler, BlockingScheduler
 from waitress import serve
 from routes import *
 
@@ -8,7 +8,7 @@ config.read('config.ini')
 
 ### Run app ###
 
-scheduler = BackgroundScheduler()
+scheduler = BackgroundScheduler(job_defaults={'max_instances': 3})  # BlockingScheduler()
 
 projects_to_host = []
 
@@ -39,4 +39,4 @@ if __name__ == "__main__":
     # run()
 
     # app.run(host=HOST, port=PORT, debug=True)  # debug mode
-    serve(app, host=HOST, port=PORT, threads=8)  # waitress production wsgi server
+    serve(app, host=HOST, port=PORT, threads=2)  # waitress production wsgi server
