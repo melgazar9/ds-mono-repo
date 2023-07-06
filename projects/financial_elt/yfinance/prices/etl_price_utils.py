@@ -550,21 +550,6 @@ class YFPriceETL:
             print('\nOverwriting crypto_tickers_top_250 to BigQuery...\n') if self.verbose else None
 
             job_config = bigquery.job.LoadJobConfig(write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE)
-            self.bigquery_client.run_sql(f"""
-                CREATE TABLE IF NOT EXISTS {self.schema}.crypto_tickers_top_250
-                (
-                 symbol STRING,
-                 name STRING,
-                 price_intraday FLOAT64,
-                 change FLOAT64,
-                 pct_change STRING,
-                 market_cap STRING,
-                 volume_in_currency_since_0_00_utc STRING,
-                 volume_in_currency_24_hr STRING,
-                 total_volume_all_currencies_24_hr STRING,
-                 circulating_supply STRING
-                )
-            """)
 
             table_generator = \
                 self.bigquery_client.client.list_tables(f"{self.bigquery_client.client.project}.{self.schema}")
@@ -573,6 +558,22 @@ class YFPriceETL:
                 if t.table_id == 'crypto_tickers_top_250':
                     table_exists = True
                     break
+
+            self.bigquery_client.run_sql(f"""
+                            CREATE TABLE IF NOT EXISTS {self.schema}.crypto_tickers_top_250
+                            (
+                             symbol STRING,
+                             name STRING,
+                             price_intraday FLOAT64,
+                             change FLOAT64,
+                             pct_change STRING,
+                             market_cap STRING,
+                             volume_in_currency_since_0_00_utc STRING,
+                             volume_in_currency_24_hr STRING,
+                             total_volume_all_currencies_24_hr STRING,
+                             circulating_supply STRING
+                            )
+                        """)
 
             if table_exists:
                 df_top_crypto_tickers_prev = self.bigquery_client.run_sql(
@@ -647,11 +648,137 @@ class YFPriceETL:
                              overwrite=True,
                              auto_create_table=True)
                 self.snowflake_client.backend_engine = original_backend
+        return self
 
     ###### forex ######
 
     def etl_forex_tickers(self):
-        pass
+        currency_pairs = self.ticker_downloader.download_forex_tickers()
+        df_forex_pairs_new = pd.DataFrame({'forex_pair': currency_pairs})
+
+        if self.verbose:
+            print(f"""\nOverwriting forex_pairs to database(s): {self.dwh_connections.keys()}...""")
+
+        if self.populate_mysql:
+            print('\nOverwriting forex_pairs to MySQL...\n') if self.verbose else None
+            method = 'multi' if self.write_method == 'write_pandas' else self.write_method
+
+            tables = self.mysql_client.run_sql(f"""
+                        select
+                          table_name
+                        from
+                          information_schema.tables
+                        where
+                          table_schema = '{self.schema}'
+                        """)
+
+            table_exists = True if 'forex_pairs' in flatten_list(tables.values.tolist()) else False
+
+            if table_exists:
+                df_forex_pairs_prev = self.mysql_client.run_sql(f'select * from {self.schema}.forex_pairs')
+                df_forex_pairs = \
+                    pd.concat([df_forex_pairs_prev, df_forex_pairs_new], ignore_index=True) \
+                        .drop_duplicates(subset=['forex_pair']) \
+                        .reset_index(drop=True)
+            else:
+                df_forex_pairs = df_forex_pairs_new
+
+            self.mysql_client.connect()
+
+            df_forex_pairs.to_sql('forex_pairs',
+                                  schema=self.schema,
+                                  con=self.mysql_client.con,
+                                  if_exists='replace',
+                                  index=False,
+                                  method=method,
+                                  chunksize=self.to_sql_chunksize)
+
+        if self.populate_bigquery:
+            print('\nOverwriting forex_pairs to BigQuery...\n') if self.verbose else None
+
+            job_config = bigquery.job.LoadJobConfig(write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE)
+
+            table_generator = \
+                self.bigquery_client.client.list_tables(f"{self.bigquery_client.client.project}.{self.schema}")
+
+            for t in table_generator:
+                if t.table_id == 'forex_pairs':
+                    table_exists = True
+                    break
+
+            self.bigquery_client.run_sql(f"CREATE TABLE IF NOT EXISTS {self.schema}.forex_pairs (forex_pair STRING)")
+
+            if table_exists:
+                df_forex_pairs_prev = self.bigquery_client.run_sql(f'select * from {self.schema}.forex_pairs')
+                df_forex_pairs = \
+                    pd.concat([df_forex_pairs_prev, df_forex_pairs_new], ignore_index=True) \
+                        .drop_duplicates(subset=['forex_pair']) \
+                        .reset_index(drop=True)
+            else:
+                df_forex_pairs = df_forex_pairs_new
+
+            self.bigquery_client. \
+                client.load_table_from_dataframe(df_forex_pairs, f'{self.schema}.forex_pairs', job_config=job_config)
+
+            self.bigquery_client.run_sql(f"""
+                        CREATE OR REPLACE TABLE {self.schema}.forex_pairs AS (
+                          SELECT * FROM  {self.schema}.forex_pairs ORDER BY 1
+                        );
+                    """)
+
+        if self.populate_snowflake:
+            print('\nOverwriting forex_pairs to Snowflake...\n') if self.verbose else None
+
+            if self.write_method in [pd_writer, 'write_pandas']:
+                df_forex_pairs_new.columns = df_forex_pairs_new.columns.str.upper()
+
+            tables = self.snowflake_client.run_sql(f"""
+                                    select
+                                      table_name
+                                    from
+                                      information_schema.tables
+                                    where
+                                      table_catalog = {self.database}
+                                      and table_schema = '{self.schema}'
+                                    """)
+
+            table_exists = True if 'FOREX_PAIRS' in flatten_list(tables.values.tolist()) else False
+
+            if table_exists:
+                df_forex_pairs_prev = \
+                    self.snowflake_client.run_sql(f'select * from {self.schema}.forex_pairs')
+
+                df_forex_pairs_prev = df_forex_pairs_prev[[i.upper() for i in df_forex_pairs_prev.columns]]
+                df_forex_pairs = \
+                    pd.concat([df_forex_pairs_prev, df_forex_pairs_new], ignore_index=True) \
+                        .drop_duplicates(subset=['SYMBOL']) \
+                        .reset_index(drop=True)
+            else:
+                df_forex_pairs = df_forex_pairs_new
+
+            if self.write_method.lower() != 'write_pandas':
+                df_forex_pairs.to_sql('forex_pairs',
+                                      con=self.snowflake_client.con,
+                                      if_exists='replace',
+                                      method=self.write_method,
+                                      index=False,
+                                      chunksize=self.to_sql_chunksize)
+            else:
+                original_backend = self.snowflake_client.backend_engine
+                self.snowflake_client.backend_engine = 'snowflake_connector'
+                self.snowflake_client.connect()
+                write_pandas(df=df_forex_pairs,
+                             conn=self.snowflake_client.con,
+                             database=self.snowflake_client.database.upper(),
+                             schema=self.snowflake_client.schema.upper(),
+                             table_name='FOREX_PAIRS',
+                             chunk_size=self.to_sql_chunksize,
+                             compression='gzip',
+                             parallel=self.write_pandas_threads,
+                             overwrite=True,
+                             auto_create_table=True)
+                self.snowflake_client.backend_engine = original_backend
+        return self
 
     def etl_forex_prices(self):
         pass
@@ -1705,6 +1832,16 @@ class TickerDownloader:
         df.rename(columns={'%_change': 'pct_change'}, inplace=True)
         df = df.dropna(how='all', axis=1)
         return df
+
+    @staticmethod
+    def download_forex_tickers(
+            forex_pairs=('EURUSD=X', 'JPY=X', 'GBPUSD=X', 'AUDUSD=X', 'NZDUSD=X', 'EURJPY=X', 'GBPJPY=X', 'EURGBP=X',
+                         'EURCAD=X', 'EURSEK=X', 'EURCHF=X', 'EURHUF=X', 'CNY=X', 'HKD=X', 'SGD=X', 'INR=X', 'MXN=X',
+                         'PHP=X', 'IDR=X', 'THB=X', 'MYR=X', 'ZAR=X', 'RUB=X')
+    ):
+        # TODO
+        # Difficulty downloading forex pairs so just returning the forex_pairs input for now.
+        return forex_pairs
 
     @staticmethod
     def download_numerai_signals_ticker_map(

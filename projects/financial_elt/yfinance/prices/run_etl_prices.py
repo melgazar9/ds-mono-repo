@@ -34,7 +34,7 @@ pipeline.etl_top_250_crypto_tickers()
 
 ### forex ###
 
-# pipeline.etl_forex_tickers()
+pipeline.etl_forex_tickers()
 # pipeline.etl_forex_prices(batch_download=False,
 #                           intervals_to_download=intervals_to_download,
 #                           write_to_db_after_interval_complete=True,
