@@ -181,13 +181,15 @@ def get_contents_timestamps_from_dir(directory,
     list_of_contents = list(set(list_of_files + list_of_dirs))
 
     df_contents = pd.DataFrame()
-    for content_path in list_of_contents:
-        modified_timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(os.path.getmtime(content_path)))
-        df_tmp = pd.DataFrame({'content_path': [content_path], 'last_modified': [modified_timestamp]})
-        df_contents = pd.concat([df_contents, df_tmp], axis=0)
+    if list_of_contents:
+        print(f'*** {df_contents} ***')
+        for content_path in list_of_contents:
+            modified_timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(os.path.getmtime(content_path)))
+            df_tmp = pd.DataFrame({'content_path': [content_path], 'last_modified': [modified_timestamp]})
+            df_contents = pd.concat([df_contents, df_tmp], axis=0)
 
-    df_contents.drop_duplicates(inplace=True)
-    df_contents['last_modified'] = pd.to_datetime(df_contents['last_modified'])
+        df_contents.drop_duplicates(inplace=True)
+        df_contents['last_modified'] = pd.to_datetime(df_contents['last_modified'])
     return df_contents
 
 def remove_old_contents(directory,
@@ -206,11 +208,10 @@ def remove_old_contents(directory,
                                          excluded_dirs=excluded_dirs
                                          )
 
-    min_keep_timestamp = pd.to_datetime(start_timestamp - pd.Timedelta(days=lookback_days))
+    if df_contents.shape[0]:
+        min_keep_timestamp = pd.to_datetime(start_timestamp - pd.Timedelta(days=lookback_days))
+        contents_to_delete = df_contents[df_contents['last_modified'] < min_keep_timestamp]['content_path'].tolist()
 
-    contents_to_delete = df_contents[df_contents['last_modified'] < min_keep_timestamp]['content_path'].tolist()
-
-    ### delete the files ###
-
-    subprocess.run(f"rm -rf {' '.join(contents_to_delete)}", shell=True)
+        ### delete the files ###
+        subprocess.run(f"rm -rf {' '.join(contents_to_delete)}", shell=True)
     return

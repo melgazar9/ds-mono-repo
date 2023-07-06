@@ -1,4 +1,6 @@
-from etl_stock_price_utils import *
+from etl_price_utils import *
+
+###### this main driver file acts as interface for running ETL process ######
 
 start = time.time()
 
@@ -14,14 +16,32 @@ pipeline = YFPriceETL(populate_mysql=False,
 
 pipeline.connect_to_dwhs()
 
+### stocks ###
+
 pipeline.etl_stock_tickers()
 pipeline.etl_stock_prices(batch_download=False,
                           intervals_to_download=intervals_to_download,
                           write_to_db_after_interval_complete=True,
                           yf_params=yf_params)
 
-pipeline.close_dwh_connections()
+### crypto ###
 
+pipeline.etl_top_250_crypto_tickers()
+# pipeline.etl_crypto_prices(batch_download=False,
+#                            intervals_to_download=intervals_to_download,
+#                            write_to_db_after_interval_complete=True,
+#                            yf_params=yf_params)
+
+### forex ###
+
+# pipeline.etl_forex_tickers()
+# pipeline.etl_forex_prices(batch_download=False,
+#                           intervals_to_download=intervals_to_download,
+#                           write_to_db_after_interval_complete=True,
+#                           yf_params=yf_params)
+
+
+pipeline.close_dwh_connections()
 
 ### TODO: integrate fix missing ticker timestamps ###
 

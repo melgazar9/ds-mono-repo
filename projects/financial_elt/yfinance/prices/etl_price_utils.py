@@ -65,6 +65,8 @@ class YFPriceETL:
         self.write_pandas_threads = write_pandas_threads
         self.verbose = verbose
 
+        self.ticker_downloader = TickerDownloader()
+
         # self.debug_tickers = ['AAPL', 'AMZN', 'GOOG', 'META', 'NFLX', 'SQ', 'BGA.AX', 'EUTLF', 'ZZZ.TO']
 
         assert isinstance(self.debug_tickers, (tuple, list))
@@ -81,6 +83,8 @@ class YFPriceETL:
         self.bigquery_client = None
 
         self.create_timestamp_index_dbs = ('mysql',)
+
+    ###### dwh connections ######
 
     def _connect_to_snowflake(self, snowflake_connect_params=None):
         if self.populate_snowflake:
@@ -157,7 +161,6 @@ class YFPriceETL:
 
         return self
 
-
     def connect_to_dwhs(self):
         """
         Description
@@ -184,17 +187,17 @@ class YFPriceETL:
             self.dwh_connections[con].disconnect()
         return self
 
+    ###### stocks ######
 
     def etl_stock_tickers(self):
-        ticker_downloader = TickerDownloader()
-        df_tickers = ticker_downloader.download_valid_tickers()
+        df_tickers = self.ticker_downloader.download_valid_stock_tickers()
         print(f'\nOverwriting df_tickers to database(s): {self.dwh_connections.keys()}...\n') if self.verbose else None
 
         if self.populate_mysql:
             print('\nOverwriting df_tickers to MySQL...\n') if self.verbose else None
             method = 'multi' if self.write_method == 'write_pandas' else self.write_method
             self.mysql_client.connect()
-            df_tickers.to_sql('tickers',
+            df_tickers.to_sql('stock_tickers',
                               schema=self.schema,
                               con=self.mysql_client.con,
                               if_exists='replace',
@@ -207,7 +210,7 @@ class YFPriceETL:
 
             job_config = bigquery.job.LoadJobConfig(write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE)
             self.bigquery_client.run_sql(f"""
-                CREATE TABLE IF NOT EXISTS {self.schema}.tickers
+                CREATE TABLE IF NOT EXISTS {self.schema}.stock_tickers
                 (
                  yahoo_ticker STRING,
                  google_ticker STRING,
@@ -220,10 +223,10 @@ class YFPriceETL:
             """)
 
             self.bigquery_client. \
-                client.load_table_from_dataframe(df_tickers, f'{self.schema}.tickers', job_config=job_config)
+                client.load_table_from_dataframe(df_tickers, f'{self.schema}.stock_tickers', job_config=job_config)
 
             self.bigquery_client.run_sql(f"""
-                CREATE OR REPLACE TABLE {self.schema}.tickers AS (
+                CREATE OR REPLACE TABLE {self.schema}.stock_tickers AS (
                 SELECT 
                   yahoo_ticker,
                   google_ticker,
@@ -233,7 +236,7 @@ class YFPriceETL:
                   yahoo_valid_pts,
                   yahoo_valid_numerai
                 FROM 
-                  {self.schema}.tickers  
+                  {self.schema}.stock_tickers  
                 ORDER BY 
                   1, 2, 3, 4, 5, 6, 7
                 );
@@ -246,7 +249,7 @@ class YFPriceETL:
                 df_tickers.columns = df_tickers.columns.str.upper()
 
             if self.write_method.lower() != 'write_pandas':
-                df_tickers.to_sql('tickers',
+                df_tickers.to_sql('stock_tickers',
                                   con=self.snowflake_client.con,
                                   if_exists='replace',
                                   index=False,
@@ -260,7 +263,7 @@ class YFPriceETL:
                              conn=self.snowflake_client.con,
                              database=self.snowflake_client.database.upper(),
                              schema=self.snowflake_client.schema.upper(),
-                             table_name='TICKERS',
+                             table_name='STOCK_TICKERS',
                              chunk_size=self.to_sql_chunksize,
                              compression='gzip',
                              parallel=self.write_pandas_threads,
@@ -327,7 +330,8 @@ class YFPriceETL:
             [i for i in [self.mysql_client, self.bigquery_client, self.snowflake_client] if i is not None][0]
 
         df_tickers = \
-            self.db_client.run_sql(f"SELECT yahoo_ticker, bloomberg_ticker, numerai_ticker FROM {self.schema}.tickers;")
+            self.db_client.run_sql(
+                f"SELECT yahoo_ticker, bloomberg_ticker, numerai_ticker FROM {self.schema}.stock_tickers;")
 
         column_order = ['timestamp', 'timestamp_tz_aware', 'timezone', 'yahoo_ticker', 'bloomberg_ticker',
                         'numerai_ticker', 'open', 'high', 'low', 'close', 'volume', 'dividends', 'stock_splits']
@@ -459,6 +463,200 @@ class YFPriceETL:
                 self._write_df_to_all_dbs(df=df, interval=i)
                 gc.collect()
         return
+
+    def get_market_calendar(self):
+        """
+        Description
+        -----------
+        Get pandas market calendar to determine when the market was open / closed.
+        """
+
+        date_range = \
+            pd.date_range(start='1950-01-01', end=datetime.today().strftime('%Y-%m-%d'))
+
+        self.df_calendar = \
+            pmc.get_calendar('24/7') \
+                .schedule(start_date=date_range.min().strftime('%Y-%m-%d'),
+                          end_date=date_range.max().strftime('%Y-%m-%d')) \
+                .drop_duplicates()
+
+        self.market_closed_dates = []
+        for idx in range(self.df_calendar.shape[0] - 1):
+            close_date = self.df_calendar.iloc[idx]['market_close'].strftime('%Y-%m-%d')
+            next_open_date = self.df_calendar.shift(-1).iloc[idx]['market_open'].strftime('%Y-%m-%d')
+
+            if pd.to_datetime(next_open_date) > pd.to_datetime(close_date):
+                market_closed_dates_i = \
+                    [d.strftime('%Y-%m-%d') for d in
+                     pd.date_range(close_date, next_open_date, freq='d').tolist()[1:-1]]
+
+                self.market_closed_dates.append(market_closed_dates_i)
+        self.market_closed_dates = sorted(list(set(flatten_list(self.market_closed_dates))))
+
+        return self
+
+    ###### crypto ######
+
+    def etl_top_250_crypto_tickers(self):
+        df_top_crypto_tickers_new = self.ticker_downloader.download_top_250_crypto_tickers()
+        if self.verbose:
+            print(f"""
+                \nOverwriting top_250_crypto_tickers to database(s): {self.dwh_connections.keys()}...
+                \nIf a ticker has been a part of the top 250 crypto tickers (>= min date) it will be a part of this table.\n
+            """)
+        column_order = ['symbol', 'name', 'price_intraday', 'change', 'pct_change', 'market_cap',
+                        'volume_in_currency_since_0_00_utc', 'volume_in_currency_24_hr',
+                        'total_volume_all_currencies_24_hr', 'circulating_supply']
+
+        df_top_crypto_tickers_new = df_top_crypto_tickers_new[column_order]
+
+        if self.populate_mysql:
+            print('\nOverwriting top_250_crypto_tickers to MySQL...\n') if self.verbose else None
+            method = 'multi' if self.write_method == 'write_pandas' else self.write_method
+
+            tables = self.mysql_client.run_sql(f"""
+                select
+                  table_name
+                from
+                  information_schema.tables
+                where
+                  table_schema = '{self.schema}'
+                """)
+
+            table_exists = True if 'crypto_tickers_top_250' in flatten_list(tables.values.tolist()) else False
+
+            if table_exists:
+                df_top_crypto_tickers_prev = self.mysql_client.run_sql(
+                    f'select * from {self.schema}.crypto_tickers_top_250')
+                df_top_crypto_tickers_prev = df_top_crypto_tickers_prev[column_order]
+                df_top_crypto_tickers = \
+                    pd.concat([df_top_crypto_tickers_prev, df_top_crypto_tickers_new], ignore_index=True) \
+                        .drop_duplicates(subset=['symbol']) \
+                        .reset_index(drop=True)
+            else:
+                df_top_crypto_tickers = df_top_crypto_tickers_new
+
+            self.mysql_client.connect()
+
+            df_top_crypto_tickers.to_sql('crypto_tickers_top_250',
+                                         schema=self.schema,
+                                         con=self.mysql_client.con,
+                                         if_exists='replace',
+                                         index=False,
+                                         method=method,
+                                         chunksize=self.to_sql_chunksize)
+
+        if self.populate_bigquery:
+            print('\nOverwriting crypto_tickers_top_250 to BigQuery...\n') if self.verbose else None
+
+            job_config = bigquery.job.LoadJobConfig(write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE)
+            self.bigquery_client.run_sql(f"""
+                CREATE TABLE IF NOT EXISTS {self.schema}.crypto_tickers_top_250
+                (
+                 symbol STRING,
+                 name STRING,
+                 price_intraday FLOAT64,
+                 change FLOAT64,
+                 pct_change STRING,
+                 market_cap STRING,
+                 volume_in_currency_since_0_00_utc STRING,
+                 volume_in_currency_24_hr STRING,
+                 total_volume_all_currencies_24_hr STRING,
+                 circulating_supply STRING
+                )
+            """)
+
+            table_generator = \
+                self.bigquery_client.client.list_tables(f"{self.bigquery_client.client.project}.{self.schema}")
+
+            for t in table_generator:
+                if t.table_id == 'crypto_tickers_top_250':
+                    table_exists = True
+                    break
+
+            if table_exists:
+                df_top_crypto_tickers_prev = self.bigquery_client.run_sql(
+                    f'select * from {self.schema}.crypto_tickers_top_250')
+                df_top_crypto_tickers_prev = df_top_crypto_tickers_prev[column_order]
+                df_top_crypto_tickers = \
+                    pd.concat([df_top_crypto_tickers_prev, df_top_crypto_tickers_new], ignore_index=True) \
+                        .drop_duplicates(subset=['symbol']) \
+                        .reset_index(drop=True)
+            else:
+                df_top_crypto_tickers = df_top_crypto_tickers_new
+
+            self.bigquery_client. \
+                client.load_table_from_dataframe(df_top_crypto_tickers, f'{self.schema}.crypto_tickers_top_250',
+                                                 job_config=job_config)
+
+            self.bigquery_client.run_sql(f"""
+                CREATE OR REPLACE TABLE {self.schema}.crypto_tickers_top_250 AS (
+                  SELECT * FROM  {self.schema}.crypto_tickers_top_250 ORDER BY symbol
+                );
+            """)
+
+        if self.populate_snowflake:
+            print('\nOverwriting crypto_tickers_top_250 to Snowflake...\n') if self.verbose else None
+
+            if self.write_method in [pd_writer, 'write_pandas']:
+                df_top_crypto_tickers_new.columns = df_top_crypto_tickers_new.columns.str.upper()
+
+            tables = self.snowflake_client.run_sql(f"""
+                            select
+                              table_name
+                            from
+                              information_schema.tables
+                            where
+                              table_catalog = {self.database}
+                              and table_schema = '{self.schema}'
+                            """)
+
+            table_exists = True if 'CRYPTO_TICKERS_TOP_250' in flatten_list(tables.values.tolist()) else False
+
+            if table_exists:
+                df_top_crypto_tickers_prev = \
+                    self.snowflake_client.run_sql(f'select * from {self.schema}.crypto_tickers_top_250')
+
+                df_top_crypto_tickers_prev = df_top_crypto_tickers_prev[[i.upper() for i in column_order]]
+                df_top_crypto_tickers = \
+                    pd.concat([df_top_crypto_tickers_prev, df_top_crypto_tickers_new], ignore_index=True) \
+                        .drop_duplicates(subset=['SYMBOL']) \
+                        .reset_index(drop=True)
+            else:
+                df_top_crypto_tickers = df_top_crypto_tickers_new
+
+            if self.write_method.lower() != 'write_pandas':
+                df_top_crypto_tickers.to_sql('crypto_tickers_top_250',
+                                             con=self.snowflake_client.con,
+                                             if_exists='replace',
+                                             index=False,
+                                             method=self.write_method,
+                                             chunksize=self.to_sql_chunksize)
+            else:
+                original_backend = self.snowflake_client.backend_engine
+                self.snowflake_client.backend_engine = 'snowflake_connector'
+                self.snowflake_client.connect()
+                write_pandas(df=df_top_crypto_tickers,
+                             conn=self.snowflake_client.con,
+                             database=self.snowflake_client.database.upper(),
+                             schema=self.snowflake_client.schema.upper(),
+                             table_name='CRYPTO_TICKERS_TOP_250',
+                             chunk_size=self.to_sql_chunksize,
+                             compression='gzip',
+                             parallel=self.write_pandas_threads,
+                             overwrite=True,
+                             auto_create_table=True)
+                self.snowflake_client.backend_engine = original_backend
+
+    ###### forex ######
+
+    def etl_forex_tickers(self):
+        pass
+
+    def etl_forex_prices(self):
+        pass
+
+    ###### dwh attribute methods ######
 
     def _write_df_to_all_dbs(self, df, interval):
         """
@@ -836,36 +1034,7 @@ class YFPriceETL:
             self.mysql_client.run_sql(f"ALTER TABLE {self.schema}.stock_prices_{interval} DROP INDEX dedupe;")
         return
 
-    ### TODO: integrate fix missing tickers: define methods below ###
-    def get_market_calendar(self):
-        """
-        Description
-        -----------
-        Get pandas market calendar to determine when the market was open / closed.
-        """
-
-        date_range = \
-            pd.date_range(start='1950-01-01', end=datetime.today().strftime('%Y-%m-%d'))
-
-        self.df_calendar = \
-            pmc.get_calendar('24/7') \
-                .schedule(start_date=date_range.min().strftime('%Y-%m-%d'),
-                          end_date=date_range.max().strftime('%Y-%m-%d')) \
-                .drop_duplicates()
-
-        self.market_closed_dates = []
-        for idx in range(self.df_calendar.shape[0] - 1):
-            close_date = self.df_calendar.iloc[idx]['market_close'].strftime('%Y-%m-%d')
-            next_open_date = self.df_calendar.shift(-1).iloc[idx]['market_open'].strftime('%Y-%m-%d')
-
-            if pd.to_datetime(next_open_date) > pd.to_datetime(close_date):
-                market_closed_dates_i = \
-                    [d.strftime('%Y-%m-%d') for d in pd.date_range(close_date, next_open_date, freq='d').tolist()[1:-1]]
-
-                self.market_closed_dates.append(market_closed_dates_i)
-        self.market_closed_dates = sorted(list(set(flatten_list(self.market_closed_dates))))
-
-        return self
+    ###### TODO Methods ######
 
     def is_good_dataset(self, interval):
         """
@@ -1218,8 +1387,8 @@ class YFStockPriceGetter:
                 self.stored_tickers = pd.merge(self.stored_tickers, tmp_stored_tickers, how='outer', on='yahoo_ticker')
 
         self.stored_tickers['query_start_timestamp'] = \
-            self.stored_tickers[[i for i in self.stored_tickers.columns if i.endswith('max_timestamp')]]\
-                .apply(lambda x: pd.to_datetime(x.fillna('1970-01-01 00:00:00'), utc=True))\
+            self.stored_tickers[[i for i in self.stored_tickers.columns if i.endswith('max_timestamp')]] \
+                .apply(lambda x: pd.to_datetime(x.fillna('1970-01-01 00:00:00'), utc=True)) \
                 .min(axis=1)
 
         return self
@@ -1475,14 +1644,14 @@ class TickerDownloader:
     Description
     -----------
     Class to download PyTickerSymbols, Yahoo, and Numerai ticker symbols into a single dataframe.
-    A mapping between all symbols is returned when calling the method download_valid_tickers().
+    A mapping between all symbols is returned when calling the method download_valid_stock_tickers().
     """
 
     def __init__(self):
         pass
 
     @staticmethod
-    def download_pts_tickers():
+    def download_pts_stock_tickers():
         """
         Description
         -----------
@@ -1515,6 +1684,27 @@ class TickerDownloader:
                 .sort_values(by=['yahoo_ticker', 'google_ticker']) \
                 .drop_duplicates()
         return all_tickers
+
+    @staticmethod
+    def download_top_250_crypto_tickers(num_currencies=250):
+        """
+        Description
+        -----------
+        Download the top 250 cryptocurrencies
+        Note: At the time of coding, setting num_currencies higher than 250 results in only 25 crypto tickers returned.
+        """
+
+        from requests_html import HTMLSession
+
+        session = HTMLSession()
+        resp = session.get(f"https://finance.yahoo.com/crypto?offset=0&count={num_currencies}")
+        tables = pd.read_html(resp.html.raw_html)
+        session.close()
+
+        df = clean_columns(tables[0].copy())
+        df.rename(columns={'%_change': 'pct_change'}, inplace=True)
+        df = df.dropna(how='all', axis=1)
+        return df
 
     @staticmethod
     def download_numerai_signals_ticker_map(
@@ -1551,7 +1741,7 @@ class TickerDownloader:
         return ticker_map
 
     @classmethod
-    def download_valid_tickers(cls):
+    def download_valid_stock_tickers(cls):
         """
         Description
         -----------
@@ -1559,7 +1749,7 @@ class TickerDownloader:
         """
         # napi = numerapi.SignalsAPI(os.environ.get('NUMERAI_PUBLIC_KEY'), os.environ.get('NUMERAI_PRIVATE_KEY'))
 
-        df_pts_tickers = cls.download_pts_tickers()
+        df_pts_tickers = cls.download_pts_stock_tickers()
 
         numerai_yahoo_tickers = \
             cls.download_numerai_signals_ticker_map() \
