@@ -2,17 +2,23 @@ from etl_price_utils import *
 
 ###### this main driver file acts as interface for running ETL process ######
 
+ENVIRONMENT = os.getenv('ENVIRONMENT').lower()
+assert ENVIRONMENT in ('dev', 'production')
+
+if ENVIRONMENT == 'dev':
+    SCHEMA = 'yfinance_dev'
+elif ENVIRONMENT == 'production':
+    SCHEMA = 'yfinance'
+
 start = time.time()
 
 intervals_to_download = ('1m', '2m', '5m', '1h', '1d')
-yf_params = {'threads': False}
+yf_params = {'repair': True, 'auto_adjust': True, 'back_adjust': False, 'timeout': 300, 'raise_errors': False}
 
-### run the pipeline ###
 
-pipeline = YFPriceETL(populate_mysql=False,
-                      populate_snowflake=False,
-                      populate_bigquery=True,
-                      num_workers=1)
+###### run the pipelines ######
+
+pipeline = YFPriceETL(schema=SCHEMA, populate_mysql=True, populate_snowflake=False, populate_bigquery=False)
 
 pipeline.connect_to_dwhs()
 
@@ -21,7 +27,7 @@ pipeline.connect_to_dwhs()
 pipeline.etl_stock_tickers()
 pipeline.etl_stock_prices(batch_download=False,
                           intervals_to_download=intervals_to_download,
-                          write_to_db_after_interval_complete=True,
+                          write_to_db_after_interval_completes=True,
                           yf_params=yf_params)
 
 ### crypto ###
@@ -29,15 +35,14 @@ pipeline.etl_stock_prices(batch_download=False,
 pipeline.etl_top_250_crypto_tickers()
 # pipeline.etl_crypto_prices(batch_download=False,
 #                            intervals_to_download=intervals_to_download,
-#                            write_to_db_after_interval_complete=True,
+#                            write_to_db_after_interval_completes=True,
 #                            yf_params=yf_params)
 
 ### forex ###
 
-pipeline.etl_forex_tickers()
-# pipeline.etl_forex_prices(batch_download=False,
-#                           intervals_to_download=intervals_to_download,
-#                           write_to_db_after_interval_complete=True,
+pipeline.etl_forex_pairs()
+# pipeline.etl_forex_prices(intervals_to_download=intervals_to_download,
+#                           write_to_db_after_interval_completes=True,
 #                           yf_params=yf_params)
 
 
