@@ -1,6 +1,6 @@
 from etl_price_utils import *
 
-###### this main driver file acts as interface for running ETL process ######
+###### this is the main driver file that acts as an interface for running the ETL process ######
 
 ENVIRONMENT = os.getenv('ENVIRONMENT').lower()
 assert ENVIRONMENT in ('dev', 'production')
@@ -9,6 +9,8 @@ if ENVIRONMENT == 'dev':
     SCHEMA = 'yfinance_dev'
 elif ENVIRONMENT == 'production':
     SCHEMA = 'yfinance'
+
+print(f'\n*** Running Environment {ENVIRONMENT} || Populating schema {SCHEMA} ***\n')
 
 start = time.time()
 
@@ -29,9 +31,9 @@ pipeline.etl_prices(asset_class='stocks',
                     intervals_to_download=intervals_to_download,
                     write_to_db_after_interval_completes=True,
                     yf_params=yf_params)
-#
+
 # ### forex ###
-#
+
 pipeline.etl_forex_pairs()
 pipeline.etl_prices(asset_class='forex',
                     intervals_to_download=intervals_to_download,
