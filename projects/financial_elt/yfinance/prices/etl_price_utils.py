@@ -195,6 +195,7 @@ class YFPriceETL:
             print('\nOverwriting stock_tickers to BigQuery...\n') if self.verbose else None
 
             job_config = bigquery.job.LoadJobConfig(write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE)
+
             self.bigquery_client.run_sql(f"""
                 CREATE TABLE IF NOT EXISTS {self.schema}.{table_name}
                 (
@@ -210,6 +211,8 @@ class YFPriceETL:
 
             self.bigquery_client. \
                 client.load_table_from_dataframe(df_tickers, f'{self.schema}.{table_name}', job_config=job_config)
+
+            time.sleep(5)  # without sleeping sometimes the data does not populate.
 
             self.bigquery_client.run_sql(f"""
                 CREATE OR REPLACE TABLE {self.schema}.{table_name} AS (
@@ -401,7 +404,7 @@ class YFPriceETL:
             yf_params = price_getter.yf_params.copy()
             
             for i in intervals_to_download:
-                print(f'\nRunning stock price interval {i}\n') if self.verbose else None
+                print(f'\nRunning {asset_class} interval {i}\n') if self.verbose else None
 
                 yf_params['interval'] = i
 
@@ -600,7 +603,8 @@ class YFPriceETL:
 
             table_generator = \
                 self.bigquery_client.client.list_tables(f"{self.bigquery_client.client.project}.{self.schema}")
-
+        
+            table_exists = False
             for t in table_generator:
                 if t.table_id == 'crypto_pairs_top_250':
                     table_exists = True
@@ -623,8 +627,9 @@ class YFPriceETL:
                         """)
 
             if table_exists:
-                df_top_crypto_tickers_prev = self.bigquery_client.run_sql(
-                    f'select * from {self.schema}.crypto_pairs_top_250')
+                df_top_crypto_tickers_prev = \
+                    self.bigquery_client.run_sql(f'select * from {self.schema}.crypto_pairs_top_250')
+
                 df_top_crypto_tickers_prev = df_top_crypto_tickers_prev[column_order]
                 df_top_crypto_tickers = \
                     pd.concat([df_top_crypto_tickers_prev, df_top_crypto_tickers_new], ignore_index=True) \
@@ -637,6 +642,7 @@ class YFPriceETL:
                 client.load_table_from_dataframe(df_top_crypto_tickers, f'{self.schema}.crypto_pairs_top_250',
                                                  job_config=job_config)
 
+            time.sleep(5)
             self.bigquery_client.run_sql(f"""
                 CREATE OR REPLACE TABLE {self.schema}.crypto_pairs_top_250 AS (
                   SELECT * FROM  {self.schema}.crypto_pairs_top_250 ORDER BY yahoo_ticker
@@ -750,6 +756,7 @@ class YFPriceETL:
             table_generator = \
                 self.bigquery_client.client.list_tables(f"{self.bigquery_client.client.project}.{self.schema}")
 
+            table_exists = False
             for t in table_generator:
                 if t.table_id == 'forex_pairs':
                     table_exists = True
@@ -768,6 +775,8 @@ class YFPriceETL:
 
             self.bigquery_client. \
                 client.load_table_from_dataframe(df_forex_pairs, f'{self.schema}.forex_pairs', job_config=job_config)
+
+            time.sleep(5)
 
             self.bigquery_client.run_sql(f"""
                         CREATE OR REPLACE TABLE {self.schema}.forex_pairs AS (
@@ -840,7 +849,8 @@ class YFPriceETL:
 
         Parameters:
             df: pandas df of stock price data
-            interval: str of the interval that was pulled from yfinance (e.g. '1m')
+            table_name: str of the table name to populate bigquery with (e.g. <schema>.<table_name>)
+            asset_class: str of the asset class (e.g. 'stocks', 'forex', or 'crypto')
         """
 
         if self.populate_mysql:
@@ -852,8 +862,8 @@ class YFPriceETL:
             self._dedupe_snowflake_table(table_name=table_name)
 
         if self.populate_bigquery:
-            self._write_to_bigquery(df=df, table_name=table_name, asset_class=asset_class)
-            self._dedupe_bigquery_table(table_name=table_name)
+            self._write_to_bigquery(df=df, table_name=table_name)
+            self._dedupe_bigquery_table(table_name=table_name, asset_class=asset_class)
         return self
 
     def _get_query_dtype_fix(self, table_name, asset_class):
@@ -1196,7 +1206,7 @@ class YFPriceETL:
         initial_syntax = f"CREATE OR REPLACE TABLE {self.schema}.{table_name} AS ("
 
         if asset_class == 'stocks':
-            query_statements = f"""
+            query = f"""
                 {initial_syntax}
                 SELECT 
                   timestamp, 
@@ -1221,50 +1231,50 @@ class YFPriceETL:
             """
 
         elif asset_class == 'forex':
-            query_statements = f"""
-                            {initial_syntax}
-                            SELECT 
-                              timestamp, 
-                              timestamp_tz_aware, 
-                              timezone, 
-                              yahoo_ticker, 
-                              bloomberg_ticker, 
-                              open, 
-                              high, 
-                              low, 
-                              close, 
-                              volume 
-                            FROM 
-                              {self.schema}.{table_name} 
-                            QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC) = 1 
-                            ORDER BY 
-                              timestamp, yahoo_ticker
-                            );
-                        """
+            query = f"""
+                {initial_syntax}
+                SELECT 
+                  timestamp, 
+                  timestamp_tz_aware, 
+                  timezone, 
+                  yahoo_ticker, 
+                  bloomberg_ticker, 
+                  open, 
+                  high, 
+                  low, 
+                  close, 
+                  volume 
+                FROM 
+                  {self.schema}.{table_name} 
+                QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC) = 1 
+                ORDER BY 
+                  timestamp, yahoo_ticker
+                );
+            """
 
         elif asset_class == 'crypto':
-            query_statements = f"""
-                            {initial_syntax}
-                            SELECT 
-                              timestamp, 
-                              timestamp_tz_aware, 
-                              timezone, 
-                              yahoo_ticker, 
-                              yahoo_name,  
-                              open, 
-                              high, 
-                              low, 
-                              close, 
-                              volume 
-                            FROM 
-                              {self.schema}.{table_name} 
-                            QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC) = 1 
-                            ORDER BY 
-                              timestamp, yahoo_ticker, yahoo_name
-                            );
-                        """
+            query = f"""
+                {initial_syntax}
+                SELECT 
+                  timestamp, 
+                  timestamp_tz_aware, 
+                  timezone, 
+                  yahoo_ticker, 
+                  yahoo_name,  
+                  open, 
+                  high, 
+                  low, 
+                  close, 
+                  volume 
+                FROM 
+                  {self.schema}.{table_name} 
+                QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC) = 1 
+                ORDER BY 
+                  timestamp, yahoo_ticker, yahoo_name
+                );
+            """
 
-        self.bigquery_client.run_sql(query_statements)
+        self.bigquery_client.run_sql(query)
 
         if 'bigquery' in self.create_timestamp_index_dbs:
             raise NotImplementedError('No need to create timestamp indices on bigquery.')
@@ -1645,7 +1655,7 @@ class YFPriceGetter:
                             yahoo_ticker,
                             MAX(timestamp) AS {dwh_name}_max_timestamp
                         FROM
-                            {self.dwh_conns[dwh_name].schema}.{table_name}
+                            `{self.dwh_conns[dwh_name].client.project}.{self.dwh_conns[dwh_name].schema}.{table_name}`
                         GROUP BY 1
                         """)
                 self.stored_tickers = pd.merge(self.stored_tickers, tmp_stored_tickers, how='outer', on='yahoo_ticker')
@@ -1978,13 +1988,14 @@ def get_valid_yfinance_start_timestamp(interval, start='1950-01-01 00:00:00'):
     assert interval in valid_intervals, f'must pass a valid interval {valid_intervals}'
 
     if interval == '1m':
-        start = max((datetime.today() - timedelta(days=5)), pd.to_datetime(start))
+        updated_start = max((datetime.today() - timedelta(days=5)), pd.to_datetime(start))
     elif interval in ['2m', '5m', '15m', '30m', '90m']:
-        start = (max((datetime.today() - timedelta(days=58)), pd.to_datetime(start)))
+        updated_start = (max((datetime.today() - timedelta(days=58)), pd.to_datetime(start)))
     elif interval in ['60m', '1h']:
-        start = max((datetime.today() - timedelta(days=728)), pd.to_datetime(start))
+        updated_start = max((datetime.today() - timedelta(days=728)), pd.to_datetime(start))
     else:
-        start = pd.to_datetime(start)
-    start = start.strftime('%Y-%m-%d')  # yfinance doesn't like strftime with hours minutes or seconds
+        updated_start = pd.to_datetime(start)
 
-    return start
+    updated_start = updated_start.strftime('%Y-%m-%d')  # yfinance doesn't like strftime with hours, minutes, or seconds
+
+    return updated_start

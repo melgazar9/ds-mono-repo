@@ -20,7 +20,7 @@ yf_params = {'repair': True, 'auto_adjust': True, 'back_adjust': False, 'timeout
 
 ###### run the pipelines ######
 
-pipeline = YFPriceETL(schema=SCHEMA, populate_mysql=True, populate_snowflake=False, populate_bigquery=False)
+pipeline = YFPriceETL(schema=SCHEMA, populate_mysql=False, populate_snowflake=False, populate_bigquery=True)
 
 pipeline.connect_to_dwhs()
 
@@ -32,7 +32,7 @@ pipeline.etl_prices(asset_class='stocks',
                     write_to_db_after_interval_completes=True,
                     yf_params=yf_params)
 
-# ### forex ###
+### forex ###
 
 pipeline.etl_forex_pairs()
 pipeline.etl_prices(asset_class='forex',
