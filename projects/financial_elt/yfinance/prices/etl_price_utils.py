@@ -7,7 +7,230 @@ from pytickersymbols import PyTickerSymbols
 import pandas_market_calendars as pmc
 
 
-class YFPriceETL:
+class YFPriceGetter:
+    """
+    Parameters
+    ----------
+    yf_params: dict - passed to yf.Ticker(<ticker>).history(**yf_params) - see docs for yfinance ticker.history() params
+    yahoo_ticker_colname: str of column name to set of output yahoo ticker columns
+    verbose: bool whether to log most steps to stdout
+    """
+
+    def __init__(self,
+                 asset_class,
+                 yf_params=None,
+                 yahoo_ticker_colname='yahoo_ticker',
+                 verbose=False):
+        self.asset_class = asset_class
+        self.yf_params = {} if yf_params is None else yf_params
+        self.yahoo_ticker_colname = yahoo_ticker_colname
+        self.verbose = verbose
+
+        ### update yf_params ###
+
+        if 'prepost' not in self.yf_params.keys():
+            self.yf_params['prepost'] = True
+        if 'start' not in self.yf_params.keys():
+            print('*** YF params start set to 1950-01-01! ***') if self.verbose else None
+            self.yf_params['start'] = '1950-01-01'
+
+        self.start_date = self.yf_params['start']
+        assert pd.Timestamp(self.start_date) <= datetime.today(), 'Start date cannot be after the current date!'
+
+        assert 'stocks' in self.asset_class or 'forex' in self.asset_class or 'crypto' in self.asset_class, \
+            "self.asset_class must be set to either 'stocks', 'forex', or 'crypto'"
+
+        if self.asset_class == 'stocks':
+            self.column_order = ['timestamp', 'timestamp_tz_aware', 'timezone', 'yahoo_ticker', 'bloomberg_ticker',
+                                 'numerai_ticker', 'open', 'high', 'low', 'close', 'volume', 'dividends',
+                                 'stock_splits']
+
+        elif asset_class == 'forex':
+            self.column_order = ['timestamp', 'timestamp_tz_aware', 'timezone', 'yahoo_ticker', 'bloomberg_ticker',
+                                 'open', 'high', 'low', 'close', 'volume']
+
+        elif asset_class == 'crypto':
+            self.column_order = ['timestamp', 'timestamp_tz_aware', 'timezone', 'yahoo_ticker', 'yahoo_name',
+                                 'open', 'high', 'low', 'close', 'volume']
+
+        self.n_requests = 0
+        self.failed_ticker_downloads = {}
+
+        return
+
+    def _request_limit_check(self):
+        """
+        Description
+        -----------
+        Check if too many requests were made to yfinance within their allowed number of requests.
+        """
+        self.request_start_timestamp = datetime.now()
+        self.current_runtime_seconds = (datetime.now() - self.request_start_timestamp).seconds
+
+        if self.n_requests > 1900 and self.current_runtime_seconds > 3500:
+            if self.verbose:
+                print(f'\nToo many requests per hour. Pausing requests for {self.current_runtime_seconds} seconds.\n')
+            time.sleep(np.abs(3600 - self.current_runtime_seconds))
+        if self.n_requests > 45000 and self.current_runtime_seconds > 85000:
+            if self.verbose:
+                print(f'\nToo many requests per day. Pausing requests for {self.current_runtime_seconds} seconds.\n')
+            time.sleep(np.abs(86400 - self.current_runtime_seconds))
+        return
+
+    def download_single_symbol_price_history(self, ticker, yf_history_params=None) -> pd.DataFrame():
+        """
+        Description
+        -----------
+        Download a single stock price ticker from the yfinance python library.
+        Minor transformations happen:
+            - Add column yahoo_ticker to show which ticker has been pulled
+            - Set start date to the minimum start date allowed by yfinance for that ticker (passed in yf_history_params)
+            - Clean column names
+            - Set tz_aware timestamp column to be a string
+        """
+        yf_history_params = self.yf_params.copy() if yf_history_params is None else yf_history_params.copy()
+
+        assert 'interval' in yf_history_params.keys(), 'must pass interval parameter to yf_history_params'
+
+        if yf_history_params['interval'] not in self.failed_ticker_downloads.keys():
+            self.failed_ticker_downloads[yf_history_params['interval']] = []
+
+        if 'start' not in yf_history_params.keys():
+            yf_history_params['start'] = '1950-01-01 00:00:00'
+
+        yf_history_params['start'] = \
+            get_valid_yfinance_start_timestamp(interval=yf_history_params['interval'], start=yf_history_params['start'])
+
+        t = yf.Ticker(ticker)
+        try:
+            df = \
+                t.history(**yf_history_params) \
+                    .rename_axis(index='timestamp') \
+                    .pipe(lambda x: clean_columns(x))
+
+            self.n_requests += 1
+
+            if df is not None and not df.shape[0]:
+                self.failed_ticker_downloads[yf_history_params['interval']].append(ticker)
+                return pd.DataFrame(columns=self.column_order)
+
+            df.loc[:, self.yahoo_ticker_colname] = ticker
+            df.reset_index(inplace=True)
+            df['timestamp_tz_aware'] = df['timestamp'].copy()
+            df.loc[:, 'timezone'] = str(df['timestamp_tz_aware'].dt.tz)
+            df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
+            return df
+
+        except:
+            self.failed_ticker_downloads[yf_history_params['interval']].append(ticker)
+            return
+
+    def batch_download_price_history(self,
+                                     tickers,
+                                     table_prefix,
+                                     intervals_to_download=('1m', '2m', '5m', '1h', '1d'),
+                                     yf_history_params=None):
+        """
+        NOTE: At the time of writing, this code fails with segmentation fault after upgrading to yfinance version 2.
+              This will likely be fixed soon, so for now turn off batch download.
+        """
+        self.dict_of_dfs = \
+            self._batch_download(tickers,
+                                 table_prefix=table_prefix,
+                                 intervals_to_download=intervals_to_download,
+                                 yf_history_params=yf_history_params)
+
+        return self
+
+    def _batch_download(self, tickers, table_prefix, intervals_to_download=('1m', '2m', '5m', '1h', '1d'),
+                        yf_history_params=None):
+        """
+        NOTE: Version 2 of yfinance package has bugs when pulling multiple tickers at once.
+              For reliable data turn off batch mode.
+        Parameters
+        __________
+        See yf.Ticker(<ticker>).history() docs for a detailed description of yf parameters
+        tickers: list of tickers to pass to yf.Ticker(<ticker>).history() - it will be parsed to be in the format "AAPL MSFT FB"
+
+        intervals_to_download: list of intervals to download OHLCV data for each stock (e.g. ['1w', '1d', '1h'])
+
+        yf_history_params: dict of parameters passed to yf.Ticker(<ticker>).history(**yf_history_params)
+
+        Note: passing some intervals return unreliable stock data (e.g. '3mo' returns many NAs when they should not be)
+
+        Restrictions
+        ------------
+        Yahoo finance API currently has a 2000 requests per hour or 48000 requests per day limit at the time of writing.
+        If the limit hits 1900 requests from the first API call, it will sleep for the remaining time (new hour).
+        Similarly, if there are 47000 requests from the first API call it will sleep for the remaining time (new day)
+        """
+
+        start = time.time()
+        yf_history_params = self.yf_params.copy() if yf_history_params is None else yf_history_params
+
+        for interval in intervals_to_download:
+            self.failed_ticker_downloads[interval] = []
+
+        ### download ticker history ###
+
+        dict_of_dfs = {}
+        for i in intervals_to_download:
+            self._request_limit_check()
+
+            print(f'\n*** Running {table_prefix} interval {i} ***\n')
+
+            yf_history_params['interval'] = i
+
+            if len(tickers) == 1:
+                t = yf.Ticker(tickers[0])
+            else:
+                t = yf.Tickers(tickers)
+
+            conflict_params = []
+            params = list(yf_history_params)
+            for param in params:
+                if param not in inspect.getfullargspec(t.history).args:
+                    conflict_params.append(param)
+                    yf_history_params.pop(param)
+            if len(conflict_params):
+                warnings.warn(f"""\n
+                  *** Removing conflicting parameters passed to yf.download in batch_download mode {conflict_params} ***
+                  \n""")
+
+            df_i = \
+                t.history(**yf_history_params) \
+                    .stack() \
+                    .rename_axis(index=['timestamp', self.yahoo_ticker_colname]) \
+                    .reset_index()
+
+            gc.collect()
+
+            self.n_requests += 1
+
+            df_i['timestamp_tz_aware'] = df_i['timestamp'].copy()
+            if df_i.shape[0]:
+                df_i.loc[:, 'timezone'] = str(df_i['timestamp_tz_aware'].dt.tz)
+                df_i['timestamp'] = pd.to_datetime(df_i['timestamp'], utc=True)
+
+                if isinstance(df_i.columns, pd.MultiIndex):
+                    df_i.columns = flatten_multindex_columns(df_i)
+                df_i = clean_columns(df_i)
+                dict_of_dfs[i] = df_i
+            else:
+                warnings.warn(f'\n*** Could not pull data for interval {i} ***\n')
+
+            if self.verbose:
+                for ftd in self.failed_ticker_downloads:
+                    self.failed_ticker_downloads[ftd] = flatten_list(self.failed_ticker_downloads[ftd])
+                print(f"\nFailed ticker downloads:\n{self.failed_ticker_downloads}")
+
+        if self.verbose:
+            print("\nDownloading yfinance data took %s minutes\n" % round((time.time() - start) / 60, 3))
+
+        return dict_of_dfs
+
+
+class YFPriceETL(YFPriceGetter):
     """
     NOTE: Version 2 of yfinance package has bugs when pulling multiple tickers at once.
           For reliable data turn off batch mode.
@@ -69,6 +292,10 @@ class YFPriceETL:
         self.bigquery_client = None
 
         self.create_timestamp_index_dbs = ('mysql',)
+        self.yf_params = None
+        self.df_dtype_mappings = None
+        self.df_calendar = None
+        self.market_closed_dates = None
 
     ###### dwh connections ######
 
@@ -177,7 +404,8 @@ class YFPriceETL:
 
     def etl_stock_tickers(self, table_name='stock_tickers'):
         df_tickers = self.ticker_downloader.download_valid_stock_tickers()
-        print(f'\nOverwriting stock_tickers to database(s): {self.dwh_connections.keys()}...\n') if self.verbose else None
+        print(
+            f'\nOverwriting stock_tickers to database(s): {self.dwh_connections.keys()}...\n') if self.verbose else None
 
         if self.populate_mysql:
             print('\nOverwriting stock_tickers to MySQL...\n') if self.verbose else None
@@ -263,12 +491,13 @@ class YFPriceETL:
         return self
 
     def etl_prices(self, asset_class, debug_tickers=None, **kwargs):
-        self.db_client = [i for i in [self.mysql_client, self.bigquery_client, self.snowflake_client] if i is not None][0]
+        self.db_client = [i for i in [self.mysql_client, self.bigquery_client, self.snowflake_client] if i is not None][
+            0]
         debug_tickers = () if debug_tickers is None else debug_tickers
         assert isinstance(debug_tickers, (tuple, list))
         if asset_class == 'stocks':
             table_prefix = 'stock_prices'
-            
+
             # debug_tickers = ['AAPL', 'AMZN', 'GOOG', 'META', 'NFLX', 'SQ', 'BGA.AX', 'EUTLF', 'ZZZ.TO']
 
             self.df_dtype_mappings = {
@@ -282,12 +511,9 @@ class YFPriceETL:
                     f"SELECT yahoo_ticker, bloomberg_ticker, numerai_ticker FROM {self.schema}.stock_tickers;"
                 )
 
-            column_order = ['timestamp', 'timestamp_tz_aware', 'timezone', 'yahoo_ticker', 'bloomberg_ticker',
-                            'numerai_ticker', 'open', 'high', 'low', 'close', 'volume', 'dividends', 'stock_splits']
-
         elif asset_class == 'forex':
             table_prefix = 'forex_prices'
-            
+
             # debug_tickers = ['EURUSD=X', 'RUB=X', 'JPY=X']
 
             self.df_dtype_mappings = {
@@ -301,12 +527,9 @@ class YFPriceETL:
                     f"SELECT yahoo_ticker, bloomberg_ticker FROM {self.schema}.forex_pairs;"
                 )
 
-            column_order = ['timestamp', 'timestamp_tz_aware', 'timezone', 'yahoo_ticker', 'bloomberg_ticker',
-                            'open', 'high', 'low', 'close', 'volume']
-
         elif asset_class == 'crypto':
             table_prefix = 'crypto_prices'
-            
+
             # debug_tickers = ['BTC-USD', 'ETH-USD']
 
             self.df_dtype_mappings = {
@@ -320,13 +543,9 @@ class YFPriceETL:
                     f"SELECT yahoo_ticker, yahoo_name FROM {self.schema}.crypto_pairs_top_250;"
                 )
 
-            column_order = ['timestamp', 'timestamp_tz_aware', 'timezone', 'yahoo_ticker', 'yahoo_name',
-                            'open', 'high', 'low', 'close', 'volume']
-
         self._etl_prices(asset_class=asset_class,
                          table_prefix=table_prefix,
                          df_tickers=df_tickers,
-                         column_order=column_order,
                          debug_tickers=debug_tickers,
                          **kwargs)
 
@@ -336,7 +555,6 @@ class YFPriceETL:
                     asset_class,
                     table_prefix,
                     df_tickers,
-                    column_order,
                     intervals_to_download=('1m', '2m', '5m', '1h', '1d'),
                     batch_download=False,
                     write_to_db_after_interval_completes=True,
@@ -388,12 +606,7 @@ class YFPriceETL:
         intervals_to_download = \
             (intervals_to_download,) if isinstance(intervals_to_download, str) else intervals_to_download
 
-        price_getter = \
-            YFPriceGetter(dwh_conns=self.dwh_connections,
-                          convert_tz_aware_to_string=self.convert_tz_aware_to_string,
-                          yf_params=yf_params,
-                          schema=self.schema,
-                          verbose=self.verbose)
+        super().__init__(asset_class=asset_class, yf_params=yf_params, verbose=self.verbose)
 
         if not batch_download:
             if write_to_db_after_interval_completes:
@@ -401,16 +614,16 @@ class YFPriceETL:
 
             print(f'\n*** Running sequential download for {table_prefix} ***\n')
 
-            yf_params = price_getter.yf_params.copy()
-            
+            yf_params = self.yf_params.copy()
+
             for i in intervals_to_download:
                 print(f'\nRunning {asset_class} interval {i}\n') if self.verbose else None
 
                 yf_params['interval'] = i
 
-                price_getter._get_max_stored_ticker_timestamps(table_name=f'{table_prefix}_{i}')
-                stored_tickers = price_getter.stored_tickers.copy()
-                price_getter.create_prices_table_if_not_exists(table_name=f'{table_prefix}_{i}', asset_class=asset_class)
+                self._get_max_stored_ticker_timestamps(table_name=f'{table_prefix}_{i}')
+                stored_tickers = self.stored_tickers.copy()
+                self.create_prices_table_if_not_exists(table_name=f'{table_prefix}_{i}', asset_class=asset_class)
 
                 # for debugging
                 if len(debug_tickers):
@@ -432,7 +645,7 @@ class YFPriceETL:
 
                     yf_params['start'] = get_valid_yfinance_start_timestamp(interval=i, start=start_date)
 
-                    df = price_getter.download_single_symbol_price_history(
+                    df = self.download_single_symbol_price_history(
                         ticker,
                         yf_history_params=yf_params
                     )
@@ -441,7 +654,7 @@ class YFPriceETL:
                         continue
 
                     df = pd.merge(df, df_tickers, on='yahoo_ticker', how='left')
-                    df = df[column_order].ffill().bfill()
+                    df = df[self.column_order].ffill().bfill()
 
                     print(f'\nConverting dtypes in df_{i} for ticker {ticker}\n') if self.verbose else None
                     for k, v in self.df_dtype_mappings.items():
@@ -451,6 +664,10 @@ class YFPriceETL:
                             for numeric_col in df.select_dtypes(np.number).columns:
                                 df[numeric_col] = df[numeric_col].bfill().ffill().fillna(0)
                             df[v] = df[v].astype(k)
+
+                    if self.convert_tz_aware_to_string:
+                        df['timestamp_tz_aware'] = df['timestamp_tz_aware'].astype(str)
+
                     gc.collect()
 
                     if not write_to_db_after_interval_completes:
@@ -465,10 +682,10 @@ class YFPriceETL:
                 gc.collect()
 
             if self.verbose:
-                for ftd in price_getter.failed_ticker_downloads:
-                    price_getter.failed_ticker_downloads[ftd] = \
-                        flatten_list(price_getter.failed_ticker_downloads[ftd])
-                print(f"\nFailed ticker downloads:\n{price_getter.failed_ticker_downloads}")
+                for ftd in self.failed_ticker_downloads:
+                    self.failed_ticker_downloads[ftd] = \
+                        flatten_list(self.failed_ticker_downloads[ftd])
+                print(f"\nFailed ticker downloads:\n{self.failed_ticker_downloads}")
 
         else:
             print('\n*** Running batch download ***\n')
@@ -477,17 +694,29 @@ class YFPriceETL:
             if len(debug_tickers):
                 df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(debug_tickers)]
 
-            price_getter.batch_download_price_history(
+            max_timestamps = []
+            for i in intervals_to_download:
+                self._get_max_stored_ticker_timestamps(table_name=f'{table_prefix}_{i}')
+                if self.stored_tickers.shape[0]:
+                    query_start_timestamp = self.stored_tickers['query_start_timestamp'].min().strftime('%Y-%m-%d')
+                else:
+                    query_start_timestamp = '1950-01-01'
+                max_timestamps.append(query_start_timestamp)
+
+            yf_params['start'] = min(max_timestamps)
+
+            self.batch_download_price_history(
                 df_tickers['yahoo_ticker'].unique().tolist(),
                 table_prefix=table_prefix,
-                intervals_to_download=intervals_to_download
+                intervals_to_download=intervals_to_download,
+                yf_history_params=yf_params
             )
 
-            dfs = price_getter.dict_of_dfs
+            dfs = self.dict_of_dfs
             gc.collect()
 
             for i in dfs.keys():
-                price_getter.create_prices_table_if_not_exists(table_name=f'{table_prefix}_{i}', asset_class=asset_class)
+                self.create_prices_table_if_not_exists(table_name=f'{table_prefix}_{i}', asset_class=asset_class)
 
                 print(f'\nMerging df_{i}...\n') if self.verbose else None
 
@@ -495,7 +724,7 @@ class YFPriceETL:
                 if yf_params['repair'] and 'repaired' in df.columns:
                     df = df.drop('repaired', axis=1)
 
-                assert len(np.intersect1d(df.columns, column_order)) == df.shape[1], \
+                assert len(np.intersect1d(df.columns, self.column_order)) == df.shape[1], \
                     'Column mismatch! Review method that downloads yfinance data!'
 
                 print(f'\nBackfilling df_{i}...\n') if self.verbose else None
@@ -508,7 +737,10 @@ class YFPriceETL:
                 for k, v in self.df_dtype_mappings.items():
                     df[v] = df[v].astype(k)
 
-                df = df[column_order]
+                df = df[self.column_order]
+
+                if self.convert_tz_aware_to_string:
+                    df['timestamp_tz_aware'] = df['timestamp_tz_aware'].astype(str)
 
                 self._write_df_to_all_dbs(df=df, table_name=f'{table_prefix}_{i}', asset_class=asset_class)
                 gc.collect()
@@ -603,7 +835,7 @@ class YFPriceETL:
 
             table_generator = \
                 self.bigquery_client.client.list_tables(f"{self.bigquery_client.client.project}.{self.schema}")
-        
+
             table_exists = False
             for t in table_generator:
                 if t.table_id == 'crypto_pairs_top_250':
@@ -732,9 +964,9 @@ class YFPriceETL:
             if table_exists:
                 df_forex_pairs_prev = self.mysql_client.run_sql(f'select * from {self.schema}.forex_pairs')
                 df_forex_pairs = \
-                    pd.concat([df_forex_pairs_prev, df_forex_pairs_new], ignore_index=True)\
-                      .drop_duplicates()\
-                      .reset_index(drop=True)
+                    pd.concat([df_forex_pairs_prev, df_forex_pairs_new], ignore_index=True) \
+                        .drop_duplicates() \
+                        .reset_index(drop=True)
             else:
                 df_forex_pairs = df_forex_pairs_new
 
@@ -768,8 +1000,8 @@ class YFPriceETL:
                 df_forex_pairs_prev = self.bigquery_client.run_sql(f'select * from {self.schema}.forex_pairs')
                 df_forex_pairs = \
                     pd.concat([df_forex_pairs_prev, df_forex_pairs_new], ignore_index=True) \
-                      .drop_duplicates() \
-                      .reset_index(drop=True)
+                        .drop_duplicates() \
+                        .reset_index(drop=True)
             else:
                 df_forex_pairs = df_forex_pairs_new
 
@@ -840,542 +1072,6 @@ class YFPriceETL:
 
     ###### dwh attribute methods ######
 
-    def _write_df_to_all_dbs(self, df, table_name, asset_class):
-        """
-        Description
-        -----------
-        Write dataframe of specified interval to the dwhs supplied in initialization (e.g. populate_snowflake, etc).
-        Tables will be stored to self.schema.<table_name> in the dwh
-
-        Parameters:
-            df: pandas df of stock price data
-            table_name: str of the table name to populate bigquery with (e.g. <schema>.<table_name>)
-            asset_class: str of the asset class (e.g. 'stocks', 'forex', or 'crypto')
-        """
-
-        if self.populate_mysql:
-            self._write_to_mysql(df=df, table_name=table_name, asset_class=asset_class)
-            self._dedupe_mysql_table(table_name=table_name)
-
-        if self.populate_snowflake:
-            self._write_to_snowflake(df=df, table_name=table_name, asset_class=asset_class)
-            self._dedupe_snowflake_table(table_name=table_name)
-
-        if self.populate_bigquery:
-            self._write_to_bigquery(df=df, table_name=table_name)
-            self._dedupe_bigquery_table(table_name=table_name, asset_class=asset_class)
-        return self
-
-    def _get_query_dtype_fix(self, table_name, asset_class):
-        """
-        Description
-        -----------
-        Static query dtype fix that is called by other methods
-
-        Parameters:
-            table_name: str of the table name that was pulled from yfinance (e.g. 'stock_prices_1m')
-        """
-
-        if asset_class == 'stocks':
-            query_dtype_fix = f"""
-                DROP TABLE IF EXISTS {self.schema}.tmp_table; 
-                CREATE TABLE {self.schema}.tmp_table AS 
-                  SELECT 
-                    timestamp, 
-                    CAST(timestamp_tz_aware AS CHAR(32)) AS timestamp_tz_aware, 
-                    timezone, 
-                    yahoo_ticker, 
-                    bloomberg_ticker,  
-                    numerai_ticker, 
-                    open, 
-                    high, 
-                    low, 
-                    close, 
-                    volume, 
-                    dividends, 
-                    stock_splits 
-                  FROM 
-                    {self.schema}.{table_name};
-                """
-        if asset_class == 'forex':
-            query_dtype_fix = f"""
-                DROP TABLE IF EXISTS {self.schema}.tmp_table; 
-                CREATE TABLE {self.schema}.tmp_table AS 
-                  SELECT 
-                    timestamp, 
-                    CAST(timestamp_tz_aware AS CHAR(32)) AS timestamp_tz_aware, 
-                    timezone, 
-                    yahoo_ticker, 
-                    bloomberg_ticker,  
-                    open, 
-                    high, 
-                    low, 
-                    close, 
-                    volume 
-                  FROM 
-                    {self.schema}.{table_name};
-                """
-        elif asset_class == 'crypto':
-            query_dtype_fix = f"""
-                DROP TABLE IF EXISTS {self.schema}.tmp_table; 
-                CREATE TABLE {self.schema}.tmp_table AS 
-                  SELECT 
-                    timestamp, 
-                    CAST(timestamp_tz_aware AS CHAR(32)) AS timestamp_tz_aware, 
-                    timezone, 
-                    yahoo_ticker, 
-                    yahoo_name,   
-                    open, 
-                    high, 
-                    low, 
-                    close, 
-                    volume 
-                  FROM 
-                    {self.schema}.{table_name};
-                """
-
-        return query_dtype_fix
-
-    def _write_to_mysql(self, df, table_name, asset_class):
-        """
-        Description
-        -----------
-        Write dataframe of specified interval to the MySQL.
-        Tables will be stored to self.schema.<table_name> in MySQL.
-
-        Parameters:
-            df: pandas df of stock price data
-            table_name: str of the interval that was pulled from yfinance (e.g. '1m')
-        """
-
-        print(f'\nWriting to database MySQL...\n') if self.verbose else None
-        self._drop_mysql_index_constraint(table_name=table_name)
-        method = 'multi' if self.write_method == 'write_pandas' else self.write_method
-        try:
-            self.mysql_client.connect()
-            df.to_sql(table_name,
-                      con=self.mysql_client.con,
-                      index=False,
-                      if_exists='append',
-                      schema=self.schema,
-                      method=method,
-                      chunksize=self.to_sql_chunksize)
-        except:
-            warnings.warn("""
-                        Could not directly populate database with df.
-                        This is likely because of the timestamp_tz_aware column. Converting it to string...
-                        """)
-
-            query_dtype_fix = self._get_query_dtype_fix(table_name=table_name, asset_class=asset_class)
-            self.mysql_client.run_sql(query_dtype_fix)
-
-            df['timestamp_tz_aware'] = df['timestamp_tz_aware'].astype(str)
-
-            self.mysql_client.connect()
-            df.to_sql(table_name,
-                      con=self.mysql_client.con,
-                      index=False,
-                      if_exists='append',
-                      schema=self.schema,
-                      method=method,
-                      chunksize=self.to_sql_chunksize)
-
-        gc.collect()
-        return self
-
-    def _dedupe_mysql_table(self, table_name):
-        """
-        Description
-        -----------
-        Query that dedupes MySQL table stock_price_<interval> by timestamp, yahoo_ticker
-        Note: The table MUST have timestamp and yahoo_ticker as columns
-
-        Parameters:
-            interval: str of the interval that was pulled from yfinance (e.g. '1m')
-        """
-
-        print(f'\nDeduping MySQL table {table_name}...\n') if self.verbose else None
-
-        query_statements = f"""
-            ALTER TABLE {self.schema}.{table_name} ADD COLUMN to_keep BOOLEAN;
-            ALTER TABLE {self.schema}.{table_name} 
-            ADD CONSTRAINT dedupe UNIQUE (timestamp, yahoo_ticker, to_keep);
-            UPDATE IGNORE {self.schema}.{table_name} SET to_keep = true;
-            DELETE FROM {self.schema}.{table_name} WHERE to_keep IS NULL;
-            ALTER TABLE {self.schema}.{table_name} DROP to_keep;
-            """
-
-        self.mysql_client.run_sql(query_statements)
-
-        # create index on timestamp column
-        idx_cols = self.mysql_client.run_sql(f"""
-                SELECT
-                  *
-                FROM
-                  information_schema.statistics
-                WHERE
-                  table_schema = '{self.mysql_client.schema}'
-                  AND table_name = '{table_name}'
-            """)
-
-        if 'timestamp' not in idx_cols['COLUMN_NAME'].tolist():
-            self.mysql_client.run_sql(f"CREATE INDEX ts ON {self.schema}.{table_name} (timestamp);")
-
-        return self
-
-    def _write_to_snowflake(self, df, table_name, asset_class):
-        """
-        Description
-        -----------
-        Write dataframe of specified interval to the Snowflake.
-        Tables will be stored to self.schema.<table_name> in Snowflake.
-
-        Parameters:
-            df: pandas df of stock price data
-            interval: str of the interval that was pulled from yfinance (e.g. '1m')
-        """
-
-        print(f'\nWriting to Snowflake...\n') if self.verbose else None
-
-        try:
-            if self.write_method in [pd_writer, 'write_pandas']:
-                df.columns = df.columns.str.upper()
-
-            if self.write_method == 'write_pandas':
-                original_backend = self.snowflake_client.backend_engine
-                del self.snowflake_client
-                self._connect_to_snowflake()
-                self.dwh_connections['snowflake'] = self.snowflake_client
-                self.snowflake_client.backend_engine = 'snowflake_connector'
-                self.snowflake_client.connect()
-                write_pandas(df=df,
-                             conn=self.snowflake_client.con,
-                             database=self.snowflake_client.database.upper(),
-                             schema=self.snowflake_client.schema.upper(),
-                             table_name=table_name.upper(),
-                             chunk_size=self.to_sql_chunksize,
-                             compression='gzip',
-                             parallel=self.write_pandas_threads,
-                             overwrite=False,
-                             auto_create_table=True)
-                self.snowflake_client.backend_engine = original_backend
-
-            else:
-                self.snowflake_client.connect()
-                df.to_sql(table_name,
-                          con=self.snowflake_client.con,
-                          index=False,
-                          if_exists='append',
-                          schema=self.schema,
-                          method=self.write_method,
-                          chunksize=self.chunksize)
-        except:
-            warnings.warn("""
-                        Could not directly populate database with df.
-                        This is likely because of the timestamp_tz_aware column. Converting it to string...
-                        """)
-
-            query_dtype_fix = self._get_query_dtype_fix(table_name=table_name, asset_class=asset_class)
-            separate_query_statements = query_dtype_fix.split(';')
-            for query in separate_query_statements[0:-1]:
-                query = query.replace('\n', '').replace('  ', '') + ';'
-                print(f'\n\nquery: {query}\n\n') if self.verbose else None
-                self.snowflake_client.run_sql(query)
-
-            df['timestamp_tz_aware'] = df['timestamp_tz_aware'].astype(str)
-
-            if self.write_method in [pd_writer, 'write_pandas']:
-                df.columns = df.columns.str.upper()
-
-            if self.write_method == 'write_pandas':
-                original_backend = self.snowflake_client.backend_engine
-                self.snowflake_client.backend_engine = 'snowflake_connector'
-                self.snowflake_client.connect()
-                write_pandas(df=df,
-                             conn=self.snowflake_client.con,
-                             database=self.snowflake_client.database.upper(),
-                             schema=self.snowflake_client.schema.upper(),
-                             table_name=table_name.upper(),
-                             chunk_size=self.to_sql_chunksize,
-                             compression='gzip',
-                             parallel=self.write_pandas_threads,
-                             overwrite=False,
-                             auto_create_table=True)
-
-                self.snowflake_client.backend_engine = original_backend
-
-            else:
-                df.to_sql(table_name,
-                          con=self.snowflake_client.con,
-                          index=False,
-                          if_exists='append',
-                          schema=self.schema,
-                          method=self.write_method,
-                          chunksize=self.to_sql_chunksize)
-        return self
-
-    def _dedupe_snowflake_table(self, table_name):
-        """
-        Description
-        -----------
-        Query that dedupes Snowflake table stock_price_<interval> by timestamp, yahoo_ticker
-
-        Parameters:
-            interval: str of the interval that was pulled from yfinance (e.g. '1m')
-        """
-
-        self.snowflake_client.run_sql(f"USE {self.snowflake_client.database}")
-        initial_syntax = f"INSERT OVERWRITE INTO {self.schema}.{table_name} "
-        query_statements = f"""
-                    {initial_syntax}
-                    SELECT 
-                      timestamp, 
-                      timestamp_tz_aware, 
-                      timezone, 
-                      yahoo_ticker, 
-                      bloomberg_ticker, 
-                      numerai_ticker, 
-                      open, 
-                      high, 
-                      low, 
-                      close, 
-                      volume, 
-                      dividends, 
-                      stock_splits 
-                    FROM 
-                      {self.schema}.{table_name} 
-                    QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC) = 1 
-                    ORDER BY 
-                      timestamp, yahoo_ticker, bloomberg_ticker, numerai_ticker;
-                """
-
-        separate_query_statements = query_statements.split(';')
-        for query in separate_query_statements[0:-1]:
-            query = query.replace('\n', '').replace('  ', '') + ';'
-            print(f'\n\nQuery: {query}\n\n') if self.verbose else None
-            self.snowflake_client.run_sql(query)
-
-        self.snowflake_client.disconnect()
-
-        if 'snowflake' in self.create_timestamp_index_dbs:
-            raise NotImplementedError('No need to create timestamp indices on bigquery or snowflake.')
-
-        return self
-
-    def _write_to_bigquery(self, df, table_name, retry_cache_dir=os.path.expanduser('~/.cache/bigquery')):
-        """
-        Description
-        -----------
-        Write dataframe of specified interval to the BigQuery.
-        Tables will be stored to self.schema.<table_name> in BigQuery.
-
-        Parameters:
-            df: pandas df of stock price data
-            interval: str of the interval that was pulled from yfinance (e.g. '1m')
-        """
-
-        print(f'\nWriting to BigQuery...\n') if self.verbose else None
-
-        try:
-            df.to_gbq(f'{self.schema}.{table_name}', if_exists='append')
-        except:
-            print('\nCould not directly upload df to bigquery! '
-                  'Dumping to csv, loading, then trying again via bigquery client...\n') if self.verbose else None
-
-            os.makedirs(retry_cache_dir, exist_ok=True)
-            df.to_csv(f'{retry_cache_dir}/tmp.csv', index=False)
-            df = pd.read_csv(f'{retry_cache_dir}/tmp.csv')
-            job_config = bigquery.LoadJobConfig(autodetect=True)
-            table_id = f'{self.bigquery_client.client.project}.{self.schema}.{table_name}'
-            self.bigquery_client.client.load_table_from_dataframe(df, table_id, job_config=job_config).result()
-            subprocess.run(f'rm {retry_cache_dir}/tmp.csv', shell=True)
-        gc.collect()
-        return self
-
-    def _dedupe_bigquery_table(self, table_name, asset_class):
-        """
-        Description
-        -----------
-        Query that dedupes BigQuery table stock_price_<interval> by timestamp, yahoo_ticker
-
-        Parameters:
-            table_name: str of the table name
-            asset_class: str of the asset class to run queries on
-        """
-
-        initial_syntax = f"CREATE OR REPLACE TABLE {self.schema}.{table_name} AS ("
-
-        if asset_class == 'stocks':
-            query = f"""
-                {initial_syntax}
-                SELECT 
-                  timestamp, 
-                  timestamp_tz_aware, 
-                  timezone, 
-                  yahoo_ticker, 
-                  bloomberg_ticker, 
-                  numerai_ticker, 
-                  open, 
-                  high, 
-                  low, 
-                  close, 
-                  volume, 
-                  dividends, 
-                  stock_splits 
-                FROM 
-                  {self.schema}.{table_name} 
-                QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC) = 1 
-                ORDER BY 
-                  timestamp, yahoo_ticker, bloomberg_ticker, numerai_ticker
-                );
-            """
-
-        elif asset_class == 'forex':
-            query = f"""
-                {initial_syntax}
-                SELECT 
-                  timestamp, 
-                  timestamp_tz_aware, 
-                  timezone, 
-                  yahoo_ticker, 
-                  bloomberg_ticker, 
-                  open, 
-                  high, 
-                  low, 
-                  close, 
-                  volume 
-                FROM 
-                  {self.schema}.{table_name} 
-                QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC) = 1 
-                ORDER BY 
-                  timestamp, yahoo_ticker
-                );
-            """
-
-        elif asset_class == 'crypto':
-            query = f"""
-                {initial_syntax}
-                SELECT 
-                  timestamp, 
-                  timestamp_tz_aware, 
-                  timezone, 
-                  yahoo_ticker, 
-                  yahoo_name,  
-                  open, 
-                  high, 
-                  low, 
-                  close, 
-                  volume 
-                FROM 
-                  {self.schema}.{table_name} 
-                QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC) = 1 
-                ORDER BY 
-                  timestamp, yahoo_ticker, yahoo_name
-                );
-            """
-
-        self.bigquery_client.run_sql(query)
-
-        if 'bigquery' in self.create_timestamp_index_dbs:
-            raise NotImplementedError('No need to create timestamp indices on bigquery.')
-        return self
-
-    def _drop_mysql_index_constraint(self, table_name):
-        """
-        Description
-        -----------
-        Query that drops MySQL index constraint on table stock_price_<interval>.
-
-        Parameters:
-            table_name: str of the table name that was pulled from yfinance (e.g. 'stock_prices_1m')
-        """
-        idx_cols = \
-            self.mysql_client.run_sql(f"""
-                SELECT
-                  *
-                FROM
-                  information_schema.statistics
-                WHERE
-                  table_schema = '{self.schema}'
-                  AND table_name = '{table_name}'
-            """)
-        if 'dedupe' in idx_cols['INDEX_NAME'].tolist():
-            self.mysql_client.run_sql(f"ALTER TABLE {self.schema}.{table_name} DROP INDEX dedupe;")
-        return
-
-
-class YFPriceGetter:
-    """
-
-    Parameters
-    ----------
-    dwh_conns: dict of db engine connections ( e.g. {'mysql': <mysql-connection>} )
-    yf_params: dict - passed to yf.Ticker(<ticker>).history(**yf_params) - see docs for yfinance ticker.history() params
-    schema: str of the schema to connect to
-    yahoo_ticker_colname: str of column name to set of output yahoo ticker columns
-    convert_tz_aware_to_string: bool whether to convert tz_aware timestamp to string in the stock price df.
-    verbose: bool whether to log most steps to stdout
-    """
-
-    def __init__(self,
-                 dwh_conns=None,
-                 yf_params=None,
-                 schema='yfinance',
-                 yahoo_ticker_colname='yahoo_ticker',
-                 convert_tz_aware_to_string=True,
-                 verbose=False):
-        self.dwh_conns = dwh_conns
-        self.yf_params = {} if yf_params is None else yf_params
-        self.schema = schema
-        self.yahoo_ticker_colname = yahoo_ticker_colname
-        self.convert_tz_aware_to_string = convert_tz_aware_to_string
-        self.verbose = verbose
-
-        ### update yf_params ###
-
-        if 'prepost' not in self.yf_params.keys():
-            self.yf_params['prepost'] = True
-        if 'start' not in self.yf_params.keys():
-            print('*** YF params start set to 1950-01-01! ***') if self.verbose else None
-            self.yf_params['start'] = '1950-01-01'
-
-        self.start_date = self.yf_params['start']
-        assert pd.Timestamp(self.start_date) <= datetime.today(), 'Start date cannot be after the current date!'
-
-        self.column_order = clean_columns(
-            pd.DataFrame(
-                columns=['timestamp', 'timestamp_tz_aware', 'timezone', self.yahoo_ticker_colname, 'Open', 'High',
-                         'Low', 'Close', 'Volume', 'Dividends', 'Stock Splits']
-            )
-        ).columns.tolist()
-
-        self.n_requests = 0
-        self.failed_ticker_downloads = {}
-
-        if self.dwh_conns is None:
-            raise ValueError("Parameter dwh_conns is required to run this process.")
-
-        return
-
-    def _request_limit_check(self):
-        """
-        Description
-        -----------
-        Check if too many requests were made to yfinance within their allowed number of requests.
-        """
-        self.request_start_timestamp = datetime.now()
-        self.current_runtime_seconds = (datetime.now() - self.request_start_timestamp).seconds
-
-        if self.n_requests > 1900 and self.current_runtime_seconds > 3500:
-            if self.verbose:
-                print(f'\nToo many requests per hour. Pausing requests for {self.current_runtime_seconds} seconds.\n')
-            time.sleep(np.abs(3600 - self.current_runtime_seconds))
-        if self.n_requests > 45000 and self.current_runtime_seconds > 85000:
-            if self.verbose:
-                print(f'\nToo many requests per day. Pausing requests for {self.current_runtime_seconds} seconds.\n')
-            time.sleep(np.abs(86400 - self.current_runtime_seconds))
-        return
-
     def create_prices_table_if_not_exists(self, table_name, asset_class):
 
         """
@@ -1389,7 +1085,7 @@ class YFPriceGetter:
         asset_class: str of the asset class to run queries on
         """
 
-        for dwh_name in self.dwh_conns.keys():
+        for dwh_name in self.dwh_connections.keys():
             if dwh_name == 'mysql':
                 if self.convert_tz_aware_to_string:
                     tz_aware_col = 'timestamp_tz_aware CHAR(32) NOT NULL'
@@ -1449,8 +1145,10 @@ class YFPriceGetter:
                           )
                           ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
                         """
+                else:
+                    raise RuntimeError("asset_class must be set to either 'stocks', 'forex', or 'crypto'")
 
-                self.dwh_conns[dwh_name].run_sql(query)
+                self.dwh_connections[dwh_name].run_sql(query)
 
             elif dwh_name == 'bigquery':
                 tz_aware_dtype = "STRING" if self.convert_tz_aware_to_string else "TIMESTAMP"
@@ -1564,98 +1262,52 @@ class YFPriceGetter:
                           volume FLOAT
                           );
                         """
+                else:
+                    raise RuntimeError("asset_class must be set to either 'stocks', 'forex', or 'crypto'")
 
-                self.dwh_conns[dwh_name].run_sql(query)
+                self.dwh_connections[dwh_name].run_sql(query)
         return self
-
-    def download_single_symbol_price_history(self, ticker, yf_history_params=None):
-        """
-        Description
-        -----------
-        Download a single stock price ticker from the yfinance python library.
-        Minor transformations happen:
-            - Add column yahoo_ticker to show which ticker has been pulled
-            - Set start date to the minimum start date allowed by yfinance for that ticker (passed in yf_history_params)
-            - Clean column names
-            - Set tz_aware timestamp column to be a string
-        """
-        yf_history_params = self.yf_params.copy() if yf_history_params is None else yf_history_params.copy()
-
-        assert 'interval' in yf_history_params.keys(), 'must pass interval parameter to yf_history_params'
-
-        if yf_history_params['interval'] not in self.failed_ticker_downloads.keys():
-            self.failed_ticker_downloads[yf_history_params['interval']] = []
-
-        if 'start' not in yf_history_params.keys():
-            yf_history_params['start'] = '1950-01-01 00:00:00'
-
-        yf_history_params['start'] = \
-            get_valid_yfinance_start_timestamp(interval=yf_history_params['interval'], start=yf_history_params['start'])
-
-        t = yf.Ticker(ticker)
-        try:
-            df = \
-                t.history(**yf_history_params) \
-                    .rename_axis(index='timestamp') \
-                    .pipe(lambda x: clean_columns(x))
-
-            self.n_requests += 1
-
-            if df is not None and not df.shape[0]:
-                self.failed_ticker_downloads[yf_history_params['interval']].append(ticker)
-                return pd.DataFrame(columns=self.column_order)
-        except:
-            self.failed_ticker_downloads[yf_history_params['interval']].append(ticker)
-            return
-
-        df.loc[:, self.yahoo_ticker_colname] = ticker
-        df.reset_index(inplace=True)
-        df['timestamp_tz_aware'] = df['timestamp'].copy()
-        df.loc[:, 'timezone'] = str(df['timestamp_tz_aware'].dt.tz)
-        df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
-        if self.convert_tz_aware_to_string:
-            df['timestamp_tz_aware'] = df['timestamp_tz_aware'].astype(str)
-        df = df[self.column_order]
-        return df
 
     def _get_max_stored_ticker_timestamps(self, table_name):
         self.stored_tickers = pd.DataFrame(columns=['yahoo_ticker'])
 
-        for dwh_name in self.dwh_conns.keys():
+        for dwh_name in self.dwh_connections.keys():
             if dwh_name in ['mysql', 'snowflake']:
                 existing_tables = \
-                    self.dwh_conns[dwh_name].run_sql(
+                    self.dwh_connections[dwh_name].run_sql(
                         f"""
                         SELECT
                           DISTINCT(table_name)
                         FROM
                           information_schema.tables
                         WHERE
-                          lower(table_schema) = '{self.dwh_conns[dwh_name].schema}'
+                          lower(table_schema) = '{self.dwh_connections[dwh_name].schema}'
                         """
                     ).pipe(lambda x: clean_columns(x))
 
             elif dwh_name == 'bigquery':
                 existing_tables = \
-                    self.dwh_conns[dwh_name].run_sql(
+                    self.dwh_connections[dwh_name].run_sql(
                         f"""
                         SELECT
                           DISTINCT(table_name)
                         FROM
-                          `{self.dwh_conns[dwh_name].schema}.INFORMATION_SCHEMA.TABLES`;
+                          `{self.dwh_connections[dwh_name].schema}.INFORMATION_SCHEMA.TABLES`;
                         """
                     ).pipe(lambda x: clean_columns(x))
+            else:
+                raise RuntimeError("dwh_name must be set to either 'mysql', 'bigquery', or 'snowflake'")
 
             existing_tables['table_name'] = existing_tables['table_name'].str.lower()
 
             if f'{table_name}' in existing_tables['table_name'].tolist():
                 tmp_stored_tickers = \
-                    self.dwh_conns[dwh_name].run_sql(f"""
+                    self.dwh_connections[dwh_name].run_sql(f"""
                         SELECT
                             yahoo_ticker,
                             MAX(timestamp) AS {dwh_name}_max_timestamp
                         FROM
-                            `{self.dwh_conns[dwh_name].client.project}.{self.dwh_conns[dwh_name].schema}.{table_name}`
+                            `{self.dwh_connections[dwh_name].client.project}.{self.dwh_connections[dwh_name].schema}.{table_name}`
                         GROUP BY 1
                         """)
                 self.stored_tickers = pd.merge(self.stored_tickers, tmp_stored_tickers, how='outer', on='yahoo_ticker')
@@ -1667,119 +1319,474 @@ class YFPriceGetter:
 
         return self
 
-    def batch_download_price_history(self,
-                                     tickers,
-                                     table_prefix,
-                                     intervals_to_download=('1m', '2m', '5m', '1h', '1d'),
-                                     yf_history_params=None):
+    def _write_df_to_all_dbs(self, df, table_name, asset_class):
         """
-        NOTE: At the time of writing, this code fails with segmentation fault after upgrading to yfinance version 2.
-              This will likely be fixed soon, so for now turn off batch download.
+        Description
+        -----------
+        Write dataframe of specified interval to the dwhs supplied in initialization (e.g. populate_snowflake, etc).
+        Tables will be stored to self.schema.<table_name> in the dwh
+
+        Parameters:
+            df: pandas df of stock price data
+            table_name: str of the table name to populate bigquery with (e.g. <schema>.<table_name>)
+            asset_class: str of the asset class (e.g. 'stocks', 'forex', or 'crypto')
         """
-        self.dict_of_dfs = \
-            self._batch_download(tickers,
-                                 table_prefix=table_prefix,
-                                 intervals_to_download=intervals_to_download,
-                                 yf_history_params=yf_history_params)
+
+        if self.populate_mysql:
+            self._write_to_mysql(df=df, table_name=table_name, asset_class=asset_class)
+            self._dedupe_mysql_table(table_name=table_name)
+
+        if self.populate_snowflake:
+            self._write_to_snowflake(df=df, table_name=table_name, asset_class=asset_class)
+            self._dedupe_snowflake_table(table_name=table_name)
+
+        if self.populate_bigquery:
+            self._write_to_bigquery(df=df, table_name=table_name)
+            self._dedupe_bigquery_table(table_name=table_name, asset_class=asset_class)
+        return self
+
+    def _get_query_dtype_fix(self, table_name, asset_class):
+        """
+        Description
+        -----------
+        Static query dtype fix that is called by other methods
+
+        Parameters:
+            table_name: str of the table name that was pulled from yfinance (e.g. 'stock_prices_1m')
+        """
+
+        if asset_class == 'stocks':
+            query_dtype_fix = f"""
+                DROP TABLE IF EXISTS {self.schema}.tmp_table; 
+                CREATE TABLE {self.schema}.tmp_table AS 
+                  SELECT 
+                    timestamp, 
+                    CAST(timestamp_tz_aware AS CHAR(32)) AS timestamp_tz_aware, 
+                    timezone, 
+                    yahoo_ticker, 
+                    bloomberg_ticker,  
+                    numerai_ticker, 
+                    open, 
+                    high, 
+                    low, 
+                    close, 
+                    volume, 
+                    dividends, 
+                    stock_splits 
+                  FROM 
+                    {self.schema}.{table_name};
+                """
+        if asset_class == 'forex':
+            query_dtype_fix = f"""
+                DROP TABLE IF EXISTS {self.schema}.tmp_table; 
+                CREATE TABLE {self.schema}.tmp_table AS 
+                  SELECT 
+                    timestamp, 
+                    CAST(timestamp_tz_aware AS CHAR(32)) AS timestamp_tz_aware, 
+                    timezone, 
+                    yahoo_ticker, 
+                    bloomberg_ticker,  
+                    open, 
+                    high, 
+                    low, 
+                    close, 
+                    volume 
+                  FROM 
+                    {self.schema}.{table_name};
+                """
+        elif asset_class == 'crypto':
+            query_dtype_fix = f"""
+                DROP TABLE IF EXISTS {self.schema}.tmp_table; 
+                CREATE TABLE {self.schema}.tmp_table AS 
+                  SELECT 
+                    timestamp, 
+                    CAST(timestamp_tz_aware AS CHAR(32)) AS timestamp_tz_aware, 
+                    timezone, 
+                    yahoo_ticker, 
+                    yahoo_name,   
+                    open, 
+                    high, 
+                    low, 
+                    close, 
+                    volume 
+                  FROM 
+                    {self.schema}.{table_name};
+                """
+        else:
+            raise RuntimeError("asset_class must be set to either 'stocks', 'forex', or 'crypto'")
+
+        return query_dtype_fix
+
+    def _write_to_mysql(self, df, table_name, asset_class):
+        """
+        Description
+        -----------
+        Write dataframe of specified interval to the MySQL.
+        Tables will be stored to self.schema.<table_name> in MySQL.
+
+        Parameters:
+            df: pandas df of stock price data
+            table_name: str of the interval that was pulled from yfinance (e.g. '1m')
+        """
+
+        print(f'\nWriting to database MySQL...\n') if self.verbose else None
+        self._drop_mysql_index_constraint(table_name=table_name)
+        method = 'multi' if self.write_method == 'write_pandas' else self.write_method
+        try:
+            self.mysql_client.connect()
+            df.to_sql(table_name,
+                      con=self.mysql_client.con,
+                      index=False,
+                      if_exists='append',
+                      schema=self.schema,
+                      method=method,
+                      chunksize=self.to_sql_chunksize)
+        except:
+            warnings.warn("""
+                        Could not directly populate database with df.
+                        This is likely because of the timestamp_tz_aware column. Converting it to string...
+                        """)
+
+            query_dtype_fix = self._get_query_dtype_fix(table_name=table_name, asset_class=asset_class)
+            self.mysql_client.run_sql(query_dtype_fix)
+
+            df['timestamp_tz_aware'] = df['timestamp_tz_aware'].astype(str)
+
+            self.mysql_client.connect()
+            df.to_sql(table_name,
+                      con=self.mysql_client.con,
+                      index=False,
+                      if_exists='append',
+                      schema=self.schema,
+                      method=method,
+                      chunksize=self.to_sql_chunksize)
+
+        gc.collect()
+        return self
+
+    def _dedupe_mysql_table(self, table_name):
+        """
+        Description
+        -----------
+        Query that dedupes MySQL table stock_price_<interval> by timestamp, yahoo_ticker
+        Note: The table MUST have timestamp and yahoo_ticker as columns
+
+        Parameters:
+            table_name: str of the table name to populate MySQL
+        """
+
+        print(f'\nDeduping MySQL table {table_name}...\n') if self.verbose else None
+
+        query_statements = f"""
+            ALTER TABLE {self.schema}.{table_name} ADD COLUMN to_keep BOOLEAN;
+            ALTER TABLE {self.schema}.{table_name} 
+            ADD CONSTRAINT dedupe UNIQUE (timestamp, yahoo_ticker, to_keep);
+            UPDATE IGNORE {self.schema}.{table_name} SET to_keep = true;
+            DELETE FROM {self.schema}.{table_name} WHERE to_keep IS NULL;
+            ALTER TABLE {self.schema}.{table_name} DROP to_keep;
+            """
+
+        self.mysql_client.run_sql(query_statements)
+
+        # create index on timestamp column
+        idx_cols = self.mysql_client.run_sql(f"""
+                SELECT
+                  *
+                FROM
+                  information_schema.statistics
+                WHERE
+                  table_schema = '{self.mysql_client.schema}'
+                  AND table_name = '{table_name}'
+            """)
+
+        if 'timestamp' not in idx_cols['COLUMN_NAME'].tolist():
+            self.mysql_client.run_sql(f"CREATE INDEX ts ON {self.schema}.{table_name} (timestamp);")
 
         return self
 
-    def _batch_download(self, tickers, table_prefix, intervals_to_download=('1m', '2m', '5m', '1h', '1d'),
-                        yf_history_params=None):
+    def _write_to_snowflake(self, df, table_name, asset_class):
         """
-        NOTE: Version 2 of yfinance package has bugs when pulling multiple tickers at once.
-              For reliable data turn off batch mode.
-        Parameters
-        __________
-        See yf.Ticker(<ticker>).history() docs for a detailed description of yf parameters
-        tickers: list of tickers to pass to yf.Ticker(<ticker>).history() - it will be parsed to be in the format "AAPL MSFT FB"
+        Description
+        -----------
+        Write dataframe of specified interval to the Snowflake.
+        Tables will be stored to self.schema.<table_name> in Snowflake.
 
-        intervals_to_download: list of intervals to download OHLCV data for each stock (e.g. ['1w', '1d', '1h'])
-
-        yf_history_params: dict of parameters passed to yf.Ticker(<ticker>).history(**yf_history_params)
-
-        Note: passing some intervals return unreliable stock data (e.g. '3mo' returns many NAs when they should not be)
-
-        Restrictions
-        ------------
-        Yahoo finance API currently has a 2000 requests per hour or 48000 requests per day limit at the time of writing.
-        If the limit hits 1900 requests from the first API call, it will sleep for the remaining time (new hour).
-        Similarly, if there are 47000 requests from the first API call it will sleep for the remaining time (new day)
+        Parameters:
+            df: pandas df of stock price data
+            table_name: str of the table name to populate snowflake with
+            asset_class: str of the asset class (e.g. 'stocks')
         """
 
-        start = time.time()
-        yf_history_params = self.yf_params.copy() if yf_history_params is None else yf_history_params
+        print(f'\nWriting to Snowflake...\n') if self.verbose else None
 
-        for interval in intervals_to_download:
-            self.failed_ticker_downloads[interval] = []
+        try:
+            if self.write_method in [pd_writer, 'write_pandas']:
+                df.columns = df.columns.str.upper()
 
-        ### download ticker history ###
+            if self.write_method == 'write_pandas':
+                original_backend = self.snowflake_client.backend_engine
+                del self.snowflake_client
+                self._connect_to_snowflake()
+                self.dwh_connections['snowflake'] = self.snowflake_client
+                self.snowflake_client.backend_engine = 'snowflake_connector'
+                self.snowflake_client.connect()
+                write_pandas(df=df,
+                             conn=self.snowflake_client.con,
+                             database=self.snowflake_client.database.upper(),
+                             schema=self.snowflake_client.schema.upper(),
+                             table_name=table_name.upper(),
+                             chunk_size=self.to_sql_chunksize,
+                             compression='gzip',
+                             parallel=self.write_pandas_threads,
+                             overwrite=False,
+                             auto_create_table=True)
+                self.snowflake_client.backend_engine = original_backend
 
-        dict_of_dfs = {}
-        for i in intervals_to_download:
-            self._request_limit_check()
-
-            print(f'\n*** Running {table_prefix} interval {i} ***\n')
-
-            self._get_max_stored_ticker_timestamps(table_name=f'{table_prefix}_{i}')
-            if self.stored_tickers.shape[0]:
-                query_start_timestamp = self.stored_tickers['query_start_timestamp'].min().strftime('%Y-%m-%d')
             else:
-                query_start_timestamp = '1950-01-01'
+                self.snowflake_client.connect()
+                df.to_sql(table_name,
+                          con=self.snowflake_client.con,
+                          index=False,
+                          if_exists='append',
+                          schema=self.schema,
+                          method=self.write_method,
+                          chunksize=self.to_sql_chunksize)
+        except:
+            warnings.warn("""
+                        Could not directly populate database with df.
+                        This is likely because of the timestamp_tz_aware column. Converting it to string...
+                        """)
 
-            yf_history_params['interval'] = i
+            query_dtype_fix = self._get_query_dtype_fix(table_name=table_name, asset_class=asset_class)
+            separate_query_statements = query_dtype_fix.split(';')
+            for query in separate_query_statements[0:-1]:
+                query = query.replace('\n', '').replace('  ', '') + ';'
+                print(f'\n\nquery: {query}\n\n') if self.verbose else None
+                self.snowflake_client.run_sql(query)
 
-            yf_history_params['start'] = \
-                get_valid_yfinance_start_timestamp(interval=i, start=query_start_timestamp)
+            df['timestamp_tz_aware'] = df['timestamp_tz_aware'].astype(str)
 
-            if len(tickers) == 1:
-                t = yf.Ticker(tickers[0])
+            if self.write_method in [pd_writer, 'write_pandas']:
+                df.columns = df.columns.str.upper()
+
+            if self.write_method == 'write_pandas':
+                original_backend = self.snowflake_client.backend_engine
+                self.snowflake_client.backend_engine = 'snowflake_connector'
+                self.snowflake_client.connect()
+                write_pandas(df=df,
+                             conn=self.snowflake_client.con,
+                             database=self.snowflake_client.database.upper(),
+                             schema=self.snowflake_client.schema.upper(),
+                             table_name=table_name.upper(),
+                             chunk_size=self.to_sql_chunksize,
+                             compression='gzip',
+                             parallel=self.write_pandas_threads,
+                             overwrite=False,
+                             auto_create_table=True)
+
+                self.snowflake_client.backend_engine = original_backend
+
             else:
-                t = yf.Tickers(tickers)
+                df.to_sql(table_name,
+                          con=self.snowflake_client.con,
+                          index=False,
+                          if_exists='append',
+                          schema=self.schema,
+                          method=self.write_method,
+                          chunksize=self.to_sql_chunksize)
+        return self
 
-            conflict_params = []
-            params = list(yf_history_params)
-            for param in params:
-                if param not in inspect.getfullargspec(t.history).args:
-                    conflict_params.append(param)
-                    yf_history_params.pop(param)
-            if len(conflict_params):
-                warnings.warn(f"""\n
-                  *** Removing conflicting parameters passed to yf.download in batch_download mode {conflict_params} ***
-                  \n""")
+    def _dedupe_snowflake_table(self, table_name):
+        """
+        Description
+        -----------
+        Query that dedupes Snowflake table stock_price_<interval> by timestamp, yahoo_ticker
 
-            df_i = \
-                t.history(**yf_history_params) \
-                 .stack() \
-                 .rename_axis(index=['timestamp', self.yahoo_ticker_colname]) \
-                 .reset_index()
+        Parameters:
+            table_name: str of the table name to dedupe in Snowflake.
+        """
 
-            gc.collect()
+        self.snowflake_client.run_sql(f"USE {self.snowflake_client.database}")
+        initial_syntax = f"INSERT OVERWRITE INTO {self.schema}.{table_name} "
+        query_statements = f"""
+                    {initial_syntax}
+                    SELECT 
+                      timestamp, 
+                      timestamp_tz_aware, 
+                      timezone, 
+                      yahoo_ticker, 
+                      bloomberg_ticker, 
+                      numerai_ticker, 
+                      open, 
+                      high, 
+                      low, 
+                      close, 
+                      volume, 
+                      dividends, 
+                      stock_splits 
+                    FROM 
+                      {self.schema}.{table_name} 
+                    QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC) = 1 
+                    ORDER BY 
+                      timestamp, yahoo_ticker, bloomberg_ticker, numerai_ticker;
+                """
 
-            self.n_requests += 1
+        separate_query_statements = query_statements.split(';')
+        for query in separate_query_statements[0:-1]:
+            query = query.replace('\n', '').replace('  ', '') + ';'
+            print(f'\n\nQuery: {query}\n\n') if self.verbose else None
+            self.snowflake_client.run_sql(query)
 
-            df_i['timestamp_tz_aware'] = df_i['timestamp'].copy()
-            if df_i.shape[0]:
-                df_i.loc[:, 'timezone'] = str(df_i['timestamp_tz_aware'].dt.tz)
-                df_i['timestamp'] = pd.to_datetime(df_i['timestamp'], utc=True)
-                if self.convert_tz_aware_to_string:
-                    df_i['timestamp_tz_aware'] = df_i['timestamp_tz_aware'].astype(str)
+        self.snowflake_client.disconnect()
 
-                if isinstance(df_i.columns, pd.MultiIndex):
-                    df_i.columns = flatten_multindex_columns(df_i)
-                df_i = clean_columns(df_i)
-                dict_of_dfs[i] = df_i
-            else:
-                warnings.warn(f'\n*** Could not pull data for interval {i} ***\n')
+        if 'snowflake' in self.create_timestamp_index_dbs:
+            raise NotImplementedError('No need to create timestamp indices on bigquery or snowflake.')
 
-            if self.verbose:
-                for ftd in self.failed_ticker_downloads:
-                    self.failed_ticker_downloads[ftd] = flatten_list(self.failed_ticker_downloads[ftd])
-                print(f"\nFailed ticker downloads:\n{self.failed_ticker_downloads}")
+        return self
 
-        if self.verbose:
-            print("\nDownloading yfinance data took %s minutes\n" % round((time.time() - start) / 60, 3))
-        return dict_of_dfs
+    def _write_to_bigquery(self, df, table_name, retry_cache_dir=os.path.expanduser('~/.cache/bigquery')):
+        """
+        Description
+        -----------
+        Write dataframe of specified interval to the BigQuery.
+        Tables will be stored to self.schema.<table_name> in BigQuery.
+
+        Parameters:
+            df: pandas df of stock price data
+            table_name: str of the table name to write to BigQuery.
+        """
+
+        print(f'\nWriting to BigQuery...\n') if self.verbose else None
+
+        try:
+            df.to_gbq(f'{self.schema}.{table_name}', if_exists='append')
+        except:
+            print('\nCould not directly upload df to bigquery! '
+                  'Dumping to csv, loading, then trying again via bigquery client...\n') if self.verbose else None
+
+            os.makedirs(retry_cache_dir, exist_ok=True)
+            df.to_csv(f'{retry_cache_dir}/tmp.csv', index=False)
+            df = pd.read_csv(f'{retry_cache_dir}/tmp.csv')
+            job_config = bigquery.LoadJobConfig(autodetect=True)
+            table_id = f'{self.bigquery_client.client.project}.{self.schema}.{table_name}'
+            self.bigquery_client.client.load_table_from_dataframe(df, table_id, job_config=job_config).result()
+            subprocess.run(f'rm {retry_cache_dir}/tmp.csv', shell=True)
+        gc.collect()
+        return self
+
+    def _dedupe_bigquery_table(self, table_name, asset_class):
+        """
+        Description
+        -----------
+        Query that dedupes BigQuery table stock_price_<interval> by timestamp, yahoo_ticker
+
+        Parameters:
+            table_name: str of the table name
+            asset_class: str of the asset class to run queries on
+        """
+
+        initial_syntax = f"CREATE OR REPLACE TABLE {self.schema}.{table_name} AS ("
+
+        if asset_class == 'stocks':
+            query = f"""
+                {initial_syntax}
+                SELECT 
+                  timestamp, 
+                  timestamp_tz_aware, 
+                  timezone, 
+                  yahoo_ticker, 
+                  bloomberg_ticker, 
+                  numerai_ticker, 
+                  open, 
+                  high, 
+                  low, 
+                  close, 
+                  volume, 
+                  dividends, 
+                  stock_splits 
+                FROM 
+                  {self.schema}.{table_name} 
+                QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC) = 1 
+                ORDER BY 
+                  timestamp, yahoo_ticker, bloomberg_ticker, numerai_ticker
+                );
+            """
+
+        elif asset_class == 'forex':
+            query = f"""
+                {initial_syntax}
+                SELECT 
+                  timestamp, 
+                  timestamp_tz_aware, 
+                  timezone, 
+                  yahoo_ticker, 
+                  bloomberg_ticker, 
+                  open, 
+                  high, 
+                  low, 
+                  close, 
+                  volume 
+                FROM 
+                  {self.schema}.{table_name} 
+                QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC) = 1 
+                ORDER BY 
+                  timestamp, yahoo_ticker
+                );
+            """
+
+        elif asset_class == 'crypto':
+            query = f"""
+                {initial_syntax}
+                SELECT 
+                  timestamp, 
+                  timestamp_tz_aware, 
+                  timezone, 
+                  yahoo_ticker, 
+                  yahoo_name,  
+                  open, 
+                  high, 
+                  low, 
+                  close, 
+                  volume 
+                FROM 
+                  {self.schema}.{table_name} 
+                QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC) = 1 
+                ORDER BY 
+                  timestamp, yahoo_ticker, yahoo_name
+                );
+            """
+        else:
+            raise RuntimeError("asset_class must be set to either 'stocks', 'forex', or 'crypto'")
+
+        self.bigquery_client.run_sql(query)
+
+        if 'bigquery' in self.create_timestamp_index_dbs:
+            raise NotImplementedError('No need to create timestamp indices on bigquery.')
+        return self
+
+    def _drop_mysql_index_constraint(self, table_name):
+        """
+        Description
+        -----------
+        Query that drops MySQL index constraint on table stock_price_<interval>.
+
+        Parameters:
+            table_name: str of the table name that was pulled from yfinance (e.g. 'stock_prices_1m')
+        """
+        idx_cols = \
+            self.mysql_client.run_sql(f"""
+                SELECT
+                  *
+                FROM
+                  information_schema.statistics
+                WHERE
+                  table_schema = '{self.schema}'
+                  AND table_name = '{table_name}'
+            """)
+        if 'dedupe' in idx_cols['INDEX_NAME'].tolist():
+            self.mysql_client.run_sql(f"ALTER TABLE {self.schema}.{table_name} DROP INDEX dedupe;")
+        return
+
 
 class TickerDownloader:
     """
