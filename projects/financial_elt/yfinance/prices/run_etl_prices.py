@@ -57,10 +57,14 @@ try:
     print(f'\nTotal time took {round((time.time() - start) / 60, 3)} minutes.\n')
 
 except Exception as e:
-    email_credentials = json_string_to_dict(os.getenv('EMAIL_CREDENTIALS'))
+    import traceback
 
+    print(traceback.format_exc())
+    print(f'\n{e}\n')
+
+    email_credentials = json_string_to_dict(os.getenv('EMAIL_CREDENTIALS'))
     subject = f"Financial ELT Failed in {ENVIRONMENT} environment {datetime.today().strftime('%Y-%m-%d %H:%S:%S')}."
-    body = "The script encountered an error:\n\n{}".format(str(e))
+    body = "The script encountered an error:\n\n{}\n\n{}".format(str(traceback.format_exc()), str(e))
 
     send_email(to_addrs=email_credentials['username'],
                from_addr=email_credentials['username'],

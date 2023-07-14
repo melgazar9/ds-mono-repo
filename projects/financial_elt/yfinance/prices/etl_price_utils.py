@@ -263,7 +263,7 @@ class YFPriceETL(YFPriceGetter):
 
     def __init__(self,
                  schema='yfinance',
-                 database='FINANCIAL_DB',
+                 database='YFINANCE_DEV',
                  populate_mysql=False,
                  populate_bigquery=False,
                  populate_snowflake=False,
@@ -320,8 +320,8 @@ class YFPriceETL(YFPriceGetter):
 
             snowflake_connect_params.update(dict(database=self.database))
             self.snowflake_client = SnowflakeConnect(**snowflake_connect_params)
-            self.snowflake_client.run_sql(f"CREATE DATABASE IF NOT EXISTS {self.database};")
-            self.snowflake_client.run_sql(f"""CREATE SCHEMA IF NOT EXISTS {self.database}.{self.schema};""")
+            # self.snowflake_client.run_sql(f"CREATE DATABASE IF NOT EXISTS {self.database};")
+            # self.snowflake_client.run_sql(f"""CREATE SCHEMA IF NOT EXISTS {self.database}.{self.schema};""")
             self.snowflake_client.connect()
         return self
 
@@ -893,15 +893,15 @@ class YFPriceETL(YFPriceGetter):
                             from
                               information_schema.tables
                             where
-                              table_catalog = {self.database}
-                              and table_schema = '{self.schema}'
+                              lower(table_catalog) = '{self.database.lower()}'
+                              and lower(table_schema) = '{self.schema.lower()}'
                             """)
 
-            table_exists = True if 'crypto_pairs_top_250' in flatten_list(tables.values.tolist()) else False
+            table_exists = True if 'crypto_pairs_top_250'.upper() in [i.upper() for i in flatten_list(tables.values.tolist())] else False
 
             if table_exists:
                 df_top_crypto_tickers_prev = \
-                    self.snowflake_client.run_sql(f'select * from {self.schema}.crypto_pairs_top_250')
+                    self.snowflake_client.run_sql(f'select * from {self.schema}.crypto_pairs_top_250'.upper())
 
                 df_top_crypto_tickers_prev = df_top_crypto_tickers_prev[[i.upper() for i in column_order]]
                 df_top_crypto_tickers = \
@@ -912,7 +912,7 @@ class YFPriceETL(YFPriceGetter):
                 df_top_crypto_tickers = df_top_crypto_tickers_new
 
             if self.write_method.lower() != 'write_pandas':
-                df_top_crypto_tickers.to_sql('crypto_pairs_top_250',
+                df_top_crypto_tickers.to_sql('crypto_pairs_top_250'.upper(),
                                              con=self.snowflake_client.con,
                                              if_exists='replace',
                                              index=False,
@@ -926,7 +926,7 @@ class YFPriceETL(YFPriceGetter):
                              conn=self.snowflake_client.con,
                              database=self.snowflake_client.database.upper(),
                              schema=self.snowflake_client.schema.upper(),
-                             table_name='crypto_pairs_top_250',
+                             table_name='crypto_pairs_top_250'.upper(),
                              chunk_size=self.to_sql_chunksize,
                              compression='gzip',
                              parallel=self.write_pandas_threads,
@@ -1028,8 +1028,8 @@ class YFPriceETL(YFPriceGetter):
                                     from
                                       information_schema.tables
                                     where
-                                      table_catalog = {self.database}
-                                      and table_schema = '{self.schema}'
+                                      lower(table_catalog) = '{self.database.lower()}'
+                                      and lower(table_schema) = '{self.schema.lower()}'
                                     """)
 
             table_exists = True if 'FOREX_PAIRS' in flatten_list(tables.values.tolist()) else False
@@ -1038,7 +1038,8 @@ class YFPriceETL(YFPriceGetter):
                 df_forex_pairs_prev = \
                     self.snowflake_client.run_sql(f'select * from {self.schema}.forex_pairs')
 
-                df_forex_pairs_prev = df_forex_pairs_prev[[i.upper() for i in df_forex_pairs_prev.columns]]
+                df_forex_pairs_prev = df_forex_pairs_prev[[i for i in df_forex_pairs_prev.columns]]
+                df_forex_pairs_prev.columns = df_forex_pairs_prev.columns.str.upper()
                 df_forex_pairs = \
                     pd.concat([df_forex_pairs_prev, df_forex_pairs_new], ignore_index=True) \
                         .drop_duplicates(subset=['YAHOO_TICKER']) \
@@ -1285,6 +1286,8 @@ class YFPriceETL(YFPriceGetter):
                         """
                     ).pipe(lambda x: clean_columns(x))
 
+                stored_tickers_table = f"{self.dwh_connections[dwh_name].schema}.{table_name}"
+
             elif dwh_name == 'bigquery':
                 existing_tables = \
                     self.dwh_connections[dwh_name].run_sql(
@@ -1295,19 +1298,21 @@ class YFPriceETL(YFPriceGetter):
                           `{self.dwh_connections[dwh_name].schema}.INFORMATION_SCHEMA.TABLES`;
                         """
                     ).pipe(lambda x: clean_columns(x))
+
+                stored_tickers_table = f"`{self.dwh_connections[dwh_name].client.project}.{self.dwh_connections[dwh_name].schema}.{table_name}`"
             else:
                 raise RuntimeError("dwh_name must be set to either 'mysql', 'bigquery', or 'snowflake'")
 
             existing_tables['table_name'] = existing_tables['table_name'].str.lower()
 
-            if f'{table_name}' in existing_tables['table_name'].tolist():
+            if f'{table_name}'.lower() in existing_tables['table_name'].tolist():
                 tmp_stored_tickers = \
                     self.dwh_connections[dwh_name].run_sql(f"""
                         SELECT
                             yahoo_ticker,
                             MAX(timestamp) AS {dwh_name}_max_timestamp
                         FROM
-                            `{self.dwh_connections[dwh_name].client.project}.{self.dwh_connections[dwh_name].schema}.{table_name}`
+                            {stored_tickers_table}
                         GROUP BY 1
                         """)
                 self.stored_tickers = pd.merge(self.stored_tickers, tmp_stored_tickers, how='outer', on='yahoo_ticker')
@@ -1338,7 +1343,7 @@ class YFPriceETL(YFPriceGetter):
 
         if self.populate_snowflake:
             self._write_to_snowflake(df=df, table_name=table_name, asset_class=asset_class)
-            self._dedupe_snowflake_table(table_name=table_name)
+            self._dedupe_snowflake_table(table_name=table_name, asset_class=asset_class)
 
         if self.populate_bigquery:
             self._write_to_bigquery(df=df, table_name=table_name)
@@ -1403,7 +1408,7 @@ class YFPriceETL(YFPriceGetter):
                     CAST(timestamp_tz_aware AS CHAR(32)) AS timestamp_tz_aware, 
                     timezone, 
                     yahoo_ticker, 
-                    yahoo_name,   
+                    yahoo_name, 
                     open, 
                     high, 
                     low, 
@@ -1596,7 +1601,7 @@ class YFPriceETL(YFPriceGetter):
                           chunksize=self.to_sql_chunksize)
         return self
 
-    def _dedupe_snowflake_table(self, table_name):
+    def _dedupe_snowflake_table(self, table_name, asset_class):
         """
         Description
         -----------
@@ -1606,29 +1611,72 @@ class YFPriceETL(YFPriceGetter):
             table_name: str of the table name to dedupe in Snowflake.
         """
 
+        if asset_class == 'stocks':
+            columns = """
+              timestamp, 
+              timestamp_tz_aware, 
+              timezone, 
+              yahoo_ticker, 
+              bloomberg_ticker, 
+              numerai_ticker, 
+              open, 
+              high, 
+              low, 
+              close, 
+              volume, 
+              dividends, 
+              stock_splits 
+            """
+
+            order_by_columns = 'timestamp, yahoo_ticker, bloomberg_ticker, numerai_ticker'
+
+        elif asset_class == 'forex':
+            columns = """
+              timestamp, 
+              timestamp_tz_aware, 
+              timezone, 
+              yahoo_ticker, 
+              bloomberg_ticker, 
+              open, 
+              high, 
+              low, 
+              close, 
+              volume 
+            """
+
+            order_by_columns = 'timestamp, yahoo_ticker, bloomberg_ticker'
+
+        elif asset_class == 'crypto':
+            columns = """
+              timestamp, 
+              timestamp_tz_aware, 
+              timezone, 
+              yahoo_ticker, 
+              yahoo_name, 
+              open, 
+              high, 
+              low, 
+              close, 
+              volume 
+            """
+
+            order_by_columns = 'timestamp, yahoo_ticker, yahoo_name'
+
+        else:
+            raise RuntimeError('Columns not successfully parsed.')
+
         self.snowflake_client.run_sql(f"USE {self.snowflake_client.database}")
+
         initial_syntax = f"INSERT OVERWRITE INTO {self.schema}.{table_name} "
         query_statements = f"""
                     {initial_syntax}
                     SELECT 
-                      timestamp, 
-                      timestamp_tz_aware, 
-                      timezone, 
-                      yahoo_ticker, 
-                      bloomberg_ticker, 
-                      numerai_ticker, 
-                      open, 
-                      high, 
-                      low, 
-                      close, 
-                      volume, 
-                      dividends, 
-                      stock_splits 
+                      {columns}
                     FROM 
                       {self.schema}.{table_name} 
                     QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC) = 1 
                     ORDER BY 
-                      timestamp, yahoo_ticker, bloomberg_ticker, numerai_ticker;
+                      {order_by_columns};
                 """
 
         separate_query_statements = query_statements.split(';')
@@ -1852,6 +1900,28 @@ class TickerDownloader:
 
         df = clean_columns(tables[0].copy())
         df.rename(columns={'symbol': 'yahoo_ticker', 'name': 'yahoo_name', '%_change': 'pct_change'}, inplace=True)
+
+        # Add Decentral-Games tickers
+
+        missing_dg_tickers = [i for i in ['ICE13133-USD', 'DG15478-USD', 'XDG-USD'] if i not in df['yahoo_ticker']]
+        if len(missing_dg_tickers):
+            df_dg = pd.DataFrame({
+                'yahoo_ticker': missing_dg_tickers,
+                'yahoo_name': missing_dg_tickers,
+                'price_intraday': np.nan,
+                'change': np.nan,
+                'pct_change': np.nan,
+                'market_cap': np.nan,
+                'volume_in_currency_since_0_00_utc': np.nan,
+                'volume_in_currency_24_hr': np.nan,
+                'total_volume_all_currencies_24_hr': np.nan,
+                'circulating_supply': np.nan,
+                '52_week_range': np.nan,
+                'day_chart': np.nan
+            })
+
+            df = pd.concat([df, df_dg], axis=0).reset_index(drop=True)
+
         df = df.dropna(how='all', axis=1)
         return df
 
