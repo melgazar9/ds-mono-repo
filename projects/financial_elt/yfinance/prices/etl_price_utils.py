@@ -901,9 +901,25 @@ class YFPriceETL(YFPriceGetter):
 
             if table_exists:
                 df_top_crypto_tickers_prev = \
-                    self.snowflake_client.run_sql(f'select * from {self.schema}.crypto_pairs_top_250'.upper())
+                    self.snowflake_client.run_sql(f"""
+                        select
+                          yahoo_ticker,
+                          yahoo_name,
+                          price_intraday,
+                          change,
+                          pct_change,
+                          market_cap,
+                          volume_in_currency_since_0_00_utc,
+                          volume_in_currency_24_hr,
+                          total_volume_all_currencies_24_hr,
+                          circulating_supply
+                        from
+                          {self.schema}.crypto_pairs_top_250
+                        """.upper())
+                df_top_crypto_tickers_prev.columns = df_top_crypto_tickers_prev.columns.str.upper()
 
                 df_top_crypto_tickers_prev = df_top_crypto_tickers_prev[[i.upper() for i in column_order]]
+
                 df_top_crypto_tickers = \
                     pd.concat([df_top_crypto_tickers_prev, df_top_crypto_tickers_new], ignore_index=True) \
                         .drop_duplicates(subset=['YAHOO_TICKER']) \

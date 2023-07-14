@@ -2,18 +2,17 @@ from etl_price_utils import *
 
 ###### this is the main driver file that acts as an interface for running the ETL process ######
 
+ENVIRONMENT = os.getenv('ENVIRONMENT').lower()
+assert ENVIRONMENT in ('dev', 'production')
+
+if ENVIRONMENT == 'dev':
+    SCHEMA = 'yfinance_dev'
+elif ENVIRONMENT == 'production':
+    SCHEMA = 'yfinance'
+
+print(f'\n*** Running Environment {ENVIRONMENT} || Populating schema {SCHEMA} ***\n')
+
 try:
-    ENVIRONMENT = os.getenv('ENVIRONMENT').lower()
-
-    assert ENVIRONMENT in ('dev', 'production')
-
-    if ENVIRONMENT == 'dev':
-        SCHEMA = 'yfinance_dev'
-    elif ENVIRONMENT == 'production':
-        SCHEMA = 'yfinance'
-
-    print(f'\n*** Running Environment {ENVIRONMENT} || Populating schema {SCHEMA} ***\n')
-
     start = time.time()
     intervals_to_download = ('1m', '2m', '5m', '1h', '1d')
     yf_params = {'repair': True, 'auto_adjust': True, 'back_adjust': False, 'timeout': 300, 'raise_errors': False}
@@ -21,7 +20,6 @@ try:
     ###### run the pipelines ######
 
     pipeline = YFPriceETL(schema=SCHEMA, populate_mysql=False, populate_snowflake=False, populate_bigquery=True)
-
     pipeline.connect_to_dwhs()
 
     ### stocks ###
@@ -63,6 +61,7 @@ except Exception as e:
     print(f'\n{e}\n')
 
     email_credentials = json_string_to_dict(os.getenv('EMAIL_CREDENTIALS'))
+
     subject = f"Financial ELT Failed in {ENVIRONMENT} environment {datetime.today().strftime('%Y-%m-%d %H:%S:%S')}."
     body = "The script encountered an error:\n\n{}\n\n{}".format(str(traceback.format_exc()), str(e))
 
