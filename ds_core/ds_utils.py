@@ -96,14 +96,10 @@ def send_email(to_addrs,
                body='',
                files=None,
                password=None):
-
     if password is None or from_addr is None:
         email_credentials = os.environ.get('EMAIL_CREDENTIALS')
 
-        try:
-            email_credentials = json.loads(email_credentials)
-        except json.decoder.JSONDecodeError:
-            email_credentials = json.loads(email_credentials.replace("'", "\""))
+        email_credentials = json_string_to_dict(email_credentials)
 
         assert isinstance(email_credentials, dict), "Error parsing email credentials."
 
