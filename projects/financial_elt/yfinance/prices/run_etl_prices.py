@@ -22,6 +22,8 @@ try:
     pipeline = YFPriceETL(schema=SCHEMA, populate_mysql=False, populate_snowflake=False, populate_bigquery=True)
     pipeline.connect_to_dwhs()
 
+    gc.collect()
+
     ### stocks ###
 
     pipeline.etl_stock_tickers()
@@ -30,6 +32,8 @@ try:
                         write_to_db_after_interval_completes=True,
                         yf_params=yf_params)
 
+    gc.collect()
+
     ### forex ###
 
     pipeline.etl_forex_pairs()
@@ -37,6 +41,8 @@ try:
                         intervals_to_download=intervals_to_download,
                         write_to_db_after_interval_completes=True,
                         yf_params=yf_params)
+
+    gc.collect()
 
     ### crypto ###
 
@@ -47,6 +53,8 @@ try:
                         yf_params=yf_params)
 
     pipeline.close_dwh_connections()
+
+    gc.collect()
 
     # remove old log files
     if 'logs' in os.listdir():
@@ -61,7 +69,6 @@ except Exception as e:
     print(f'\n{e}\n')
 
     email_credentials = json_string_to_dict(os.getenv('EMAIL_CREDENTIALS'))
-
     subject = f"Financial ELT Failed in {ENVIRONMENT} environment {datetime.today().strftime('%Y-%m-%d %H:%S:%S')}."
     body = "The script encountered an error:\n\n{}\n\n{}".format(str(traceback.format_exc()), str(e))
 
