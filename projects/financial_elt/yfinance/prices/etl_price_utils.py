@@ -677,6 +677,8 @@ class YFPriceETL(YFPriceGetter):
 
                 if write_to_db_after_interval_completes:
                     self._write_df_to_all_dbs(df=df_interval, table_name=f'{table_prefix}_{i}', asset_class=asset_class)
+                    del df_interval
+                    gc.collect()
                     df_interval = pd.DataFrame()
 
                 gc.collect()
