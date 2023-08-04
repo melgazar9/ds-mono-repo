@@ -548,7 +548,6 @@ class YFPriceETL(YFPriceGetter):
                          df_tickers=df_tickers,
                          debug_tickers=debug_tickers,
                          **kwargs)
-
         return self
 
     def _etl_prices(self,
@@ -558,6 +557,7 @@ class YFPriceETL(YFPriceGetter):
                     intervals_to_download=('1m', '2m', '5m', '1h', '1d'),
                     batch_download=False,
                     write_to_db_after_interval_completes=True,
+                    write_to_db_after_n_tickers=False,
                     debug_tickers=None,
                     yf_params=None):
         """
@@ -597,11 +597,24 @@ class YFPriceETL(YFPriceGetter):
             If write_to_db_after_interval_completes is True and batch_download is True:
                 Raise NotImplementedError
 
+        write_to_db_after_n_tickers: int > 0 to write to <database> when this number of tickers have been pulled.
+            Used to reduce memory usage. Cannot be used with batch_download=True or write_to_db_after_interval_completes=True
+
         yf_params: dict of yfinance params pass to yf.Ticker(<ticker>).history(**yf_params)
         """
 
         if batch_download and write_to_db_after_interval_completes:
             raise NotImplementedError('Cannot set write_to_db_after_interval_completes=True if batch_download=True')
+
+        if batch_download and write_to_db_after_n_tickers:
+            raise NotImplementedError('Cannot use parameter write_to_db_after_n_tickers if batch_download=True')
+
+        if write_to_db_after_n_tickers and write_to_db_after_interval_completes:
+            raise NotImplementedError("""
+                Cannot set write_to_db_after_interval_completes=True if write_to_db_after_n_tickers != False (not None).
+                Try setting write_to_db_after_n_tickers to an integer and write_to_db_after_interval_completes=False or
+                write_to_db_after_interval_completes=True and write_to_db_after_n_tickers=False.
+                """)
 
         intervals_to_download = \
             (intervals_to_download,) if isinstance(intervals_to_download, str) else intervals_to_download
@@ -609,7 +622,7 @@ class YFPriceETL(YFPriceGetter):
         super().__init__(asset_class=asset_class, yf_params=yf_params, verbose=self.verbose)
 
         if not batch_download:
-            if write_to_db_after_interval_completes:
+            if write_to_db_after_interval_completes or write_to_db_after_n_tickers:
                 df_interval = pd.DataFrame()
 
             print(f'\n*** Running sequential download for {table_prefix} ***\n')
@@ -618,6 +631,8 @@ class YFPriceETL(YFPriceGetter):
 
             for i in intervals_to_download:
                 print(f'\nRunning {asset_class} interval {i}\n') if self.verbose else None
+
+                n_tickers_counter = 0 if write_to_db_after_n_tickers else None
 
                 yf_params['interval'] = i
 
@@ -631,6 +646,11 @@ class YFPriceETL(YFPriceGetter):
 
                 for ticker in df_tickers['yahoo_ticker'].tolist():
                     print(f'\nRunning ticker {ticker}\n') if self.verbose else None
+
+                    if write_to_db_after_n_tickers:
+                        n_tickers_counter += 1
+                        print(f'Ticker count: {n_tickers_counter}')
+
                     if ticker in stored_tickers['yahoo_ticker'].tolist():
                         start_date = \
                             stored_tickers[
@@ -670,17 +690,18 @@ class YFPriceETL(YFPriceGetter):
 
                     gc.collect()
 
-                    if not write_to_db_after_interval_completes:
+                    if not write_to_db_after_interval_completes and not write_to_db_after_n_tickers:
                         self._write_df_to_all_dbs(df=df, table_name=f'{table_prefix}_{i}', asset_class=asset_class)
                     else:
                         df_interval = pd.concat([df_interval, df], axis=0)
 
-                if write_to_db_after_interval_completes:
+                if write_to_db_after_interval_completes or n_tickers_counter >= write_to_db_after_n_tickers:
                     self._write_df_to_all_dbs(df=df_interval, table_name=f'{table_prefix}_{i}', asset_class=asset_class)
-                    time.sleep(2)
-                    del df_interval
-                    gc.collect()
                     df_interval = pd.DataFrame()
+
+                    if write_to_db_after_n_tickers:
+                        n_tickers_counter = 0
+                    gc.collect()
 
                 gc.collect()
 
@@ -900,7 +921,8 @@ class YFPriceETL(YFPriceGetter):
                               and lower(table_schema) = '{self.schema.lower()}'
                             """)
 
-            table_exists = True if 'crypto_pairs_top_250'.upper() in [i.upper() for i in flatten_list(tables.values.tolist())] else False
+            table_exists = True if 'crypto_pairs_top_250'.upper() in [i.upper() for i in
+                                                                      flatten_list(tables.values.tolist())] else False
 
             if table_exists:
                 df_top_crypto_tickers_prev = \
