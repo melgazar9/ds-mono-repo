@@ -14,7 +14,7 @@ print(f'\n*** Running Environment {ENVIRONMENT} || Populating schema {SCHEMA} **
 
 try:
     start = time.time()
-    intervals_to_download = ('1m', '1d')
+    intervals_to_download = ('1m', '2m', '5m', '1h', '1d')
     yf_params = {'repair': True, 'auto_adjust': True, 'back_adjust': False, 'timeout': 300, 'raise_errors': False}
 
     ###### run the pipelines ######
@@ -27,7 +27,7 @@ try:
     ### stocks ###
 
     pipeline.etl_stock_tickers()
-    pipeline.etl_prices(asset_class='stocks', debug_tickers=['AAPL', 'NVDA'],
+    pipeline.etl_prices(asset_class='stocks',
                         intervals_to_download=intervals_to_download,
                         write_to_db_after_interval_completes=False,
                         write_to_db_after_n_tickers=1000,
@@ -38,7 +38,7 @@ try:
     ### forex ###
 
     pipeline.etl_forex_pairs()
-    pipeline.etl_prices(asset_class='forex', debug_tickers=['EURUSD=X', 'RUB=X'],
+    pipeline.etl_prices(asset_class='forex',
                         intervals_to_download=intervals_to_download,
                         write_to_db_after_interval_completes=False,
                         write_to_db_after_n_tickers=1000,
@@ -49,7 +49,7 @@ try:
     ### crypto ###
 
     pipeline.etl_top_250_crypto_tickers()
-    pipeline.etl_prices(asset_class='crypto', debug_tickers=['BTC-USD', 'ETH-USD'],
+    pipeline.etl_prices(asset_class='crypto',
                         intervals_to_download=intervals_to_download,
                         write_to_db_after_interval_completes=False,
                         write_to_db_after_n_tickers=1000,
