@@ -14,7 +14,7 @@ print(f'\n*** Running Environment {ENVIRONMENT} || Populating schema {SCHEMA} **
 
 try:
     start = time.time()
-    intervals_to_download = ('2m',)
+    intervals_to_download = ('1m', '2m', '5m', '1h', '1d')
     yf_params = {'repair': True, 'auto_adjust': True, 'back_adjust': False, 'timeout': 300, 'raise_errors': False}
 
     ###### run the pipelines ######

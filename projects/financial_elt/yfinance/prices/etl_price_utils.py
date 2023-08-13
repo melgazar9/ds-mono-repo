@@ -644,7 +644,7 @@ class YFPriceETL(YFPriceGetter):
                 if len(debug_tickers):
                     df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(debug_tickers)]
 
-                for ticker in df_tickers['yahoo_ticker'].tolist()[0:120]:
+                for ticker in df_tickers['yahoo_ticker'].tolist():
                     print(f'\nRunning ticker {ticker}\n') if self.verbose else None
 
                     n_tickers_counter += 1
@@ -698,6 +698,7 @@ class YFPriceETL(YFPriceGetter):
                         self._write_df_to_all_dbs(df=df_interval, table_name=f'{table_prefix}_{i}',
                                                   asset_class=asset_class)
                         n_tickers_counter = 0
+                        gc.collect()
 
                 if write_to_db_after_interval_completes and not write_to_db_after_n_tickers:
                     self._write_df_to_all_dbs(df=df_interval, table_name=f'{table_prefix}_{i}', asset_class=asset_class)
