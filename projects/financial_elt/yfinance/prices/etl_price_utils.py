@@ -644,12 +644,11 @@ class YFPriceETL(YFPriceGetter):
                 if len(debug_tickers):
                     df_tickers = df_tickers[df_tickers['yahoo_ticker'].isin(debug_tickers)]
 
-                for ticker in df_tickers['yahoo_ticker'].tolist():
+                for ticker in df_tickers['yahoo_ticker'].tolist()[0:120]:
                     print(f'\nRunning ticker {ticker}\n') if self.verbose else None
 
-                    if write_to_db_after_n_tickers:
-                        n_tickers_counter += 1
-                        print(f'Ticker count: {n_tickers_counter}')
+                    n_tickers_counter += 1
+                    print(f'Ticker count: {n_tickers_counter}')
 
                     if ticker in stored_tickers['yahoo_ticker'].tolist():
                         start_date = \
@@ -695,12 +694,14 @@ class YFPriceETL(YFPriceGetter):
                     else:
                         df_interval = pd.concat([df_interval, df], axis=0)
 
-                if write_to_db_after_interval_completes or n_tickers_counter >= write_to_db_after_n_tickers:
+                    if write_to_db_after_n_tickers and n_tickers_counter >= write_to_db_after_n_tickers:
+                        self._write_df_to_all_dbs(df=df_interval, table_name=f'{table_prefix}_{i}',
+                                                  asset_class=asset_class)
+                        n_tickers_counter = 0
+
+                if write_to_db_after_interval_completes and not write_to_db_after_n_tickers:
                     self._write_df_to_all_dbs(df=df_interval, table_name=f'{table_prefix}_{i}', asset_class=asset_class)
                     df_interval = pd.DataFrame()
-
-                    if write_to_db_after_n_tickers:
-                        n_tickers_counter = 0
                     gc.collect()
 
                 gc.collect()
