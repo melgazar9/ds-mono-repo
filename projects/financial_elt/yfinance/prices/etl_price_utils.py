@@ -698,6 +698,7 @@ class YFPriceETL(YFPriceGetter):
                         self._write_df_to_all_dbs(df=df_interval, table_name=f'{table_prefix}_{i}',
                                                   asset_class=asset_class)
                         n_tickers_counter = 0
+                        del df_interval
                         gc.collect()
 
                 if write_to_db_after_interval_completes and not write_to_db_after_n_tickers:
