@@ -695,7 +695,7 @@ class YFPriceETL(YFPriceGetter):
                         df_interval = pd.concat([df_interval, df], axis=0)
 
                     if (write_to_db_after_n_tickers and n_tickers_counter >= write_to_db_after_n_tickers) or \
-                            ticker == df_tickers['yahoo_ticker'].tolist()[-1]:
+                            (write_to_db_after_n_tickers and ticker == df_tickers['yahoo_ticker'].tolist()[-1]):
                         self._write_df_to_all_dbs(df=df_interval, table_name=f'{table_prefix}_{i}',
                                                   asset_class=asset_class)
                         n_tickers_counter = 0
