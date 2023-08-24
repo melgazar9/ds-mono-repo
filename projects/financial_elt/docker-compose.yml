@@ -18,6 +18,6 @@ services:
       resources:
         limits:
           cpus: '2'
-          memory: 28000M
+          memory: 2800M
     volumes:
       - ../../ds_core:/app/ds_core
