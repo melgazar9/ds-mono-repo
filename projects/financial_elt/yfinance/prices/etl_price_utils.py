@@ -951,13 +951,13 @@ class YFPriceETL(YFPriceGetter):
                           volume_in_currency_since_0_00_utc,
                           volume_in_currency_24_hr,
                           total_volume_all_currencies_24_hr,
-                          circulating_supply
+                          circulating_supply,
+                          batch_timestamp
                         from
                           {self.schema}.crypto_pairs_top_250
                         """.upper())
                 df_top_crypto_tickers_prev.columns = df_top_crypto_tickers_prev.columns.str.upper()
-
-                df_top_crypto_tickers_prev = df_top_crypto_tickers_prev[[i.upper() for i in column_order]]
+                df_top_crypto_tickers_new.columns = df_top_crypto_tickers_new.columns.str.upper()
 
                 df_top_crypto_tickers = \
                     pd.concat([df_top_crypto_tickers_prev, df_top_crypto_tickers_new], ignore_index=True) \
@@ -967,9 +967,11 @@ class YFPriceETL(YFPriceGetter):
                 df_top_crypto_tickers = df_top_crypto_tickers_new
 
             if self.write_method.lower() != 'write_pandas':
-                df_top_crypto_tickers['batch_timestamp'] = datetime.utcnow()
+                df_top_crypto_tickers['BATCH_TIMESTAMP'] = datetime.utcnow()
                 self.snowflake_client.connect()
-                df_top_crypto_tickers.to_sql('CRYPTO_PAIRS_TOP_250',
+
+                # table name needs to be lower case for snowflake sqlalchemy to_sql (sqlalchemy.exc.InvalidRequestError)
+                df_top_crypto_tickers.to_sql('crypto_pairs_top_250',
                                              con=self.snowflake_client.con,
                                              if_exists='replace',
                                              index=False,
