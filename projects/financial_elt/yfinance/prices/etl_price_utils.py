@@ -262,12 +262,8 @@ class YFPriceETL(YFPriceGetter):
     """
 
     def __init__(self,
-                 user=os.environ.get('SNOWFLAKE_USER'),
-                 password=os.environ.get('SNOWFLAKE_PASSWORD'),
-                 account=os.environ.get('SNOWFLAKE_ACCOUNT'),
-                 warehouse=os.environ.get('SNOWFLAKE_WAREHOUSE'),
-                 database=os.environ.get('SNOWFLAKE_DATABASE'),
-                 schema=os.environ.get('SNOWFLAKE_SCHEMA'),
+                 schema='yfinance_el_dev',
+                 database='financial_db',
                  populate_mysql=False,
                  populate_bigquery=False,
                  populate_snowflake=False,
@@ -277,10 +273,6 @@ class YFPriceETL(YFPriceGetter):
                  to_sql_chunksize=16000,
                  write_pandas_threads=6,
                  verbose=True):
-        self.user = user
-        self.password = password
-        self.account = account
-        self.warehouse = warehouse
         self.database = database
         self.schema = schema
         self.populate_mysql = populate_mysql
@@ -311,22 +303,21 @@ class YFPriceETL(YFPriceGetter):
 
     def _connect_to_snowflake(self, snowflake_connect_params=None):
         if self.populate_snowflake:
+            if self.database is None:
+                self.database = 'FINANCIAL_DB'
+
             if snowflake_connect_params is None:
                 snowflake_connect_params = \
                     dict(
-                        user=self.user,
-                        password=self.password,
-                        warehouse=self.warehouse,
-                        account=self.account,
+                        user=os.getenv('SNOWFLAKE_USER'),
+                        password=os.getenv('SNOWFLAKE_PASSWORD'),
+                        warehouse=os.getenv('SNOWFLAKE_WAREHOUSE'),
+                        account=os.getenv('SNOWFLAKE_ACCOUNT'),
                         database=self.database,
                         schema=self.schema
                     )
 
-            if self.database is None:
-                self.database = 'FINANCIAL_DB'
-
-            if snowflake_connect_params['schema'] is None:
-                snowflake_connect_params['schema'] = self.schema
+            assert all([v is not None for v in snowflake_connect_params.values()]), 'No value can be None in snowflake_connect_params'
 
             snowflake_connect_params.update(dict(database=self.database))
             self.snowflake_client = SnowflakeConnect(**snowflake_connect_params)
@@ -414,8 +405,7 @@ class YFPriceETL(YFPriceGetter):
 
     def etl_stock_tickers(self, table_name='stock_tickers'):
         df_tickers = self.ticker_downloader.download_valid_stock_tickers()
-        print(
-            f'\nOverwriting stock_tickers to database(s): {self.dwh_connections.keys()}...\n') if self.verbose else None
+        print(f'\nOverwriting stock_tickers to database(s): {self.dwh_connections.keys()}...\n') if self.verbose else None
 
         if self.populate_mysql:
             print('\nOverwriting stock_tickers to MySQL...\n') if self.verbose else None
@@ -503,10 +493,10 @@ class YFPriceETL(YFPriceGetter):
         return self
 
     def etl_prices(self, asset_class, debug_tickers=None, **kwargs):
-        self.db_client = [i for i in [self.mysql_client, self.bigquery_client, self.snowflake_client] if i is not None][
-            0]
+        self.db_client = [i for i in [self.mysql_client, self.bigquery_client, self.snowflake_client] if i is not None][0]
         debug_tickers = () if debug_tickers is None else debug_tickers
         assert isinstance(debug_tickers, (tuple, list))
+
         if asset_class == 'stocks':
             table_prefix = 'stock_prices'
 
@@ -554,6 +544,8 @@ class YFPriceETL(YFPriceGetter):
                 self.db_client.run_sql(
                     f"SELECT yahoo_ticker, yahoo_name FROM {self.schema}.crypto_pairs_top_250;"
                 )
+        else:
+            raise ValueError('Non-deterministic value set for df_tickers or asset_class.')
 
         self._etl_prices(asset_class=asset_class,
                          table_prefix=table_prefix,
@@ -823,15 +815,18 @@ class YFPriceETL(YFPriceGetter):
 
     def etl_top_250_crypto_tickers(self):
         df_top_crypto_tickers_new = self.ticker_downloader.download_top_250_crypto_tickers()
+
         if self.verbose:
             print(f"""
                 \nOverwriting top_250_crypto_tickers to database(s): {self.dwh_connections.keys()}...
                 \nIf a ticker has been a part of the top 250 crypto tickers (>= min date) it will be a part of this table.\n
             """)
+
         column_order = ['yahoo_ticker', 'yahoo_name', 'price_intraday', 'change', 'pct_change', 'market_cap',
                         'volume_in_currency_since_0_00_utc', 'volume_in_currency_24_hr',
-                        'total_volume_all_currencies_24_hr', 'circulating_supply']
+                        'total_volume_all_currencies_24_hr', 'circulating_supply', 'batch_timestamp']
 
+        df_top_crypto_tickers_new['batch_timestamp'] = datetime.utcnow()
         df_top_crypto_tickers_new = df_top_crypto_tickers_new[column_order]
 
         if self.populate_mysql:
@@ -851,7 +846,8 @@ class YFPriceETL(YFPriceGetter):
 
             if table_exists:
                 df_top_crypto_tickers_prev = self.mysql_client.run_sql(
-                    f'select * from {self.schema}.crypto_pairs_top_250')
+                    f'select * from {self.schema}.crypto_pairs_top_250'
+                )
                 df_top_crypto_tickers_prev = df_top_crypto_tickers_prev[column_order]
                 df_top_crypto_tickers = \
                     pd.concat([df_top_crypto_tickers_prev, df_top_crypto_tickers_new], ignore_index=True) \
@@ -862,7 +858,6 @@ class YFPriceETL(YFPriceGetter):
 
             self.mysql_client.connect()
 
-            df_top_crypto_tickers['batch_timestamp'] = datetime.utcnow()
             df_top_crypto_tickers.to_sql('crypto_pairs_top_250',
                                          schema=self.schema,
                                          con=self.mysql_client.con,
@@ -898,6 +893,7 @@ class YFPriceETL(YFPriceGetter):
                              volume_in_currency_24_hr STRING,
                              total_volume_all_currencies_24_hr STRING,
                              circulating_supply STRING
+                             batch_timestamp TIMESTAMP
                             )
                         """)
 
@@ -940,8 +936,7 @@ class YFPriceETL(YFPriceGetter):
                               and lower(table_schema) = '{self.schema.lower()}'
                             """)
 
-            table_exists = True if 'crypto_pairs_top_250'.upper() in [i.upper() for i in
-                                                                      flatten_list(tables.values.tolist())] else False
+            table_exists = True if 'crypto_pairs_top_250'.upper() in [i.upper() for i in flatten_list(tables.values.tolist())] else False
 
             if table_exists:
                 df_top_crypto_tickers_prev = \
@@ -973,7 +968,8 @@ class YFPriceETL(YFPriceGetter):
 
             if self.write_method.lower() != 'write_pandas':
                 df_top_crypto_tickers['batch_timestamp'] = datetime.utcnow()
-                df_top_crypto_tickers.to_sql('crypto_pairs_top_250'.upper(),
+                self.snowflake_client.connect()
+                df_top_crypto_tickers.to_sql('CRYPTO_PAIRS_TOP_250',
                                              con=self.snowflake_client.con,
                                              if_exists='replace',
                                              index=False,
@@ -1081,8 +1077,7 @@ class YFPriceETL(YFPriceGetter):
         if self.populate_snowflake:
             print('\nOverwriting forex_pairs to Snowflake...\n') if self.verbose else None
 
-            if self.write_method in [pd_writer, 'write_pandas']:
-                df_forex_pairs_new.columns = df_forex_pairs_new.columns.str.upper()
+            df_forex_pairs_new.columns = df_forex_pairs_new.columns.str.upper()
 
             tables = self.snowflake_client.run_sql(f"""
                                     select
@@ -1110,7 +1105,10 @@ class YFPriceETL(YFPriceGetter):
                 df_forex_pairs = df_forex_pairs_new
 
             if self.write_method.lower() != 'write_pandas':
-                df_forex_pairs['batch_timestamp'] = datetime.utcnow()
+                df_forex_pairs['BATCH_TIMESTAMP'] = datetime.utcnow()
+                self.snowflake_client.connect()
+
+                # must grant privileges SNOWFLAKE_ROLE in .env or the below code chunk will likely break.
                 df_forex_pairs.to_sql('forex_pairs',
                                       con=self.snowflake_client.con,
                                       if_exists='replace',
@@ -1132,6 +1130,7 @@ class YFPriceETL(YFPriceGetter):
                              overwrite=True,
                              auto_create_table=True)
                 self.snowflake_client.backend_engine = original_backend
+
         return self
 
     ###### dwh attribute methods ######

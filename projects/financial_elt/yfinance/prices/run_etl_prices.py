@@ -19,15 +19,13 @@ try:
 
     ###### run the pipelines ######
 
-    pipeline = YFPriceETL(schema=SCHEMA, populate_mysql=True, populate_snowflake=True, populate_bigquery=False)
+    pipeline = YFPriceETL(schema=SCHEMA, populate_mysql=False, populate_snowflake=True, populate_bigquery=False)
     pipeline.connect_to_dwhs()
-
-    gc.collect()
 
     ### stocks ###
 
     pipeline.etl_stock_tickers()
-    pipeline.etl_prices(asset_class='stocks', debug_tickers=['AAPL', 'TSLA', 'MSFT'],
+    pipeline.etl_prices(asset_class='stocks',
                         intervals_to_download=intervals_to_download,
                         write_to_db_after_interval_completes=False,
                         write_to_db_after_n_tickers=100,
@@ -38,7 +36,7 @@ try:
     ### forex ###
 
     pipeline.etl_forex_pairs()
-    pipeline.etl_prices(asset_class='forex',debug_tickers=['EURUSD=X', 'RUB=X'],
+    pipeline.etl_prices(asset_class='forex',
                         intervals_to_download=intervals_to_download,
                         write_to_db_after_interval_completes=False,
                         write_to_db_after_n_tickers=100,
@@ -49,12 +47,13 @@ try:
     ### crypto ###
 
     pipeline.etl_top_250_crypto_tickers()
-    pipeline.etl_prices(asset_class='crypto',debug_tickers=['BTC-USD', 'ETH-USD'],
+    pipeline.etl_prices(asset_class='crypto',
                         intervals_to_download=intervals_to_download,
                         write_to_db_after_interval_completes=False,
                         write_to_db_after_n_tickers=100,
                         yf_params=yf_params)
 
+    # close dwh connections
     pipeline.close_dwh_connections()
 
     gc.collect()
@@ -72,6 +71,7 @@ except Exception as e:
     print(f'\n{e}\n')
 
     email_credentials = json_string_to_dict(os.getenv('EMAIL_CREDENTIALS'))
+
     subject = f"Financial ELT Failed in {ENVIRONMENT} environment {datetime.today().strftime('%Y-%m-%d %H:%S:%S')}."
     body = "The script encountered an error:\n\n{}\n\n{}".format(str(traceback.format_exc()), str(e))
 
