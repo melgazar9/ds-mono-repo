@@ -19,7 +19,7 @@ try:
 
     ###### run the pipelines ######
 
-    pipeline = YFPriceETL(schema=SCHEMA, populate_mysql=False, populate_snowflake=True, populate_bigquery=False)
+    pipeline = YFPriceETL(schema=SCHEMA, populate_mysql=True, populate_snowflake=True, populate_bigquery=True)
     pipeline.connect_to_dwhs()
 
     ### stocks ###

@@ -407,11 +407,12 @@ class YFPriceETL(YFPriceGetter):
         df_tickers = self.ticker_downloader.download_valid_stock_tickers()
         print(f'\nOverwriting stock_tickers to database(s): {self.dwh_connections.keys()}...\n') if self.verbose else None
 
+        df_tickers['batch_timestamp'] = datetime.utcnow()
+
         if self.populate_mysql:
             print('\nOverwriting stock_tickers to MySQL...\n') if self.verbose else None
             method = 'multi' if self.write_method == 'write_pandas' else self.write_method
             self.mysql_client.connect()
-            df_tickers['batch_timestamp'] = datetime.utcnow()
             df_tickers.to_sql(table_name,
                               schema=self.schema,
                               con=self.mysql_client.con,
@@ -434,31 +435,35 @@ class YFPriceETL(YFPriceGetter):
                  numerai_ticker STRING,
                  yahoo_ticker_old STRING,
                  yahoo_valid_pts BOOL,
-                 yahoo_valid_numerai BOOL
+                 yahoo_valid_numerai BOOL,
+                 batch_timestamp STRING
                 )
             """)
 
             self.bigquery_client. \
                 client.load_table_from_dataframe(df_tickers, f'{self.schema}.{table_name}', job_config=job_config)
 
-            time.sleep(5)  # without sleeping sometimes the data does not populate.
+            ### comment out the below because bigquery charges significantly more money to insert-replace tables ###
 
-            self.bigquery_client.run_sql(f"""
-                CREATE OR REPLACE TABLE {self.schema}.{table_name} AS (
-                SELECT 
-                  yahoo_ticker,
-                  google_ticker,
-                  bloomberg_ticker,
-                  numerai_ticker,
-                  yahoo_ticker_old,
-                  yahoo_valid_pts,
-                  yahoo_valid_numerai
-                FROM 
-                  {self.schema}.{table_name}  
-                ORDER BY 
-                  1, 2, 3, 4, 5, 6, 7
-                );
-            """)
+            # time.sleep(5)  # without sleeping sometimes the data does not populate.
+            #
+            # self.bigquery_client.run_sql(f"""
+            #     CREATE OR REPLACE TABLE {self.schema}.{table_name} AS (
+            #     SELECT
+            #       yahoo_ticker,
+            #       google_ticker,
+            #       bloomberg_ticker,
+            #       numerai_ticker,
+            #       yahoo_ticker_old,
+            #       yahoo_valid_pts,
+            #       yahoo_valid_numerai,
+            #       batch_timestamp
+            #     FROM
+            #       {self.schema}.{table_name}
+            #     ORDER BY
+            #       1, 2, 3, 4, 5, 6, 7, 8
+            #     );
+            # """)
 
         if self.populate_snowflake:
             print('\nOverwriting stock_tickers to Snowflake...\n') if self.verbose else None
@@ -467,7 +472,6 @@ class YFPriceETL(YFPriceGetter):
                 df_tickers.columns = df_tickers.columns.str.upper()
 
             if self.write_method.lower() != 'write_pandas':
-                df_tickers['batch_timestamp'] = datetime.utcnow()
                 df_tickers.to_sql(table_name,
                                   con=self.snowflake_client.con,
                                   if_exists='replace',
@@ -851,7 +855,7 @@ class YFPriceETL(YFPriceGetter):
                 df_top_crypto_tickers_prev = df_top_crypto_tickers_prev[column_order]
                 df_top_crypto_tickers = \
                     pd.concat([df_top_crypto_tickers_prev, df_top_crypto_tickers_new], ignore_index=True) \
-                        .drop_duplicates(subset=['yahoo_ticker']) \
+                        .drop_duplicates(subset=['yahoo_ticker'], keep='last') \
                         .reset_index(drop=True)
             else:
                 df_top_crypto_tickers = df_top_crypto_tickers_new
@@ -892,7 +896,7 @@ class YFPriceETL(YFPriceGetter):
                              volume_in_currency_since_0_00_utc STRING,
                              volume_in_currency_24_hr STRING,
                              total_volume_all_currencies_24_hr STRING,
-                             circulating_supply STRING
+                             circulating_supply STRING,
                              batch_timestamp TIMESTAMP
                             )
                         """)
@@ -904,7 +908,7 @@ class YFPriceETL(YFPriceGetter):
                 df_top_crypto_tickers_prev = df_top_crypto_tickers_prev[column_order]
                 df_top_crypto_tickers = \
                     pd.concat([df_top_crypto_tickers_prev, df_top_crypto_tickers_new], ignore_index=True) \
-                        .drop_duplicates(subset=['yahoo_ticker']) \
+                        .drop_duplicates(subset=['yahoo_ticker'], keep='last') \
                         .reset_index(drop=True)
             else:
                 df_top_crypto_tickers = df_top_crypto_tickers_new
@@ -961,13 +965,13 @@ class YFPriceETL(YFPriceGetter):
 
                 df_top_crypto_tickers = \
                     pd.concat([df_top_crypto_tickers_prev, df_top_crypto_tickers_new], ignore_index=True) \
-                        .drop_duplicates(subset=['YAHOO_TICKER']) \
+                        .drop_duplicates(subset=['YAHOO_TICKER'], keep='last') \
                         .reset_index(drop=True)
             else:
                 df_top_crypto_tickers = df_top_crypto_tickers_new
 
             if self.write_method.lower() != 'write_pandas':
-                df_top_crypto_tickers['BATCH_TIMESTAMP'] = datetime.utcnow()
+                df_top_crypto_tickers['batch_timestamp'] = datetime.utcnow()
                 self.snowflake_client.connect()
 
                 # table name needs to be lower case for snowflake sqlalchemy to_sql (sqlalchemy.exc.InvalidRequestError)
@@ -1065,6 +1069,7 @@ class YFPriceETL(YFPriceGetter):
             else:
                 df_forex_pairs = df_forex_pairs_new
 
+            df_forex_pairs['batch_timestamp'] = datetime.utcnow()
             self.bigquery_client. \
                 client.load_table_from_dataframe(df_forex_pairs, f'{self.schema}.forex_pairs', job_config=job_config)
 
@@ -1101,13 +1106,13 @@ class YFPriceETL(YFPriceGetter):
                 df_forex_pairs_prev.columns = df_forex_pairs_prev.columns.str.upper()
                 df_forex_pairs = \
                     pd.concat([df_forex_pairs_prev, df_forex_pairs_new], ignore_index=True) \
-                        .drop_duplicates(subset=['YAHOO_TICKER']) \
+                        .drop_duplicates(subset=['YAHOO_TICKER'], keep='last') \
                         .reset_index(drop=True)
             else:
                 df_forex_pairs = df_forex_pairs_new
 
             if self.write_method.lower() != 'write_pandas':
-                df_forex_pairs['BATCH_TIMESTAMP'] = datetime.utcnow()
+                df_forex_pairs['batch_timestamp'] = datetime.utcnow()
                 self.snowflake_client.connect()
 
                 # must grant privileges SNOWFLAKE_ROLE in .env or the below code chunk will likely break.
