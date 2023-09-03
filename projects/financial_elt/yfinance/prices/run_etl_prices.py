@@ -6,9 +6,9 @@ ENVIRONMENT = os.getenv('ENVIRONMENT').lower()
 assert ENVIRONMENT in ('dev', 'production')
 
 if ENVIRONMENT == 'dev':
-    SCHEMA = 'yfinance_dev'
+    SCHEMA = 'yfinance_el_dev'
 elif ENVIRONMENT == 'production':
-    SCHEMA = 'yfinance'
+    SCHEMA = 'yfinance_el_production'
 
 print(f'\n*** Running Environment {ENVIRONMENT} || Populating schema {SCHEMA} ***\n')
 
@@ -19,7 +19,7 @@ try:
 
     ###### run the pipelines ######
 
-    pipeline = YFPriceETL(schema=SCHEMA, populate_mysql=False, populate_snowflake=False, populate_bigquery=True)
+    pipeline = YFPriceETL(schema=SCHEMA, populate_mysql=True, populate_snowflake=True, populate_bigquery=False)
     pipeline.connect_to_dwhs()
 
     gc.collect()
@@ -27,7 +27,7 @@ try:
     ### stocks ###
 
     pipeline.etl_stock_tickers()
-    pipeline.etl_prices(asset_class='stocks',
+    pipeline.etl_prices(asset_class='stocks', debug_tickers=['AAPL', 'TSLA', 'MSFT'],
                         intervals_to_download=intervals_to_download,
                         write_to_db_after_interval_completes=False,
                         write_to_db_after_n_tickers=100,
@@ -38,7 +38,7 @@ try:
     ### forex ###
 
     pipeline.etl_forex_pairs()
-    pipeline.etl_prices(asset_class='forex',
+    pipeline.etl_prices(asset_class='forex',debug_tickers=['EURUSD=X', 'RUB=X'],
                         intervals_to_download=intervals_to_download,
                         write_to_db_after_interval_completes=False,
                         write_to_db_after_n_tickers=100,
@@ -49,7 +49,7 @@ try:
     ### crypto ###
 
     pipeline.etl_top_250_crypto_tickers()
-    pipeline.etl_prices(asset_class='crypto',
+    pipeline.etl_prices(asset_class='crypto',debug_tickers=['BTC-USD', 'ETH-USD'],
                         intervals_to_download=intervals_to_download,
                         write_to_db_after_interval_completes=False,
                         write_to_db_after_n_tickers=100,

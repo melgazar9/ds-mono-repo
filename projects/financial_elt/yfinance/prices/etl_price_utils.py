@@ -262,21 +262,31 @@ class YFPriceETL(YFPriceGetter):
     """
 
     def __init__(self,
-                 schema='yfinance',
-                 database='YFINANCE_DEV',
+                 user=os.environ.get('SNOWFLAKE_USER'),
+                 password=os.environ.get('SNOWFLAKE_PASSWORD'),
+                 account=os.environ.get('SNOWFLAKE_ACCOUNT'),
+                 warehouse=os.environ.get('SNOWFLAKE_WAREHOUSE'),
+                 database=os.environ.get('SNOWFLAKE_DATABASE'),
+                 schema=os.environ.get('SNOWFLAKE_SCHEMA'),
                  populate_mysql=False,
                  populate_bigquery=False,
                  populate_snowflake=False,
+                 dedupe_after_populate=False,
                  convert_tz_aware_to_string=True,
-                 write_method='write_pandas',
+                 write_method='multi',
                  to_sql_chunksize=16000,
                  write_pandas_threads=6,
                  verbose=True):
-        self.schema = schema
+        self.user = user
+        self.password = password
+        self.account = account
+        self.warehouse = warehouse
         self.database = database
+        self.schema = schema
         self.populate_mysql = populate_mysql
         self.populate_bigquery = populate_bigquery
         self.populate_snowflake = populate_snowflake
+        self.dedupe_after_populate = dedupe_after_populate
         self.convert_tz_aware_to_string = convert_tz_aware_to_string
         self.write_method = write_method
         self.to_sql_chunksize = to_sql_chunksize
@@ -304,12 +314,12 @@ class YFPriceETL(YFPriceGetter):
             if snowflake_connect_params is None:
                 snowflake_connect_params = \
                     dict(
-                        user=os.environ.get('SNOWFLAKE_USER'),
-                        password=os.environ.get('SNOWFLAKE_PASSWORD'),
-                        warehouse=os.environ.get('SNOWFLAKE_WAREHOUSE'),
-                        account=os.environ.get('SNOWFLAKE_ACCOUNT'),
-                        database=os.environ.get('SNOWFLAKE_DATABASE'),
-                        schema=os.environ.get('SNOWFLAKE_SCHEMA')
+                        user=self.user,
+                        password=self.password,
+                        warehouse=self.warehouse,
+                        account=self.account,
+                        database=self.database,
+                        schema=self.schema
                     )
 
             if self.database is None:
@@ -320,8 +330,8 @@ class YFPriceETL(YFPriceGetter):
 
             snowflake_connect_params.update(dict(database=self.database))
             self.snowflake_client = SnowflakeConnect(**snowflake_connect_params)
-            # self.snowflake_client.run_sql(f"CREATE DATABASE IF NOT EXISTS {self.database};")
-            # self.snowflake_client.run_sql(f"""CREATE SCHEMA IF NOT EXISTS {self.database}.{self.schema};""")
+            self.snowflake_client.run_sql(f"CREATE DATABASE IF NOT EXISTS {self.database};")
+            self.snowflake_client.run_sql(f"""CREATE SCHEMA IF NOT EXISTS {self.database}.{self.schema};""")
             self.snowflake_client.connect()
         return self
 
@@ -411,6 +421,7 @@ class YFPriceETL(YFPriceGetter):
             print('\nOverwriting stock_tickers to MySQL...\n') if self.verbose else None
             method = 'multi' if self.write_method == 'write_pandas' else self.write_method
             self.mysql_client.connect()
+            df_tickers['batch_timestamp'] = datetime.utcnow()
             df_tickers.to_sql(table_name,
                               schema=self.schema,
                               con=self.mysql_client.con,
@@ -466,6 +477,7 @@ class YFPriceETL(YFPriceGetter):
                 df_tickers.columns = df_tickers.columns.str.upper()
 
             if self.write_method.lower() != 'write_pandas':
+                df_tickers['batch_timestamp'] = datetime.utcnow()
                 df_tickers.to_sql(table_name,
                                   con=self.snowflake_client.con,
                                   if_exists='replace',
@@ -850,6 +862,7 @@ class YFPriceETL(YFPriceGetter):
 
             self.mysql_client.connect()
 
+            df_top_crypto_tickers['batch_timestamp'] = datetime.utcnow()
             df_top_crypto_tickers.to_sql('crypto_pairs_top_250',
                                          schema=self.schema,
                                          con=self.mysql_client.con,
@@ -959,6 +972,7 @@ class YFPriceETL(YFPriceGetter):
                 df_top_crypto_tickers = df_top_crypto_tickers_new
 
             if self.write_method.lower() != 'write_pandas':
+                df_top_crypto_tickers['batch_timestamp'] = datetime.utcnow()
                 df_top_crypto_tickers.to_sql('crypto_pairs_top_250'.upper(),
                                              con=self.snowflake_client.con,
                                              if_exists='replace',
@@ -1019,6 +1033,7 @@ class YFPriceETL(YFPriceGetter):
 
             self.mysql_client.connect()
 
+            df_forex_pairs['batch_timestamp'] = datetime.utcnow()
             df_forex_pairs.to_sql('forex_pairs',
                                   schema=self.schema,
                                   con=self.mysql_client.con,
@@ -1095,6 +1110,7 @@ class YFPriceETL(YFPriceGetter):
                 df_forex_pairs = df_forex_pairs_new
 
             if self.write_method.lower() != 'write_pandas':
+                df_forex_pairs['batch_timestamp'] = datetime.utcnow()
                 df_forex_pairs.to_sql('forex_pairs',
                                       con=self.snowflake_client.con,
                                       if_exists='replace',
@@ -1155,7 +1171,8 @@ class YFPriceETL(YFPriceGetter):
                           close DECIMAL(38, 12),
                           volume DECIMAL(38, 12),
                           dividends DECIMAL(38, 12),
-                          stock_splits DECIMAL(38, 12)
+                          stock_splits DECIMAL(38, 12),
+                          batch_timestamp DATETIME NOT NULL
                           )
                           ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
                         """
@@ -1172,7 +1189,8 @@ class YFPriceETL(YFPriceGetter):
                           high DECIMAL(38, 12),
                           low DECIMAL(38, 12),
                           close DECIMAL(38, 12),
-                          volume DECIMAL(38, 12)
+                          volume DECIMAL(38, 12),
+                          batch_timestamp DATETIME NOT NULL
                           )
                           ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
                         """
@@ -1189,7 +1207,8 @@ class YFPriceETL(YFPriceGetter):
                           high DECIMAL(38, 12),
                           low DECIMAL(38, 12),
                           close DECIMAL(38, 12),
-                          volume DECIMAL(38, 12)
+                          volume DECIMAL(38, 12),
+                          batch_timestamp DATETIME NOT NULL
                           )
                           ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
                         """
@@ -1217,7 +1236,8 @@ class YFPriceETL(YFPriceGetter):
                                 bigquery.SchemaField(name="close", field_type="NUMERIC"),
                                 bigquery.SchemaField(name="volume", field_type="INTEGER"),
                                 bigquery.SchemaField(name="dividends", field_type="NUMERIC"),
-                                bigquery.SchemaField(name="stock_splits", field_type="NUMERIC")
+                                bigquery.SchemaField(name="stock_splits", field_type="NUMERIC"),
+                                bigquery.SchemaField(name="batch_timestamp", field_type="TIMESTAMP")
                             ],
                             autodetect=False
                         )
@@ -1234,7 +1254,8 @@ class YFPriceETL(YFPriceGetter):
                                 bigquery.SchemaField(name="high", field_type="NUMERIC"),
                                 bigquery.SchemaField(name="low", field_type="NUMERIC"),
                                 bigquery.SchemaField(name="close", field_type="NUMERIC"),
-                                bigquery.SchemaField(name="volume", field_type="INTEGER")
+                                bigquery.SchemaField(name="volume", field_type="INTEGER"),
+                                bigquery.SchemaField(name="batch_timestamp", field_type="TIMESTAMP")
                             ],
                             autodetect=False
                         )
@@ -1251,7 +1272,8 @@ class YFPriceETL(YFPriceGetter):
                                 bigquery.SchemaField(name="high", field_type="NUMERIC"),
                                 bigquery.SchemaField(name="low", field_type="NUMERIC"),
                                 bigquery.SchemaField(name="close", field_type="NUMERIC"),
-                                bigquery.SchemaField(name="volume", field_type="INTEGER")
+                                bigquery.SchemaField(name="volume", field_type="INTEGER"),
+                                bigquery.SchemaField(name="batch_timestamp", field_type="TIMESTAMP")
                             ],
                             autodetect=False
                         )
@@ -1277,7 +1299,8 @@ class YFPriceETL(YFPriceGetter):
                           close FLOAT,
                           volume FLOAT,
                           dividends FLOAT,
-                          stock_splits FLOAT
+                          stock_splits FLOAT,
+                          batch_timestamp TIMESTAMP_NTZ NOT NULL
                           );
                         """
                 elif asset_class == 'forex':
@@ -1292,7 +1315,8 @@ class YFPriceETL(YFPriceGetter):
                           high FLOAT,
                           low FLOAT,
                           close FLOAT,
-                          volume FLOAT
+                          volume FLOAT,
+                          batch_timestamp TIMESTAMP_NTZ NOT NULL
                           );
                         """
                 elif asset_class == 'crypto':
@@ -1307,7 +1331,8 @@ class YFPriceETL(YFPriceGetter):
                           high FLOAT,
                           low FLOAT,
                           close FLOAT,
-                          volume FLOAT
+                          volume FLOAT,
+                          batch_timestamp TIMESTAMP_NTZ NOT NULL
                           );
                         """
                 else:
@@ -1386,15 +1411,18 @@ class YFPriceETL(YFPriceGetter):
 
         if self.populate_mysql:
             self._write_to_mysql(df=df, table_name=table_name, asset_class=asset_class)
-            self._dedupe_mysql_table(table_name=table_name)
+            if self.dedupe_after_populate:
+                self._dedupe_mysql_table(table_name=table_name)
 
         if self.populate_snowflake:
             self._write_to_snowflake(df=df, table_name=table_name, asset_class=asset_class)
-            self._dedupe_snowflake_table(table_name=table_name, asset_class=asset_class)
+            if self.dedupe_after_populate:
+                self._dedupe_snowflake_table(table_name=table_name, asset_class=asset_class)
 
         if self.populate_bigquery:
             self._write_to_bigquery(df=df, table_name=table_name)
-            self._dedupe_bigquery_table(table_name=table_name, asset_class=asset_class)
+            if self.dedupe_after_populate:
+                self._dedupe_bigquery_table(table_name=table_name, asset_class=asset_class)
         return self
 
     def _get_query_dtype_fix(self, table_name, asset_class):
@@ -1424,7 +1452,8 @@ class YFPriceETL(YFPriceGetter):
                     close, 
                     volume, 
                     dividends, 
-                    stock_splits 
+                    stock_splits, 
+                    batch_timestamp 
                   FROM 
                     {self.schema}.{table_name};
                 """
@@ -1442,7 +1471,8 @@ class YFPriceETL(YFPriceGetter):
                     high, 
                     low, 
                     close, 
-                    volume 
+                    volume, 
+                    batch_timestamp 
                   FROM 
                     {self.schema}.{table_name};
                 """
@@ -1460,7 +1490,8 @@ class YFPriceETL(YFPriceGetter):
                     high, 
                     low, 
                     close, 
-                    volume 
+                    volume, 
+                    batch_timestamp 
                   FROM 
                     {self.schema}.{table_name};
                 """
@@ -1486,6 +1517,7 @@ class YFPriceETL(YFPriceGetter):
         method = 'multi' if self.write_method == 'write_pandas' else self.write_method
         try:
             self.mysql_client.connect()
+            df['batch_timestamp'] = datetime.utcnow()
             df.to_sql(table_name,
                       con=self.mysql_client.con,
                       index=False,
@@ -1505,6 +1537,7 @@ class YFPriceETL(YFPriceGetter):
             df['timestamp_tz_aware'] = df['timestamp_tz_aware'].astype(str)
 
             self.mysql_client.connect()
+            df['batch_timestamp'] = datetime.utcnow()
             df.to_sql(table_name,
                       con=self.mysql_client.con,
                       index=False,
@@ -1596,6 +1629,7 @@ class YFPriceETL(YFPriceGetter):
 
             else:
                 self.snowflake_client.connect()
+                df['batch_timestamp'] = datetime.utcnow()
                 df.to_sql(table_name,
                           con=self.snowflake_client.con,
                           index=False,
@@ -1639,6 +1673,7 @@ class YFPriceETL(YFPriceGetter):
                 self.snowflake_client.backend_engine = original_backend
 
             else:
+                df['batch_timestamp'] = datetime.utcnow()
                 df.to_sql(table_name,
                           con=self.snowflake_client.con,
                           index=False,
@@ -1672,10 +1707,11 @@ class YFPriceETL(YFPriceGetter):
               close, 
               volume, 
               dividends, 
-              stock_splits 
+              stock_splits, 
+              batch_timestamp 
             """
 
-            order_by_columns = 'timestamp, yahoo_ticker, bloomberg_ticker, numerai_ticker'
+            order_by_columns = 'timestamp, yahoo_ticker, bloomberg_ticker, numerai_ticker, batch_timestamp desc'
 
         elif asset_class == 'forex':
             columns = """
@@ -1688,10 +1724,11 @@ class YFPriceETL(YFPriceGetter):
               high, 
               low, 
               close, 
-              volume 
+              volume, 
+              batch_timestamp 
             """
 
-            order_by_columns = 'timestamp, yahoo_ticker, bloomberg_ticker'
+            order_by_columns = 'timestamp, yahoo_ticker, bloomberg_ticker, batch_timestamp desc'
 
         elif asset_class == 'crypto':
             columns = """
@@ -1704,10 +1741,11 @@ class YFPriceETL(YFPriceGetter):
               high, 
               low, 
               close, 
-              volume 
+              volume, 
+              batch_timestamp 
             """
 
-            order_by_columns = 'timestamp, yahoo_ticker, yahoo_name'
+            order_by_columns = 'timestamp, yahoo_ticker, yahoo_name, batch_timestamp desc'
 
         else:
             raise RuntimeError('Columns not successfully parsed.')
@@ -1721,7 +1759,7 @@ class YFPriceETL(YFPriceGetter):
                       {columns}
                     FROM 
                       {self.schema}.{table_name} 
-                    QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC) = 1 
+                    QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC, batch_timestamp DESC) = 1 
                     ORDER BY 
                       {order_by_columns};
                 """
@@ -1798,10 +1836,11 @@ class YFPriceETL(YFPriceGetter):
                   close, 
                   volume, 
                   dividends, 
-                  stock_splits 
+                  stock_splits, 
+                  batch_timestamp 
                 FROM 
                   {self.schema}.{table_name} 
-                QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC) = 1 
+                QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC, batch_timestamp DESC) = 1 
                 ORDER BY 
                   timestamp, yahoo_ticker, bloomberg_ticker, numerai_ticker
                 );
@@ -1820,10 +1859,11 @@ class YFPriceETL(YFPriceGetter):
                   high, 
                   low, 
                   close, 
-                  volume 
+                  volume,
+                  batch_timestamp 
                 FROM 
                   {self.schema}.{table_name} 
-                QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC) = 1 
+                QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC, batch_timestamp DESC) = 1 
                 ORDER BY 
                   timestamp, yahoo_ticker
                 );
@@ -1842,10 +1882,11 @@ class YFPriceETL(YFPriceGetter):
                   high, 
                   low, 
                   close, 
-                  volume 
+                  volume, 
+                  batch_timestamp
                 FROM 
                   {self.schema}.{table_name} 
-                QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC) = 1 
+                QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC, batch_timestamp DESC) = 1 
                 ORDER BY 
                   timestamp, yahoo_ticker, yahoo_name
                 );
