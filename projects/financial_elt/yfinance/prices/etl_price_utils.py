@@ -254,7 +254,6 @@ class YFPriceETL(YFPriceGetter):
     convert_tz_aware_to_string: bool whether to change the data type of timestamp_tz_aware to a string
             likely need to set to True when using a MySQL database. Postgres and cloud based platforms like BigQuery
             and Snowflake should be robust to tz-aware timestamps.
-    debug_tickers: array or tuple of tickers to debug in debug mode
     write_method: str of the method to write the stock price df to the db / dwh
     to_sql_chunksize: int of chunksize to use when writing the df to the db / dwh
     write_pandas_threads: only used if write_method='write_pandas' - the number of threads to use called in write_pandas
@@ -492,11 +491,19 @@ class YFPriceETL(YFPriceGetter):
                              parallel=self.write_pandas_threads,
                              overwrite=True,
                              auto_create_table=True)
+
                 self.snowflake_client.backend_engine = original_backend
 
         return self
 
     def etl_prices(self, asset_class, debug_tickers=None, **kwargs):
+        """
+        Parameters
+        ----------
+        asset_class: str of the asset class (e.g. stocks, forex, or crypto).
+        debug_tickers: array or tuple of tickers to debug in debug mode
+        """
+
         self.db_client = [i for i in [self.mysql_client, self.bigquery_client, self.snowflake_client] if i is not None][0]
         debug_tickers = () if debug_tickers is None else debug_tickers
         assert isinstance(debug_tickers, (tuple, list))
