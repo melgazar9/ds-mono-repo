@@ -521,7 +521,7 @@ class YFPriceETL(YFPriceGetter):
 
             df_tickers = \
                 self.db_client.run_sql(
-                    f"SELECT yahoo_ticker, bloomberg_ticker, numerai_ticker FROM {self.schema}.stock_tickers;"
+                    f"select yahoo_ticker, bloomberg_ticker, numerai_ticker FROM {self.schema}.stock_tickers order by 1;"
                 )
 
         elif asset_class == 'forex':
@@ -537,7 +537,7 @@ class YFPriceETL(YFPriceGetter):
 
             df_tickers = \
                 self.db_client.run_sql(
-                    f"SELECT yahoo_ticker, bloomberg_ticker FROM {self.schema}.forex_pairs;"
+                    f"select yahoo_ticker, bloomberg_ticker FROM {self.schema}.forex_pairs order by order by 1;"
                 )
 
         elif asset_class == 'crypto':
@@ -553,7 +553,7 @@ class YFPriceETL(YFPriceGetter):
 
             df_tickers = \
                 self.db_client.run_sql(
-                    f"SELECT yahoo_ticker, yahoo_name FROM {self.schema}.crypto_pairs_top_250;"
+                    f"select yahoo_ticker, yahoo_name FROM {self.schema}.crypto_pairs_top_250 order by 1;"
                 )
         else:
             raise ValueError('Non-deterministic value set for df_tickers or asset_class.')
@@ -647,8 +647,7 @@ class YFPriceETL(YFPriceGetter):
             for i in intervals_to_download:
                 print(f'\nRunning {asset_class} interval {i}\n') if self.verbose else None
 
-                n_tickers_counter = 0 if write_to_db_after_n_tickers else None
-
+                n_tickers_counter = 0
                 yf_params['interval'] = i
 
                 self._get_max_stored_ticker_timestamps(table_name=f'{table_prefix}_{i}')
