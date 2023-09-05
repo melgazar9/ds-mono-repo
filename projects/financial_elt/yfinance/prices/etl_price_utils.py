@@ -1470,7 +1470,7 @@ class YFPriceETL(YFPriceGetter):
                   FROM 
                     {self.schema}.{table_name};
                 """
-        if asset_class == 'forex':
+        elif asset_class == 'forex':
             query_dtype_fix = f"""
                 DROP TABLE IF EXISTS {self.schema}.tmp_table; 
                 CREATE TABLE {self.schema}.tmp_table AS 
