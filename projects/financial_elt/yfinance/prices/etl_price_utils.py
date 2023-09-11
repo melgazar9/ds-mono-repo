@@ -316,7 +316,8 @@ class YFPriceETL(YFPriceGetter):
                         schema=self.schema
                     )
 
-            assert all([v is not None for v in snowflake_connect_params.values()]), 'No value can be None in snowflake_connect_params'
+            assert all([v is not None for v in snowflake_connect_params.values()]),\
+                f'No value can be None in snowflake_connect_params. snowflake_connect_params: {snowflake_connect_params}'
 
             snowflake_connect_params.update(dict(database=self.database))
             self.snowflake_client = SnowflakeConnect(**snowflake_connect_params)
