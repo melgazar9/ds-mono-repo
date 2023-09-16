@@ -538,7 +538,7 @@ class YFPriceETL(YFPriceGetter):
 
             df_tickers = \
                 self.db_client.run_sql(
-                    f"select yahoo_ticker, bloomberg_ticker FROM {self.schema}.forex_pairs order by order by 1;"
+                    f"select yahoo_ticker, bloomberg_ticker FROM {self.schema}.forex_pairs order by 1;"
                 )
 
         elif asset_class == 'crypto':
