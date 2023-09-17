@@ -977,8 +977,9 @@ class YFPriceETL(YFPriceGetter):
             else:
                 df_top_crypto_tickers = df_top_crypto_tickers_new
 
+            df_top_crypto_tickers['BATCH_TIMESTAMP'] = datetime.utcnow()
+
             if self.write_method.lower() != 'write_pandas':
-                df_top_crypto_tickers['batch_timestamp'] = datetime.utcnow()
                 self.snowflake_client.connect()
 
                 # table name needs to be lower case for snowflake sqlalchemy to_sql (sqlalchemy.exc.InvalidRequestError)
