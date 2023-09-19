@@ -934,9 +934,6 @@ class YFPriceETL(YFPriceGetter):
         if self.populate_snowflake:
             print('\nOverwriting crypto_pairs_top_250 to Snowflake...\n') if self.verbose else None
 
-            if self.write_method in [pd_writer, 'write_pandas']:
-                df_top_crypto_tickers_new.columns = df_top_crypto_tickers_new.columns.str.upper()
-
             tables = self.snowflake_client.run_sql(f"""
                             select
                               table_name
@@ -966,18 +963,16 @@ class YFPriceETL(YFPriceGetter):
                           batch_timestamp
                         from
                           {self.schema}.crypto_pairs_top_250
-                        """.upper())
-                df_top_crypto_tickers_prev.columns = df_top_crypto_tickers_prev.columns.str.upper()
-                df_top_crypto_tickers_new.columns = df_top_crypto_tickers_new.columns.str.upper()
+                        """)
 
                 df_top_crypto_tickers = \
                     pd.concat([df_top_crypto_tickers_prev, df_top_crypto_tickers_new], ignore_index=True) \
-                        .drop_duplicates(subset=['YAHOO_TICKER'], keep='last') \
+                        .drop_duplicates(subset=['yahoo_ticker'], keep='last') \
                         .reset_index(drop=True)
             else:
                 df_top_crypto_tickers = df_top_crypto_tickers_new
 
-            df_top_crypto_tickers['BATCH_TIMESTAMP'] = datetime.utcnow()
+            df_top_crypto_tickers['batch_timestamp'] = datetime.utcnow()
 
             if self.write_method.lower() != 'write_pandas':
                 self.snowflake_client.connect()
@@ -993,7 +988,10 @@ class YFPriceETL(YFPriceGetter):
                 original_backend = self.snowflake_client.backend_engine
                 self.snowflake_client.backend_engine = 'snowflake_connector'
                 self.snowflake_client.connect()
-                write_pandas(df=df_top_crypto_tickers,
+                wp_df_top250_crypto = df_top_crypto_tickers.copy()
+                wp_df_top250_crypto['batch_timestamp'] = wp_df_top250_crypto['batch_timestamp'].astype(str)
+                wp_df_top250_crypto.columns = wp_df_top250_crypto.columns.str.upper()
+                write_pandas(df=wp_df_top250_crypto,
                              conn=self.snowflake_client.con,
                              database=self.snowflake_client.database.upper(),
                              schema=self.snowflake_client.schema.upper(),
@@ -1092,8 +1090,6 @@ class YFPriceETL(YFPriceGetter):
         if self.populate_snowflake:
             print('\nOverwriting forex_pairs to Snowflake...\n') if self.verbose else None
 
-            df_forex_pairs_new.columns = df_forex_pairs_new.columns.str.upper()
-
             tables = self.snowflake_client.run_sql(f"""
                                     select
                                       table_name
@@ -1107,14 +1103,17 @@ class YFPriceETL(YFPriceGetter):
             table_exists = True if 'FOREX_PAIRS' in flatten_list(tables.values.tolist()) else False
 
             if table_exists:
-                df_forex_pairs_prev = \
-                    self.snowflake_client.run_sql(f'select * from {self.schema}.forex_pairs')
+                df_forex_pairs_prev = self.snowflake_client.run_sql(f"""
+                     select
+                       *
+                     from
+                       {self.schema}.forex_pairs
+                    """)
 
                 df_forex_pairs_prev = df_forex_pairs_prev[[i for i in df_forex_pairs_prev.columns]]
-                df_forex_pairs_prev.columns = df_forex_pairs_prev.columns.str.upper()
                 df_forex_pairs = \
                     pd.concat([df_forex_pairs_prev, df_forex_pairs_new], ignore_index=True) \
-                        .drop_duplicates(subset=['YAHOO_TICKER'], keep='last') \
+                        .drop_duplicates(subset=['yahoo_ticker'], keep='last') \
                         .reset_index(drop=True)
             else:
                 df_forex_pairs = df_forex_pairs_new
@@ -1123,7 +1122,7 @@ class YFPriceETL(YFPriceGetter):
                 df_forex_pairs['batch_timestamp'] = datetime.utcnow()
                 self.snowflake_client.connect()
 
-                # must grant privileges SNOWFLAKE_ROLE in .env or the below code chunk will likely break.
+                # must grant privileges SNOWFLAKE_ROLE in .env or the below code chunk will break.
                 df_forex_pairs.to_sql('forex_pairs',
                                       con=self.snowflake_client.con,
                                       if_exists='replace',
@@ -1134,7 +1133,10 @@ class YFPriceETL(YFPriceGetter):
                 original_backend = self.snowflake_client.backend_engine
                 self.snowflake_client.backend_engine = 'snowflake_connector'
                 self.snowflake_client.connect()
-                write_pandas(df=df_forex_pairs,
+                wp_df_forex = df_forex_pairs.copy()
+                wp_df_forex['batch_timestamp'] = wp_df_forex['batch_timestamp'].astype(str)
+                wp_df_forex.columns = wp_df_forex.columns.str.upper()
+                write_pandas(df=wp_df_forex,
                              conn=self.snowflake_client.con,
                              database=self.snowflake_client.database.upper(),
                              schema=self.snowflake_client.schema.upper(),
