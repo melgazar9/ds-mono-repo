@@ -5,7 +5,7 @@ from numerapi import SignalsAPI
 import yfinance as yf
 from pytickersymbols import PyTickerSymbols
 import pandas_market_calendars as pmc
-
+import traceback
 
 class YFPriceGetter:
     """
@@ -1425,20 +1425,27 @@ class YFPriceETL(YFPriceGetter):
             asset_class: str of the asset class (e.g. 'stocks', 'forex', or 'crypto')
         """
 
-        if self.populate_mysql:
-            self._write_to_mysql(df=df, table_name=table_name, asset_class=asset_class)
-            if self.dedupe_after_populate:
-                self._dedupe_mysql_table(table_name=table_name)
+        try:
+            if self.populate_mysql:
+                self._write_to_mysql(df=df, table_name=table_name, asset_class=asset_class)
+                if self.dedupe_after_populate:
+                    self._dedupe_mysql_table(table_name=table_name)
 
-        if self.populate_snowflake:
-            self._write_to_snowflake(df=df, table_name=table_name, asset_class=asset_class)
-            if self.dedupe_after_populate:
-                self._dedupe_snowflake_table(table_name=table_name, asset_class=asset_class)
+            if self.populate_snowflake:
+                self._write_to_snowflake(df=df, table_name=table_name, asset_class=asset_class)
+                if self.dedupe_after_populate:
+                    self._dedupe_snowflake_table(table_name=table_name, asset_class=asset_class)
 
-        if self.populate_bigquery:
-            self._write_to_bigquery(df=df, table_name=table_name)
-            if self.dedupe_after_populate:
-                self._dedupe_bigquery_table(table_name=table_name, asset_class=asset_class)
+            if self.populate_bigquery:
+                self._write_to_bigquery(df=df, table_name=table_name)
+                if self.dedupe_after_populate:
+                    self._dedupe_bigquery_table(table_name=table_name, asset_class=asset_class)
+        except Exception as e:
+            print(traceback.format_exc())
+            print(f'\n{e}\n')
+            pd.options.display.max_columns = 20  # so the full df is printed in the error
+            print(f'\n{df}\n')
+            print(f'\n{df.dtypes}\n')
         return self
 
     def _get_query_dtype_fix(self, table_name, asset_class):
@@ -1709,6 +1716,8 @@ class YFPriceETL(YFPriceGetter):
             table_name: str of the table name to dedupe in Snowflake.
         """
 
+        print(f'\nDeduping Snowflake table {table_name}...\n') if self.verbose else None
+
         if asset_class == 'stocks':
             columns = """
               timestamp, 
@@ -1833,6 +1842,8 @@ class YFPriceETL(YFPriceGetter):
             table_name: str of the table name
             asset_class: str of the asset class to run queries on
         """
+
+        print(f'\nDeduping BigQuery table {table_name}...\n') if self.verbose else None
 
         initial_syntax = f"CREATE OR REPLACE TABLE {self.schema}.{table_name} AS ("
 
