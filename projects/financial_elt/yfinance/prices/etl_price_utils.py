@@ -516,7 +516,8 @@ class YFPriceETL(YFPriceGetter):
 
             self.df_dtype_mappings = {
                 str: ['yahoo_ticker', 'numerai_ticker', 'bloomberg_ticker'],
-                np.number: ['open', 'high', 'low', 'close', 'dividends', 'stock_splits', 'volume']
+                np.number: ['open', 'high', 'low', 'close', 'dividends', 'stock_splits'],
+                np.integer: ['volume']
             }
 
             df_tickers = \
@@ -531,7 +532,8 @@ class YFPriceETL(YFPriceGetter):
 
             self.df_dtype_mappings = {
                 str: ['yahoo_ticker', 'bloomberg_ticker'],
-                np.number: ['open', 'high', 'low', 'close', 'volume']
+                np.number: ['open', 'high', 'low', 'close'],
+                np.integer: ['volume']
             }
 
             df_tickers = \
@@ -546,7 +548,8 @@ class YFPriceETL(YFPriceGetter):
 
             self.df_dtype_mappings = {
                 str: ['yahoo_ticker', 'yahoo_name'],
-                np.number: ['open', 'high', 'low', 'close', 'volume']
+                np.number: ['open', 'high', 'low', 'close'],
+                np.integer: ['volume']
             }
 
             df_tickers = \
@@ -1247,7 +1250,7 @@ class YFPriceETL(YFPriceGetter):
                                 bigquery.SchemaField(name="high", field_type="NUMERIC"),
                                 bigquery.SchemaField(name="low", field_type="NUMERIC"),
                                 bigquery.SchemaField(name="close", field_type="NUMERIC"),
-                                bigquery.SchemaField(name="volume", field_type="NUMERIC"),
+                                bigquery.SchemaField(name="volume", field_type="INTEGER"),
                                 bigquery.SchemaField(name="dividends", field_type="NUMERIC"),
                                 bigquery.SchemaField(name="stock_splits", field_type="NUMERIC"),
                                 bigquery.SchemaField(name="batch_timestamp", field_type="TIMESTAMP")
@@ -1267,7 +1270,7 @@ class YFPriceETL(YFPriceGetter):
                                 bigquery.SchemaField(name="high", field_type="NUMERIC"),
                                 bigquery.SchemaField(name="low", field_type="NUMERIC"),
                                 bigquery.SchemaField(name="close", field_type="NUMERIC"),
-                                bigquery.SchemaField(name="volume", field_type="NUMERIC"),
+                                bigquery.SchemaField(name="volume", field_type="INTEGER"),
                                 bigquery.SchemaField(name="batch_timestamp", field_type="TIMESTAMP")
                             ],
                             autodetect=False
@@ -1285,7 +1288,7 @@ class YFPriceETL(YFPriceGetter):
                                 bigquery.SchemaField(name="high", field_type="NUMERIC"),
                                 bigquery.SchemaField(name="low", field_type="NUMERIC"),
                                 bigquery.SchemaField(name="close", field_type="NUMERIC"),
-                                bigquery.SchemaField(name="volume", field_type="NUMERIC"),
+                                bigquery.SchemaField(name="volume", field_type="INTEGER"),
                                 bigquery.SchemaField(name="batch_timestamp", field_type="TIMESTAMP")
                             ],
                             autodetect=False
