@@ -12,9 +12,9 @@ scheduler = BackgroundScheduler(job_defaults={'max_instances': 3})  # BlockingSc
 
 projects_to_host = []
 
-if ast.literal_eval(config['YF_STOCK_PRICE_ETL']['host_yf_stock_price_etl']):
+if ast.literal_eval(config['YF_PRICE_ETL']['host_financial_price_etl']):
     projects_to_host.append('yfinance_stock_prices')
-    cron = json_string_to_dict(config['YF_STOCK_PRICE_ETL']['yfinance_stock_price_etl_cron'])
+    cron = json_string_to_dict(config['YF_PRICE_ETL']['financial_price_etl_cron'])
     scheduler.add_job(yfinance_etl_prices, trigger='cron', **cron)
 
 
