@@ -1,0 +1,27 @@
+sources:
+  - name: yfinance_el_production
+    schema: yfinance_el_production
+    database: "{{ env_var('GCP_PROJECT_NAME') }}" 
+    loaded_at_field: timestamp
+    freshness:
+      error_after:
+        count: 12
+        period: hour
+    tables:
+      - name: stock_prices_1m
+      - name: stock_prices_2m
+      - name: stock_prices_5m
+      - name: stock_prices_1h
+      - name: stock_prices_1d
+      - name: forex_prices_1m
+      - name: forex_prices_2m
+      - name: forex_prices_5m
+      - name: forex_prices_1h
+      - name: forex_prices_1d
+      - name: crypto_prices_1m
+      - name: crypto_prices_2m
+      - name: crypto_prices_5m
+      - name: crypto_prices_1h
+      - name: crypto_prices_1d
+
+

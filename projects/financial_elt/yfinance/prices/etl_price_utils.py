@@ -2180,11 +2180,11 @@ def get_valid_yfinance_start_timestamp(interval, start='1950-01-01 00:00:00'):
     assert interval in valid_intervals, f'must pass a valid interval {valid_intervals}'
 
     if interval == '1m':
-        updated_start = max((datetime.today() - timedelta(days=5)), pd.to_datetime(start))
+        updated_start = max((datetime.today() - timedelta(days=5)).date(), pd.to_datetime(start).date())
     elif interval in ['2m', '5m', '15m', '30m', '90m']:
-        updated_start = (max((datetime.today() - timedelta(days=58)), pd.to_datetime(start)))
+        updated_start = (max((datetime.today() - timedelta(days=58)).date(), pd.to_datetime(start).date()))
     elif interval in ['60m', '1h']:
-        updated_start = max((datetime.today() - timedelta(days=728)), pd.to_datetime(start))
+        updated_start = max((datetime.today() - timedelta(days=728)).date(), pd.to_datetime(start).date())
     else:
         updated_start = pd.to_datetime(start)
 
