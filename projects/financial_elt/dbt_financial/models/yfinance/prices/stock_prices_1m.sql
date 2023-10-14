@@ -1,4 +1,4 @@
-{{ config(materialized='incremental', schema='yfinance', unique_key=['timestamp', 'yahoo_ticker']) }}
+{{ config(materialized='incremental', schema='yfinance_prices', unique_key=['timestamp', 'yahoo_ticker']) }}
 
 with cte_most_recent as (
   select
