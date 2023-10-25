@@ -1,0 +1,63 @@
+[tool.poetry]
+name = "tap-yfinance"
+version = "0.0.1"
+description = "`tap-yfinance` is a Singer tap for YFinance, built with the Meltano Singer SDK."
+readme = "README.md"
+authors = ["Matt Elgazar <melgazar9@gmail.com>"]
+keywords = [
+    "ELT",
+    "YFinance",
+]
+license = "Apache-2.0"
+
+[tool.poetry.dependencies]
+python = ">=3.9,<3.13"
+singer-sdk = { version="~=0.32.0" }
+fs-s3fs = { version = "~=1.1.1", optional = true }
+requests = "~=2.31.0"
+pandas = "2.1.1"
+yfinance = "0.2.31"
+skimpy = "^0.0.11"
+pytickersymbols = "^1.13.0"
+numerapi = "^2.16.0"
+requests-html = "^0.10.0"
+scipy = "^1.11.3"
+pandas-datareader = "^0.10.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=7.4.0"
+singer-sdk = { version="~=0.32.0", extras = ["testing"] }
+
+[tool.poetry.extras]
+s3 = ["fs-s3fs"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_unused_configs = true
+
+[tool.ruff]
+ignore = [
+    "ANN101",  # missing-type-self
+    "ANN102",  # missing-type-cls
+]
+select = ["ALL"]
+src = ["tap_yfinance"]
+target-version = "py37"
+
+
+[tool.ruff.flake8-annotations]
+allow-star-arg-any = true
+
+[tool.ruff.isort]
+known-first-party = ["tap_yfinance"]
+
+[tool.ruff.pydocstyle]
+convention = "google"
+
+[build-system]
+requires = ["poetry-core>=1.0.8"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+# CLI declaration
+tap-yfinance = 'tap_yfinance.tap:TapYFinance.cli'
