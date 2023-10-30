@@ -72,7 +72,7 @@ def flatten_multindex_columns(df):
 def flatten_list(lst):
     return [v for item in lst for v in (item if isinstance(item, list) else [item])]
 
-def cur_timestamp(clean_string=True):
+def cur_timestamp(clean_string=False):
     ts = datetime.today().replace(second=0, microsecond=0).strftime('%Y-%m-%d %H:%M:%S')
     if clean_string:
         ts = ts.replace(' ', '__').replace(':', '_')

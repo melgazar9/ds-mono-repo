@@ -1,23 +1,26 @@
 version: '3'
 
 services:
+
   financial-elt:
     container_name: financial-elt
     image: financial-elt:latest
     restart: always
     build:
-      context: ../../
-      dockerfile: projects/financial_elt/Dockerfile
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_ENV: dev
+
     env_file:
       - .env
     environment:
       - DOCKER_DEFAULT_PLATFORM=linux/amd64
+      - DOCKER_ENV_FILE=/app/.env
     ports:
       - 5000:5000
     deploy:
       resources:
         limits:
           cpus: '2'
-          memory: 2800M
-    volumes:
-      - ../../ds_core:/app/ds_core
+          memory: 18000M
