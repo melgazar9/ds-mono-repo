@@ -73,7 +73,10 @@ plugins:
         - stream-maps
 
       select:
-        - stock_tickers
+        - forex_tickers
+        - crypto_tickers
+        - forex_prices_1m
+        - crypto_prices_1m
 
       config:
         default_start_date: "1950-01-01"

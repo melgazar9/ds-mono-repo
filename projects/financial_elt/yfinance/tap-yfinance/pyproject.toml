@@ -23,6 +23,9 @@ numerapi = "^2.16.0"
 requests-html = "^0.10.0"
 scipy = "^1.11.3"
 pandas-datareader = "^0.10.0"
+flask = "^3.0.0"
+apscheduler = "^3.10.4"
+waitress = "^2.1.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=7.4.0"
