@@ -15,10 +15,10 @@ RUN apt-get update &&\
 # Installing meltano[gcs] for google cloud storage. Change this to change the state backend depending on requirements
 # (e.g. meltano[azure] for azure cloud storage and meltano[s3] for s3 cloud storage)
 RUN pip install -U pip && \
-    pip install poetry==1.6.1 && \
     pip install pipx==1.2.0 && \
+    pip install poetry==1.6.1 && \
     poetry install && \
-    pipx install meltano[gcs]==3.1.0 && \
+    pipx install "meltano[gcs]==3.1.0" && \
     pipx ensurepath && \
     meltano install
 

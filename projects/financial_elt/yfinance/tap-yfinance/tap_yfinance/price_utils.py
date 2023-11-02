@@ -4,10 +4,10 @@ import logging
 import pandas as pd
 import numpy as np
 import yfinance as yf
-from skimpy import clean_columns
 from pytickersymbols import PyTickerSymbols
 from numerapi import SignalsAPI
 from pandas_datareader import data as pdr
+import re
 
 class YFinanceLogger:
     """ Logger inherited by all YFinanceTap classes """
@@ -101,8 +101,8 @@ class YFinancePriceTap(YFinanceLogger):
             - Clean column names
             - Set tz_aware timestamp column to be a string
         """
-        yf_params = self.yf_params.copy() if yf_params is None else yf_params.copy()
 
+        yf_params = self.yf_params.copy() if yf_params is None else yf_params.copy()
         assert 'interval' in yf_params.keys(), 'must pass interval parameter to yf_params'
 
         if yf_params['interval'] not in self.failed_ticker_downloads.keys():
@@ -117,10 +117,8 @@ class YFinancePriceTap(YFinanceLogger):
 
         t = yf.Ticker(ticker)
         try:
-            df = \
-                t.history(**yf_params) \
-                    .rename_axis(index='timestamp') \
-                    .pipe(lambda x: clean_columns(x))
+            df = t.history(**yf_params).rename_axis(index='timestamp')
+            df.columns = clean_strings(df.columns)
 
             self.n_requests += 1
             df.loc[:, self.ticker_colname] = ticker
@@ -162,7 +160,7 @@ class YFinancePriceTap(YFinanceLogger):
         df = pdr.get_data_yahoo(tickers, progress=False, **yf_params).rename_axis(index='timestamp').reset_index()
         self.n_requests += 1
 
-        df.columns = flatten_multindex_columns(df, clean_columns_names=True)
+        df.columns = flatten_multindex_columns(df)
         df.loc[:, 'timestamp_tz_aware'] = df['timestamp'].copy()
         df.loc[:, 'timezone'] = str(df['timestamp_tz_aware'].dt.tz)
         df['timestamp_tz_aware'] = df['timestamp_tz_aware'].dt.strftime('%Y-%m-%d %H:%M:%S%z')
@@ -171,7 +169,6 @@ class YFinancePriceTap(YFinanceLogger):
         if df is not None and not df.shape[0]:
             self.failed_ticker_downloads[yf_params['interval']].append(ticker)
             return pd.DataFrame(columns=self.column_order)
-
         df = df.replace([np.inf, -np.inf, np.nan], None)
         return df
 
@@ -240,8 +237,9 @@ class TickerDownloader(YFinanceLogger):
         tables = pd.read_html(resp.html.raw_html)
         session.close()
 
-        df = clean_columns(tables[0].copy())
+        df = tables[0].copy()
         df.rename(columns={'symbol': 'yahoo_ticker', 'name': 'yahoo_name', '%_change': 'pct_change'}, inplace=True)
+        df.columns = clean_strings(df.columns)
 
         # Add Decentral-Games tickers
 
@@ -287,7 +285,6 @@ class TickerDownloader(YFinanceLogger):
         df_forex_pairs = pd.DataFrame(forex_pairs)
         df_forex_pairs.loc[:, 'bloomberg_ticker'] = df_forex_pairs['yahoo_name'].apply(lambda x: f"{x[4:]}-{x[0:3]}")
         df_forex_pairs = df_forex_pairs.replace([np.inf, -np.inf, np.nan], None)
-
         return df_forex_pairs
 
     def download_numerai_signals_ticker_map(
@@ -306,7 +303,6 @@ class TickerDownloader(YFinanceLogger):
 
         ticker_map = ticker_map.replace([np.inf, -np.inf, np.nan], None)
         valid_tickers = [i for i in ticker_map[yahoo_ticker_colname] if i is not None and len(i) > 0]
-
         self.logger.info(f'tickers before cleaning: %s', ticker_map.shape)
         ticker_map = ticker_map[ticker_map[yahoo_ticker_colname].isin(valid_tickers)]
         self.logger.info(f'tickers after cleaning: %s', ticker_map.shape)
@@ -314,11 +310,7 @@ class TickerDownloader(YFinanceLogger):
 
     @classmethod
     def download_valid_stock_tickers(cls):
-        """
-        Description
-        -----------
-        Download the valid tickers from py-ticker-symbols
-        """
+        """ Download the valid tickers from py-ticker-symbols """
 
         # napi = numerapi.SignalsAPI(os.environ.get('NUMERAI_PUBLIC_KEY'), os.environ.get('NUMERAI_PRIVATE_KEY'))
 
@@ -340,7 +332,8 @@ class TickerDownloader(YFinanceLogger):
             .rename(columns={'yahoo_ticker_x': 'yahoo_ticker', 'yahoo_ticker_y': 'yahoo_ticker_old'}) \
             .set_index('yahoo_ticker')
 
-        df_tickers_wide = clean_columns(pd.concat([df1, df2, df3, df4], axis=1))
+        df_tickers_wide = pd.concat([df1, df2, df3, df4], axis=1)
+        df_tickers_wide.columns = clean_strings(df_tickers_wide.columns)
 
         for col in df_tickers_wide.columns:
             suffix = col[-1]
@@ -373,8 +366,7 @@ def get_valid_yfinance_start_timestamp(interval, start='1950-01-01 00:00:00'):
     """
     Description
     -----------
-    Get a valid yfinance date to lookback
-
+    Get a valid yfinance date to lookback.
     Valid intervals with maximum lookback period
     1m: 7 days
     2m: 60 days
@@ -407,17 +399,17 @@ def get_valid_yfinance_start_timestamp(interval, start='1950-01-01 00:00:00'):
     else:
         updated_start = pd.to_datetime(start)
     updated_start = updated_start.strftime('%Y-%m-%d')  # yfinance doesn't like strftime with hours, minutes, or seconds
+
     return updated_start
 
 def flatten_list(lst):
     return [v for item in lst for v in (item if isinstance(item, list) else [item])]
 
-def flatten_multindex_columns(df, clean_columns_names=False):
-    new_cols = list(
-        pd.Index([str(e[0]).lower() + '_' + str(e[1]).lower() for e in df.columns.tolist()]).str.replace(' ', '_')
-    )
+def clean_strings(lst):
+    cleaned_list = [re.sub(r'[^a-zA-Z0-9_]', '_', s) for s in lst]  # remove special characters
+    cleaned_list = [re.sub(r'_+', '_', s).strip('_').lower() for s in cleaned_list]  # clean leading and trailing underscores
+    return cleaned_list
 
-    if clean_columns_names:
-        return list(clean_columns(pd.DataFrame(columns=new_cols)))
-
+def flatten_multindex_columns(df):
+    new_cols = list(clean_strings(pd.Index([str(e[0]).lower() + '_' + str(e[1]).lower() for e in df.columns.tolist()])))
     return new_cols

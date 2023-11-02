@@ -27,7 +27,6 @@ def healthcheck():
     with app.app_context():
         return make_response("tap-yfinance healthcheck successful...", 200)
 
-
 ###### tap yfinance routes ######
 
 @app.route('/financial-elt/yfinance/tap-yfinance-dev', methods=['GET'])

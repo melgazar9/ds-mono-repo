@@ -11,20 +11,17 @@ keywords = [
 license = "Apache-2.0"
 
 [tool.poetry.dependencies]
-python = ">=3.9,<3.12"
+python = ">=3.9,<3.13"
 singer-sdk = { version="~=0.32.0" }
-fs-s3fs = { version = "~=1.1.1", optional = true }
 requests = "~=2.31.0"
 pandas = "2.1.1"
 yfinance = "0.2.31"
-skimpy = "^0.0.11"
 pytickersymbols = "^1.13.0"
 numerapi = "^2.16.0"
 requests-html = "^0.10.0"
 scipy = "^1.11.3"
 pandas-datareader = "^0.10.0"
 flask = "^3.0.0"
-apscheduler = "^3.10.4"
 waitress = "^2.1.2"
 
 [tool.poetry.group.dev.dependencies]

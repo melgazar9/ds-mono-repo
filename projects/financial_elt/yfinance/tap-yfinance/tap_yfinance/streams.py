@@ -13,6 +13,7 @@ from singer_sdk.helpers._state import increment_state
 
 
 class BaseStream(Stream, ABC):
+
     def __init__(self, tap: Tap, catalog_entry: dict) -> None:
         self.catalog_entry = catalog_entry
         self.table_name = self.catalog_entry['table_name']
@@ -49,7 +50,6 @@ class BaseStream(Stream, ABC):
             self.download_tickers(self.stream_params)
 
         assert isinstance(self.tickers, list), f'self.tickers must be a list, but it is of type {type(self.tickers)}.'
-
         return [{'ticker': t} for t in self.tickers]
 
     def download_tickers(self, stream_params):
