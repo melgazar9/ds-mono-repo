@@ -244,7 +244,7 @@ plugins:
       config:
         project: ${GCP_PROJECT_ID}
         credentials_path: ${GCP_CREDENTIALS_PATH}
-        dataset: meltano_yfinance
+        dataset: ${GCP_DATASET}
         batch_size: 10000
         denormalized: true
 
