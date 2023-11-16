@@ -30,7 +30,7 @@ plugins:
   extractors:
     - name: "tap-yfinance"
       namespace: "tap_yfinance"
-      pip_url: git+https://github.com/melgazar9/tap-yfinance@edde898420739e79a9c965bd6360686ebfbe7330
+      pip_url: git+https://github.com/melgazar9/tap-yfinance@83bc5aa33de7a4f378563ce35d61c72d6d77c03f
 
       capabilities:
         - state
@@ -40,6 +40,9 @@ plugins:
         - stream-maps
 
       select:
+        - stock_tickers
+        - forex_tickers
+        - crypto_tickers
         - stock_prices_1m
         - forex_prices_1m
         - crypto_prices_1m
