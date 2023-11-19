@@ -12,7 +12,7 @@ ENVIRONMENT = os.getenv('ENVIRONMENT')
 config = ConfigParser()
 config.read('config.ini')
 
-scheduler = BackgroundScheduler()
+scheduler = BackgroundScheduler(job_defaults={'max_instances': 2})
 
 if ENVIRONMENT == 'dev':
     print('\n*** Running environment dev. ***\n')
