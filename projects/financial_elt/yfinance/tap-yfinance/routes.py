@@ -32,15 +32,15 @@ def healthcheck():
 @app.route('/financial-elt/yfinance/tap-yfinance-dev', methods=['GET'])
 def tap_yfinance_dev():
     with app.app_context():
-        run_command = f'meltano --environment=dev el tap-yfinance target-{TAP_YFINANCE_TARGET} --state-id tap_yfinance_dev'
+        run_command = f'meltano --environment=dev el tap-yfinance target-{TAP_YFINANCE_TARGET} --state-id tap_yfinance_dev_{TAP_YFINANCE_TARGET}'
         shell_command = f'cd {os.path.join(app.root_path)}; {run_command};'
         subprocess.run(shell_command, shell=True)
-        return make_response(f'Last ran project tap-yfinance-dev at {cur_timestamp()}.', 200)
+        return make_response(f'Last ran project tap-yfinance-dev target {TAP_YFINANCE_TARGET} at {cur_timestamp()}.', 200)
 
 @app.route('/financial-elt/yfinance/tap-yfinance-production', methods=['GET'])
 def tap_yfinance_production():
     with app.app_context():
-        run_command = f'meltano --environment=production el tap-yfinance target-{TAP_YFINANCE_TARGET} --state-id tap_yfinance_production'
+        run_command = f'meltano --environment=production el tap-yfinance target-{TAP_YFINANCE_TARGET} --state-id tap_yfinance_production_{TAP_YFINANCE_TARGET}'
         shell_command = f'cd {os.path.join(app.root_path)}; {run_command};'
         subprocess.run(shell_command, shell=True)
-        return make_response(f'Last ran project tap-yfinance-production at {cur_timestamp()}.', 200)
+        return make_response(f'Last ran project tap-yfinance-production target {TAP_YFINANCE_TARGET} at {cur_timestamp()}.', 200)
