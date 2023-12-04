@@ -1,16 +1,16 @@
-{{ config(materialized='incremental', schema='yfinance_prices', unique_key=['minute', 'yahoo_ticker']) }}
+{{ config(materialized='incremental', schema='yfinance_prices', unique_key=['minute', 'ticker']) }}
 
 with recursive minute_intervals as (
   select
     min(timestamp) as interval_start,
     max(timestamp) as interval_end
   from
-    {{ ref('stock_prices_deduped_1m') }}
+    {{ ref('stock_prices_deduped_1d') }}
 
   union all
 
   select
-    dateadd(minute, 1, interval_start),
+    date_add(minute, 1, interval_start),
     interval_end
   from
     minute_intervals
@@ -26,11 +26,11 @@ cte_generated_minutes as (
 cte_ticker_intervals as (
   select distinct
     cgm.minute,
-    t.yahoo_ticker
+    t.ticker
   from
     cte_generated_minutes cgm
   cross join
-    (select distinct yahoo_ticker from {{ ref('stock_prices_deduped_1m') }}) t
+    (select distinct ticker from {{ ref('stock_prices_deduped_1d') }}) t
 
 ),
 
@@ -40,7 +40,7 @@ cte_stock_tickers as (
     sp.timestamp,
     sp.timestamp_tz_aware,
     sp.timezone,
-    ti.yahoo_ticker,
+    ti.ticker,
     nullifzero(sp.open) as open,
     nullifzero(sp.high) as high,
     nullifzero(sp.low) as low,
@@ -54,10 +54,10 @@ cte_stock_tickers as (
     cte_ticker_intervals ti
 
   left join
-    {{ ref('stock_prices_deduped_1m') }} sp
+    {{ ref('stock_prices_deduped_1d') }} sp
   on
     ti.minute = date_trunc('minute', sp.timestamp)
-    and ti.yahoo_ticker = sp.yahoo_ticker
+    and ti.ticker = sp.ticker
   )
 
 select
@@ -65,15 +65,15 @@ select
   st.timestamp,
   st.timestamp_tz_aware,
   st.timezone,
-  st.yahoo_ticker,
-  coalesce(st.open, lag(st.open ignore nulls) over(partition by st.yahoo_ticker order by st.minute)) as open,
-  coalesce(st.high, lag(st.high ignore nulls) over(partition by st.yahoo_ticker order by st.minute)) as high,
-  coalesce(st.low, lag(st.low ignore nulls) over(partition by st.yahoo_ticker order by st.minute)) as low,
-  coalesce(st.close, lag(st.close ignore nulls) over(partition by st.yahoo_ticker order by st.minute)) as close,
+  st.ticker,
+  coalesce(st.open, lag(st.open ignore nulls) over(partition by st.ticker order by st.minute)) as open,
+  coalesce(st.high, lag(st.high ignore nulls) over(partition by st.ticker order by st.minute)) as high,
+  coalesce(st.low, lag(st.low ignore nulls) over(partition by st.ticker order by st.minute)) as low,
+  coalesce(st.close, lag(st.close ignore nulls) over(partition by st.ticker order by st.minute)) as close,
   coalesce(st.volume, 0) as volume,
   coalesce(st.dividends, 0) as dividends,
   coalesce(st.stock_splits, 0) as stock_splits,
-  coalesce(st.batch_timestamp, lag(st.batch_timestamp ignore nulls) over(partition by st.yahoo_ticker order by st.minute)) as batch_timestamp
+  coalesce(st.batch_timestamp, lag(st.batch_timestamp ignore nulls) over(partition by st.ticker order by st.minute)) as batch_timestamp
 
 from
   cte_stock_tickers st

@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "dbt-financial"
+version = "0.1.0"
+description = ""
+authors = ["melgazar9 <melgazar9@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+dbt = "^1.0.0.34.17"
+dbt-bigquery = "^1.7.2"
+dbt-snowflake = "^1.7.0"
+dbt-core = "^1.7.3"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -1,6 +1,6 @@
 sources:
-  - name: yfinance_el_production
-    schema: yfinance_el_production
+  - name: meltano_yfinance_dev
+    schema: meltano_yfinance_dev
     database: "{{ env_var('GCP_PROJECT_NAME') }}" 
     loaded_at_field: timestamp
     freshness:
