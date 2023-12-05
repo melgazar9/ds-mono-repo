@@ -20,12 +20,12 @@ if config['TAP_YFINANCE']['VM'] == 'gcp':
 scheduler = BackgroundScheduler(job_defaults={'max_instances': 2})
 
 if ENVIRONMENT == 'dev':
-    print('\n*** Running environment dev. ***\n')
+    logging.info('\n*** Running environment dev. ***\n')
     cron = json.loads(config['TAP_YFINANCE']['DEV_CRON_PARAMS'])
     scheduler.add_job(tap_yfinance_dev, trigger='cron', **cron, jitter=120)
 
 if ENVIRONMENT == 'production':
-    print('\n*** Running environment production. ***\n')
+    logging.info('\n*** Running environment production. ***\n')
     cron = json.loads(config['TAP_YFINANCE']['PRODUCTION_CRON_PARAMS'])
     scheduler.add_job(tap_yfinance_production, trigger='cron', **cron, jitter=120)
 
