@@ -1,85 +1,68 @@
-{{ config(materialized='incremental', schema='yfinance_prices', unique_key=['minute', 'ticker']) }}
+{{ config(materialized='incremental', schema='yfinance_prices', unique_key=['day', 'ticker']) }}
 
-with recursive minute_intervals as (
+with day_intervals as (
   select
-    min(timestamp) as interval_start,
-    max(timestamp) as interval_end
+    min(date(timestamp)) as min_date,
+    max(date(timestamp)) as max_date
   from
     {{ ref('stock_prices_deduped_1d') }}
+),
 
-  union all
-
+cte_generated_days as (
   select
-    date_add(minute, 1, interval_start),
-    interval_end
+    date
   from
-    minute_intervals
-  where
-    interval_start < interval_end
+    unnest(generate_date_array((select min_date from day_intervals), (select max_date from day_intervals))) as date
 ),
 
-cte_generated_minutes as (
-  select interval_start as minute from minute_intervals
-),
-
--- every minute has every available ticker attached to it so we can interpolate (forward fill) the gaps
+-- every day has every available ticker attached to it so we can interpolate (forward fill) the gaps
 cte_ticker_intervals as (
   select distinct
-    cgm.minute,
+    cgm.date,
     t.ticker
   from
-    cte_generated_minutes cgm
+    cte_generated_days cgm
   cross join
     (select distinct ticker from {{ ref('stock_prices_deduped_1d') }}) t
-
 ),
 
 cte_stock_tickers as (
   select
-    ti.minute as minute,
+    ti.date,
     sp.timestamp,
     sp.timestamp_tz_aware,
     sp.timezone,
     ti.ticker,
-    nullifzero(sp.open) as open,
-    nullifzero(sp.high) as high,
-    nullifzero(sp.low) as low,
-    nullifzero(sp.close) as close,
-    sp.volume,
-    sp.dividends,
-    sp.stock_splits,
-    sp.batch_timestamp
-
+    nullif(sp.open, 0) as open,
+    nullif(sp.high, 0) as high,
+    nullif(sp.low, 0) as low,
+    nullif(sp.close, 0) as close,
+    sp.volume
   from
     cte_ticker_intervals ti
-
   left join
     {{ ref('stock_prices_deduped_1d') }} sp
   on
-    ti.minute = date_trunc('minute', sp.timestamp)
-    and ti.ticker = sp.ticker
-  )
+    ti.date = date(timestamp_trunc(sp.timestamp, day)) and ti.ticker = sp.ticker
+)
 
 select
-  st.minute,
-  st.timestamp,
-  st.timestamp_tz_aware,
-  st.timezone,
-  st.ticker,
-  coalesce(st.open, lag(st.open ignore nulls) over(partition by st.ticker order by st.minute)) as open,
-  coalesce(st.high, lag(st.high ignore nulls) over(partition by st.ticker order by st.minute)) as high,
-  coalesce(st.low, lag(st.low ignore nulls) over(partition by st.ticker order by st.minute)) as low,
-  coalesce(st.close, lag(st.close ignore nulls) over(partition by st.ticker order by st.minute)) as close,
-  coalesce(st.volume, 0) as volume,
-  coalesce(st.dividends, 0) as dividends,
-  coalesce(st.stock_splits, 0) as stock_splits,
-  coalesce(st.batch_timestamp, lag(st.batch_timestamp ignore nulls) over(partition by st.ticker order by st.minute)) as batch_timestamp
+  ct.date,
+  ct.timestamp,
+  ct.timestamp_tz_aware,
+  ct.timezone,
+  ct.ticker,
+  coalesce(ct.open, lag(ct.open) over(partition by ct.ticker order by ct.date)) as open,
+  coalesce(ct.high, lag(ct.high) over(partition by ct.ticker order by ct.date)) as high,
+  coalesce(ct.low, lag(ct.low) over(partition by ct.ticker order by ct.date)) as low,
+  coalesce(ct.close, lag(ct.close) over(partition by ct.ticker order by ct.date)) as close,
+  coalesce(ct.volume, 0) as volume
 
 from
-  cte_stock_tickers st
+  cte_stock_tickers ct
 
 {% if is_incremental() %}
-  where date(st.minute) >= (select max(date(minute) - 5) from {{ this }})
+  where ct.date >= (select max(date(date)) - 5 from {{ this }})
 {% endif %}
 
 order by 1
