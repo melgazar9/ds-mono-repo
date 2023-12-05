@@ -34,8 +34,8 @@ if __name__ == "__main__":
     HOST = '0.0.0.0'
     PORT = 5000
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    logging.warning(f'Server is listening on port {PORT}')
-    logging.warning(f'Hosting environment {ENVIRONMENT}')
+    logging.info(f'Server is listening on port {PORT}')
+    logging.info(f'Hosting environment {ENVIRONMENT}')
 
     scheduler.start()
     serve(app, host=HOST, port=PORT, threads=2)  # waitress wsgi production server
