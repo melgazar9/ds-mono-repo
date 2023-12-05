@@ -12,6 +12,11 @@ ENVIRONMENT = os.getenv('ENVIRONMENT')
 config = ConfigParser()
 config.read('config.ini')
 
+if config['TAP_YFINANCE']['VM'] == 'gcp':
+    import google.cloud.logging
+    client = google.cloud.logging.Client()
+    client.setup_logging()
+
 scheduler = BackgroundScheduler(job_defaults={'max_instances': 2})
 
 if ENVIRONMENT == 'dev':
@@ -28,7 +33,7 @@ if ENVIRONMENT == 'production':
 if __name__ == "__main__":
     HOST = '0.0.0.0'
     PORT = 5000
-    logging.root.setLevel(logging.INFO)
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     logging.warning(f'Server is listening on port {PORT}')
     logging.warning(f'Hosting environment {ENVIRONMENT}')
 
