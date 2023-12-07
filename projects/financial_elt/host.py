@@ -16,10 +16,10 @@ config = ConfigParser()
 
 config.read('config.ini')
 
-if config['TAP_YFINANCE']['VM'] == 'gcp':
-    import google.cloud.logging
-    client = google.cloud.logging.Client()
-    client.setup_logging()
+# if config['TAP_YFINANCE']['VM'] == 'gcp':
+#     import google.cloud.logging
+#     client = google.cloud.logging.Client()
+#     client.setup_logging()
 
 
 if __name__ == "__main__":
@@ -42,4 +42,5 @@ if __name__ == "__main__":
 
     scheduler.start()
 
-    serve(app, host=HOST, port=PORT, threads=2)  # waitress wsgi production server
+    # serve(app, host=HOST, port=PORT, threads=2)  # waitress wsgi production server
+    app.run(debug=True)
