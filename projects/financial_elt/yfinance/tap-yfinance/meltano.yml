@@ -1,14 +1,18 @@
 version: 1
-send_anonymous_usage_stats: true
-project_id: tap-yfinance
+send_anonymous_usage_stats: false
+project_id: ${GCP_PROJECT_ID}
+
+default_environment: dev
 
 state_backend:
   type: remote
   uri: ${GCP_BUCKET_URI}
   gcs:
     application_credentials: ${GOOGLE_APPLICATION_CREDENTIALS}
+cli:
+  log_config: google.yaml
 
-default_environment: dev
+
 environments:
   - name: dev
     config:

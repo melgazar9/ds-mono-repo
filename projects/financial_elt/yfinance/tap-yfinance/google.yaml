@@ -1,0 +1,13 @@
+version: 1
+
+disable_existing_loggers: false
+
+handlers:
+  google:
+    (): gcp_logging.get_handler
+    project: ${GCP_PROJECT_ID}
+    logger_name: meltano
+
+root:
+  level: INFO
+  handlers: [google]
