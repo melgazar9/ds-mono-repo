@@ -42,5 +42,4 @@ if __name__ == "__main__":
 
     scheduler.start()
 
-    # serve(app, host=HOST, port=PORT, threads=2)  # waitress wsgi production server
-    app.run(debug=True)
+    serve(app, host=HOST, port=PORT, threads=2)  # waitress wsgi production server
