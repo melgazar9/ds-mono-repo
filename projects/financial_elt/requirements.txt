@@ -1,5 +1,6 @@
 apscheduler==3.9.1
 Flask==2.2.3
+google-cloud-logging==3.8.0
 gunicorn==20.1.0
 Jinja2==3.1.2
 pipx==1.2.0
@@ -7,4 +8,4 @@ poetry==1.5.1
 PyYAML==6.0.0
 waitress==2.1.2
 werkzeug==2.2.2
-yagmail==0.15.283
+yagmail==0.15.293
