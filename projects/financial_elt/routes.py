@@ -51,9 +51,6 @@ def tap_yfinance_dev():
 def tap_yfinance_production():
     with app.app_context():
         project_dir = 'yfinance/tap-yfinance'
-        sys.path.append(f'{os.path.join(app.root_path)}/{project_dir}')
         run_command = f'meltano --environment=production el tap-yfinance target-{TAP_YFINANCE_TARGET} --state-id tap_yfinance_production_{TAP_YFINANCE_TARGET}'
-        shell_command = f'cd {os.path.join(app.root_path)}; {run_command};'
-        subprocess.run(shell_command, shell=True)
-        os.chdir('../../')
+        subprocess.Popen(run_command, shell=True, cwd=os.path.join(app.root_path, project_dir))
         return make_response(f'Last ran project tap-yfinance-production target {TAP_YFINANCE_TARGET} at {cur_timestamp()}.', 200)
