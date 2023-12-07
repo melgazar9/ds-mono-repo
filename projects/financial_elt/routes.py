@@ -17,8 +17,11 @@ app.url_map.strict_slashes = False
 TAP_YFINANCE_TARGET = config['TAP_YFINANCE']['tap_yfinance_target']
 assert isinstance(TAP_YFINANCE_TARGET, str), 'could not determine yfinance target'
 
-def cur_timestamp():
-    return datetime.today().replace(second=0, microsecond=0).strftime('%Y-%m-%d %H:%M:%S')
+def cur_timestamp(utc=True):
+    if utc:
+        return datetime.utcnow().replace(second=0, microsecond=0).strftime('%Y-%m-%d %H:%M:%S')
+    else:
+        return datetime.now().replace(second=0, microsecond=0).strftime('%Y-%m-%d %H:%M:%S')
 
 ### GENERAL ROUTES ###
 
