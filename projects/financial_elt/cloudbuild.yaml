@@ -1,8 +1,8 @@
 steps:
-- name: 'gcr.io/cloud-builders/git'
-  args: ['clone', '--branch', 'dev', '--single-branch', 'https://github.com/melgazar9/ds-mono-repo', '.']
-
 - name: 'docker'
-  args: [ 'build', '-t', 'gcr.io/$GCP_PROJECT_ID/financial-elt-image', './projects/financial-elt' ]
+  args: [ 'build', '-t', 'gcr.io/$GCP_PROJECT_ID/financial-elt-image', '.' ]
+
+images:
+- 'gcr.io/$GCP_PROJECT_ID/financial-elt-image'
 
 tags: ['gcp-cloud-build-financial-elt']
