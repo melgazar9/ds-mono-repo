@@ -8,10 +8,7 @@ state_backend:
   type: remote
   uri: ${GCP_BUCKET_URI}
   gcs:
-    application_credentials: ${GOOGLE_APPLICATION_CREDENTIALS}
-cli:
-  log_config: google.yaml
-
+    application_credentials: ${GCP_TAP_YFINANCE_CREDENTIALS_PATH}
 
 environments:
   - name: dev
@@ -250,7 +247,7 @@ plugins:
       pip_url: git+https://github.com/z3z1ma/target-bigquery.git@a097d69545cbbb61a2b71bd2f26e5a8bc388ebc5
       config:
         project: ${GCP_PROJECT_ID}
-        credentials_path: ${GOOGLE_APPLICATION_CREDENTIALS}
+        credentials_path: ${GCP_TAP_YFINANCE_CREDENTIALS_PATH}
         dataset: ${GCP_DATASET}
         batch_size: 10000
         denormalized: true
