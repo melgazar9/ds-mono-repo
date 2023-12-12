@@ -16,12 +16,6 @@ config = ConfigParser()
 
 config.read('config.ini')
 
-if config['TAP_YFINANCE']['VM'] == 'gcp':
-    import google.cloud.logging
-    client = google.cloud.logging.Client()
-    client.setup_logging()
-
-
 if __name__ == "__main__":
     logging.info(f'\n*** Running environment {ENVIRONMENT}. ***\n')
 
