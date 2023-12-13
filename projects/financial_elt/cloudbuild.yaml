@@ -1,5 +1,6 @@
 steps:
 - name: "gcr.io/cloud-builders/docker"
+  dir: 'projects/financial_elt'
   args:
   - build
   - "--tag=gcr.io/$PROJECT_ID/financial-elt-image"
