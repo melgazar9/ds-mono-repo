@@ -18,8 +18,8 @@ WORKDIR yfinance/tap-yfinance
 
 RUN pipx ensurepath && poetry install && pipx install "meltano[gcs]==3.1.0" && meltano install
 
-# WORKDIR $APP_HOME
+WORKDIR $APP_HOME
 
 EXPOSE 5000
 
-CMD ["sh", "-c", "meltano --environment=$ENVIRONMENT el tap-yfinance target-$TAP_YFINANCE_TARGET --state-id tap_yfinance_$ENVIRONMENT_$TAP_YFINANCE_TARGET"]
+CMD ["python", "host.py"]
