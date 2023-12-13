@@ -1,6 +1,6 @@
 steps:
 - name: 'docker'
-  args: [ 'build', '-t', 'gcr.io/$PROJECT_ID/financial-elt-image', '.' ]
+  args: [ 'build', '-t', 'gcr.io/$PROJECT_ID/financial-elt-image', '--file', './projects/financial_elt/Dockerfile' ]
 
 images:
 - 'gcr.io/$PROJECT_ID/financial-elt-image'
