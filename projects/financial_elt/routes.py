@@ -2,11 +2,7 @@ from flask import Flask, make_response, request, redirect, Blueprint, render_tem
 import os
 import subprocess
 
-from configparser import ConfigParser
 from datetime import datetime
-
-config = ConfigParser()
-config.read('config.ini')
 
 app = Flask(__name__)
 app.url_map.strict_slashes = False
@@ -14,7 +10,8 @@ app.url_map.strict_slashes = False
 
 ### GLOBALS ###
 
-TAP_YFINANCE_TARGET = config['TAP_YFINANCE']['tap_yfinance_target']
+TAP_YFINANCE_TARGET = os.getenv('TAP_YFINANCE_TARGET')
+
 assert isinstance(TAP_YFINANCE_TARGET, str), 'could not determine yfinance target'
 
 def cur_timestamp(utc=True):

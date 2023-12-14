@@ -1,7 +1,7 @@
 from routes import *
 from waitress import serve
 from apscheduler.schedulers.background import BackgroundScheduler
-from configparser import ConfigParser
+
 import logging
 import json
 
@@ -12,25 +12,21 @@ tap_yfinance_functions = {
     'production': tap_yfinance_production
 }
 
-config = ConfigParser()
-
-config.read('config.ini')
-
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     logging.info(f'\n*** Running environment {ENVIRONMENT}. ***\n')
 
     scheduler = BackgroundScheduler(job_defaults={'max_instances': 2})
 
     ###### tap-yfinance ######
 
-    tap_yfinance_cron = json.loads(config['TAP_YFINANCE'][f'{ENVIRONMENT}_CRON_PARAMS'])
+    tap_yfinance_cron = json.loads(os.getenv('TAP_YFINANCE_CRON'))
     scheduler.add_job(tap_yfinance_functions[ENVIRONMENT], trigger='cron', **tap_yfinance_cron, jitter=120)
 
     ###### host ######
 
     HOST = '0.0.0.0'
     PORT = 5000
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     logging.info(f'Server is listening on port {PORT}')
     logging.info(f'Hosting environment {ENVIRONMENT}')
 
