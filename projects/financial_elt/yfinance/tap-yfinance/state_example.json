@@ -1,0 +1,93 @@
+{
+  "bookmarks": {
+    "forex_prices_1m": {
+      "replication_key": "replication_key",
+      "replication_key_value": "2023-10-18T01:08:36.272754+00:00",
+      "partitions": [
+        {
+          "context": {
+            "ticker": "RUB=X"
+          },
+          "replication_key": "timestamp",
+          "replication_key_value": "2023-10-19T21:00:00+00:00"
+        },
+        {
+          "context": {
+            "ticker": "EURUSD=X"
+          },
+          "replication_key": "timestamp",
+          "replication_key_value": "2023-10-20T01:51:00+00:00"
+        },
+        {
+          "context": {
+            "ticker": "JPY=X"
+          },
+          "replication_key": "timestamp",
+          "replication_key_value": "2023-10-19T23:52:00+00:00"
+        }
+      ]
+    },
+    "stock_prices_1d": {
+      "replication_key": "replication_key",
+      "replication_key_value": "2023-10-18T01:08:38.791106+00:00"
+    },
+    "stock_prices_1m": {
+      "replication_key": "timestamp",
+      "replication_key_value": "2023-10-19T19:51:00+00:00",
+      "partitions": [
+        {
+          "context": {
+            "ticker": "AAPL"
+          },
+          "replication_key": "timestamp",
+          "replication_key_value": "2023-10-19T23:59:00+00:00"
+        },
+        {
+          "context": {
+            "ticker": "META"
+          },
+          "replication_key": "timestamp",
+          "replication_key_value": "2023-10-19T23:59:00+00:00"
+        }
+      ]
+    },
+    "crypto_prices_1d": {
+      "replication_key": "timestamp",
+      "replication_key_value": "2023-10-19T00:00:00+00:00",
+      "partitions": [
+        {
+          "context": {
+            "ticker": "BTC-USD"
+          },
+          "replication_key": "timestamp",
+          "replication_key_value": "2023-10-19T00:00:00+00:00"
+        },
+        {
+          "context": {
+            "ticker": "ETH-USD"
+          },
+          "replication_key": "timestamp",
+          "replication_key_value": "2023-10-19T00:00:00+00:00"
+        }
+      ]
+    },
+    "crypto_prices_1m": {
+      "partitions": [
+        {
+          "context": {
+            "ticker": "BTC-USD"
+          },
+          "replication_key": "timestamp",
+          "replication_key_value": "2023-10-20T01:49:00+00:00"
+        },
+        {
+          "context": {
+            "ticker": "ETH-USD"
+          },
+          "replication_key": "timestamp",
+          "replication_key_value": "2023-10-20T01:49:00+00:00"
+        }
+      ]
+    }
+  }
+}

@@ -10,7 +10,6 @@ class AmexFeatureCreator:
                  customer_history_cols=None,
                  customer_history_cat_cols=None,
                  target='target'):
-
         self.id_col = id_col
         self.datetime_cols = datetime_cols
         self.customer_history_cols = customer_history_cols
@@ -19,9 +18,11 @@ class AmexFeatureCreator:
 
         self.customer_history_cols = [] if self.customer_history_cols is None else self.customer_history_cols
         self.customer_history_cat_cols = [] if self.customer_history_cat_cols is None else self.customer_history_cat_cols
+        self.datetime_feature_creator = None
+        self.ordinal_encoder = None
+        self._customer_history_cols = None
 
     def fit_datetime_features(self, df):
-
         self.datetime_feature_creator = \
             FunctionTransformer(lambda x: create_datetime_features(x, datetime_cols=self.datetime_cols))
 
@@ -71,7 +72,6 @@ class AmexFeatureCreator:
         ### fit_transform df
 
         if len(self.customer_history_cat_cols):
-
             self.ordinal_encoder = OrdinalEncoder(handle_unknown='use_encoded_value',
                                                   unknown_value=-99,
                                                   encoded_missing_value=np.nan)

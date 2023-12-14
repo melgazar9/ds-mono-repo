@@ -5,19 +5,32 @@ Created on Sat Jan 30 10:57:45 2021
 @author: melgazar9
 """
 import inspect
-
 from ds_core.ds_imports import *
 from ds_core.ds_utils import *
 from ds_core.sklearn_workflow.ml_imports import *
 
 
-class SklearnMLFlow:
+class MLFlowLogger:
+    """ Logger classes """
 
+    def __init__(self, log_level=logging.INFO):
+        self.log_level = log_level
+
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(self.log_level)
+        ch = logging.StreamHandler()
+        formatter = logging.Formatter('%(asctime)s  %(name)s:  %(levelname)s  %(message)s')
+        ch.setFormatter(formatter)
+        self.logger.addHandler(ch)
+
+
+class SklearnMLFlow(MLFlowLogger):
     """
     Description
     -----------
     Automated machine learning workflow pipeline that runs ML steps in the proper sequence
     """
+
     def __init__(self,
                  df,
                  input_features,
@@ -32,12 +45,21 @@ class SklearnMLFlow:
                  algorithms=(),
                  optimizer=None,
                  evaluator=None):
+        super().__init__()
 
         self.df_input = df.copy()
         self.df_out = df.copy()
         self.target_name = target_name
         self.split_colname = split_colname
         self.clean_column_names = clean_column_names
+
+        self.new_features = None
+        self.new_feature_groups = None
+        self.feature_groups = None
+        self.output_cols = None
+        self.df_train_resampled = None
+        self.threshold_opt_name = None
+        self.feature_importances = None
 
         if input_features is None:
             if self.target_name is not None:
@@ -52,6 +74,9 @@ class SklearnMLFlow:
         self.output_features = input_features.copy()
         self.preserve_vars = preserve_vars if preserve_vars is not None \
             else [i for i in self.df_input.columns if i not in self.input_features + [self.target_name]]
+
+        if self.split_colname not in self.preserve_vars:
+            self.preserve_vars.append(self.split_colname)
 
         if self.clean_column_names:
             self.df_out = clean_columns(self.df_out)
@@ -75,7 +100,6 @@ class SklearnMLFlow:
 
         assert len(self.input_cols) == len(set(self.input_cols)), \
             "Not all features were considered! Check your inputs: input_features, preserve_vars, target_name"
-
 
     def split(self):
         self.df_out = self.splitter.split(self.df_out)
@@ -114,12 +138,12 @@ class SklearnMLFlow:
                           numeric_features=['numeric_feature1'])
         """
 
-        if hasattr(self, 'new_features') and len(self.new_features):
+        if hasattr(self, 'new_features') and self.new_features is not None and len(self.new_features):
 
             self.feature_transformer.instantiate_column_transformer(
                 self.df_out[self.df_out[self.split_colname] == 'train'],
                 self.df_out[self.df_out[self.split_colname] == 'train'][self.target_name]
-                )
+            )
 
             ### Assign feature groups ###
 
@@ -127,7 +151,7 @@ class SklearnMLFlow:
                 # assign new features to feature groups
                 self.new_feature_groups = \
                     FeatureTransformer(target_name=self.target_name,
-                                       preserve_vars=self.preserve_vars)\
+                                       preserve_vars=self.preserve_vars) \
                         .detect_feature_groups(self.df_out[self.new_features])
 
                 # append the existing feature groups with the new features
@@ -172,7 +196,7 @@ class SklearnMLFlow:
             return self
 
     def train(self, **fit_params):
-        if hasattr(self, 'df_train_resampled'):
+        if hasattr(self, 'df_train_resampled') and isinstance(self.df_train_resampled, pd.DataFrame):
             X_train = self.df_train_resampled.drop(self.target_name, axis=1)
             y_train = self.df_train_resampled[self.target_name]
         else:
@@ -180,38 +204,49 @@ class SklearnMLFlow:
             y_train = self.df_out[self.df_out[self.split_colname] == 'train'][self.target_name]
 
         if hasattr(self.algorithms, 'fit'):
-            print(f"Running {type(self.algorithms).__name__}...\n")
+            self.logger.info(f"Running {type(self.algorithms).__name__}...")
             self.algorithms.fit(X_train, y_train, **fit_params)
         else:
             assert isinstance(self.algorithms, (tuple, list))
             for algo in self.algorithms:
-                print(f"Running{type(algo).__name__}...\n")
+                self.logger.info(f"Running{type(algo).__name__}...")
                 algo.fit(X_train, y_train, **fit_params)
 
-        print("\nModel training done!\n")
+        self.logger.info("Model training done!")
         return self
 
     def predict(self):
-        print(f"Predicting models...\n")
+        self.logger.info(f"Predicting models...")
 
-        if hasattr(self.algorithms, 'predict_proba'):
+        if not isinstance(self.algorithms, (tuple, list)) and hasattr(self.algorithms, 'predict_proba'):
             self.df_out[type(self.algorithms).__name__ + '_pred'] = \
                 self.algorithms.predict_proba(self.df_out[self.output_features])[:, 1]
 
-        elif hasattr(self.algorithms, 'decision_function'):
+        elif not isinstance(self.algorithms, (tuple, list)) and hasattr(self.algorithms, 'decision_function'):
             self.df_out[type(self.algorithms).__name__ + '_pred'] = \
-                        algo.decision_function(self.df_out[self.output_features])[:, 1]
+                algo.decision_function(self.df_out[self.output_features])[:, 1]
 
         else:
             assert isinstance(self.algorithms, (tuple, list))
 
             for algo in self.algorithms:
                 if hasattr(algo, 'predict_proba'):
+                    self.logger.info('Running predict_proba as predict method.')
                     self.df_out[type(algo).__name__ + '_pred'] = \
                         algo.predict_proba(self.df_out[self.output_features])[:, 1]
                 elif hasattr(algo, 'decision_function'):
+                    self.logger.info('Running decision_function as predict method.')
                     self.df_out[type(algo).__name__ + '_pred'] = \
                         algo.decision_function(self.df_out[self.output_features])[:, 1]
+                elif hasattr(algo, 'predict'):
+                    self.logger.info('Running predict as predict method.')
+                    self.df_out[type(algo).__name__ + '_pred'] = \
+                        algo.predict(self.df_out[self.output_features])
+                else:
+                    raise ValueError('Could not run prediction on dataset.')
+
+        assert len([i for i in self.df_out.columns if i.endswith('_pred')]) > 0, \
+            'Could not set prediction colname on self.df_out'
 
         return self
 
@@ -226,7 +261,7 @@ class SklearnMLFlow:
         ### assign the train rows to be used for threshold optimization ###
 
         # pct_train_of_val ex) val set has 100 rows, then train_set_for_opt should be 10 rows, but this is not
-        # how it currently works. Based on past experience, models have performed much worse.
+        # how it currently works. Based on experience, models have performed much worse.
         # n_train_values = int(self.df_out[self.df_out[self.split_colname] == 'val'].shape[0] * pct_train_for_opt)
 
         n_train_values = int(self.df_out[self.df_out[self.split_colname] == 'train'].shape[0] * pct_train_for_opt)
@@ -278,7 +313,6 @@ class SklearnMLFlow:
 
         return self
 
-
     def evaluate(self, splits_to_evaluate=('train', 'val', 'test'), **kwargs):
         evaluator_params = {}
         for param in [i for i in inspect.getfullargspec(self.evaluator.__init__).args if i != 'self']:
@@ -301,7 +335,7 @@ class SklearnMLFlow:
         self.feature_importances = {}
         for algo in self.algorithms:
             self.feature_importances[type(algo).__name__] = \
-                FeatureImportance(model=algo, df=self.df_out, input_features=self.output_features)\
+                FeatureImportance(model=algo, df=self.df_out, input_features=self.output_features) \
                     .get_feature_importance()
         return self
 
@@ -377,14 +411,14 @@ class SklearnMLFlow:
         return self
 
 
-def get_column_names_from_ColumnTransformer(column_transformer, clean_column_names=True, verbose=False):
+def get_column_names_from_column_transformer(column_transformer, clean_column_names=True, verbose=False):
     """
     Reference: Kyle Gilde: https://github.com/kylegilde/Kaggle-Notebooks/blob/master/Extracolumn_transformering-and-Plotting-Scikit-Feature-Names-and-Importances/feature_importance.py
     Description: Get the column names from the a ColumnTransformer containing transformers & pipelines
 
     Parameters
     ----------
-    verbose: Bool indicating whether to print summaries. Default set to True.
+    verbose: Bool indicating whether to self.logger.info summaries. Default set to True.
     Returns
     -------
     a list of the correcolumn_transformer feature names
@@ -415,8 +449,9 @@ def get_column_names_from_ColumnTransformer(column_transformer, clean_column_nam
                 continue
 
             if verbose:
-                print(f"\n\n{i}.Transformer/Pipeline: {transformer_name} {transformer.__class__.__name__}\n")
-                print(f"\tn_orig_feature_names:{len(orig_feature_names)}")
+                self.logger.info(f"{i}.Transformer/Pipeline: {transformer_name} {transformer.__class__.__name__}")
+                self.logger.info(f"{i}.Transformer/Pipeline: {transformer_name} {transformer.__class__.__name__}")
+                self.logger.info(f"n_orig_feature_names:{len(orig_feature_names)}")
 
             if transformer == 'drop' or transformer == 'passthrough':
                 continue
@@ -483,8 +518,8 @@ def get_column_names_from_ColumnTransformer(column_transformer, clean_column_nam
                         names = orig_feature_names
 
                     if verbose:
-                        print(f"\tn_new_features:{len(names)}")
-                        print(f"\tnew_features: {names}\n")
+                        self.logger.info(f"n_new_features:{len(names)}")
+                        self.logger.info(f"new_features: {names}")
 
             new_column_names.extend(names)
             transformer_list.extend([transformer_name] * len(names))
@@ -500,7 +535,7 @@ def get_column_names_from_ColumnTransformer(column_transformer, clean_column_nam
     return new_column_names
 
 
-class FeatureTransformer(TransformerMixin):
+class FeatureTransformer(TransformerMixin, MLFlowLogger):
     """
     Parameters
     ----------
@@ -510,7 +545,7 @@ class FeatureTransformer(TransformerMixin):
                 drop preserve_vars or keep them in the final dataset
                 options are 'drop' or 'passthrough'
     max_lc_cardinality : A natural number - one-hot encode all features with unique categories <= to this value
-    FE_pipeline_dict : Set to None to use "standard" feature engineering pipeline.
+    fe_pipeline_dict : Set to None to use "standard" feature engineering pipeline.
         Otherwise, supply a dictionary of pipelines to hc_pipe, lc_pipe, numeric_pipe, and custom_pipe
             numeric_pipe: numeric pipeline
             hc_pipe: high-cardinal pipeline
@@ -534,7 +569,7 @@ class FeatureTransformer(TransformerMixin):
     def __init__(self,
                  target_name=None,
                  preserve_vars=None,
-                 FE_pipeline_dict=None,
+                 fe_pipeline_dict=None,
                  remainder='passthrough',
                  max_lc_cardinality=11,
                  run_detect_feature_groups=True,
@@ -546,10 +581,10 @@ class FeatureTransformer(TransformerMixin):
                  clean_column_names=True,
                  make_copy=True,
                  verbose=True):
-
-        self.preserve_vars =preserve_vars
+        super().__init__()
+        self.preserve_vars = preserve_vars
         self.target_name = target_name
-        self.FE_pipeline_dict = FE_pipeline_dict
+        self.FE_pipeline_dict = fe_pipeline_dict
         self.remainder = remainder
         self.max_lc_cardinality = max_lc_cardinality
         self.run_detect_feature_groups = run_detect_feature_groups
@@ -558,7 +593,7 @@ class FeatureTransformer(TransformerMixin):
         self.hc_features = [] if hc_features is None else hc_features
         self.overwrite_detection = overwrite_detection
         self.n_jobs = n_jobs
-        self.clean_column_names = clean_column_names,
+        self.clean_column_names = clean_column_names
         self.verbose = verbose
         self.make_copy = make_copy
         self.preserve_vars = [] if self.preserve_vars is None else self.preserve_vars
@@ -567,12 +602,18 @@ class FeatureTransformer(TransformerMixin):
                                                     remainder=self.remainder,
                                                     n_jobs=self.n_jobs)
 
+        self.input_features = None
+        self.feature_groups = None
+        self.output_cols = None
+        self.preserve_vars_orig = None
+
     def detect_feature_groups(self, X):
 
-        if self.make_copy: X = X.copy()
+        if self.make_copy:
+            X = X.copy()
 
         if not self.run_detect_feature_groups:
-            if self.verbose: print('Not detecting dtypes.')
+            if self.verbose: self.logger.info('Not detecting dtypes.')
 
             feature_dict = {'numeric_features': self.numeric_features,
                             'lc_features': self.lc_features,
@@ -586,132 +627,129 @@ class FeatureTransformer(TransformerMixin):
         else:
             custom_features = []
 
-        assert len(np.intersect1d(list(set(self.numeric_features + \
-                                           self.lc_features + \
-                                           self.hc_features + \
-                                           custom_features)), \
+        assert len(np.intersect1d(list(set(self.numeric_features +
+                                           self.lc_features +
+                                           self.hc_features +
+                                           custom_features)),
                                   self.preserve_vars)) == 0, \
             'There are duplicate features in preserve_vars either the input\
              numeric_features, lc_features, or hc_features'
 
         detected_numeric_vars = make_column_selector(dtype_include=np.number)(
-            X[[i for i in X.columns \
-               if i not in self.preserve_vars + \
-               [self.target_name] + \
-               custom_features]])
+            X[[i for i in X.columns if i not in self.preserve_vars + [self.target_name] + custom_features]]
+        )
 
-        detected_lc_vars = [i for i in X.loc[:, (X.nunique(dropna=False) <= self.max_lc_cardinality) & \
-                                                (X.nunique(dropna=False) > 1)].columns \
-                            if i not in self.preserve_vars + \
-                            [self.target_name] + \
+        detected_lc_vars = [i for i in X.loc[:, (X.nunique(dropna=False) <= self.max_lc_cardinality) &
+                                                (X.nunique(dropna=False) > 1)].columns
+                            if i not in self.preserve_vars +
+                            [self.target_name] +
                             custom_features]
 
-        detected_hc_vars = X[[i for i in X.columns \
-                              if i not in self.preserve_vars + \
+        detected_hc_vars = X[[i for i in X.columns
+                              if i not in self.preserve_vars +
                               custom_features]] \
             .select_dtypes(['object', 'category']) \
             .apply(lambda col: col.nunique(dropna=False)) \
             .loc[lambda x: x > self.max_lc_cardinality] \
             .index.tolist()
 
-        discarded_features = [i for i in X.isnull().sum()[X.isnull().sum() == X.shape[0]].index \
+        discarded_features = [i for i in X.isnull().sum()[X.isnull().sum() == X.shape[0]].index
                               if i not in self.preserve_vars]
 
-        numeric_features = list(set([i for i in self.numeric_features + \
-                                     [i for i in detected_numeric_vars \
-                                      if i not in list(self.lc_features) + \
-                                      list(self.hc_features) + \
-                                      list(discarded_features) + \
+        numeric_features = list(set([i for i in self.numeric_features +
+                                     [i for i in detected_numeric_vars
+                                      if i not in list(self.lc_features) +
+                                      list(self.hc_features) +
+                                      list(discarded_features) +
                                       custom_features]]))
 
-        lc_features = list(set([i for i in self.lc_features + \
-                                [i for i in detected_lc_vars \
-                                 if i not in list(self.numeric_features) + \
-                                 list(self.hc_features) + \
-                                 list(discarded_features) + \
+        lc_features = list(set([i for i in self.lc_features +
+                                [i for i in detected_lc_vars
+                                 if i not in list(self.numeric_features) +
+                                 list(self.hc_features) +
+                                 list(discarded_features) +
                                  custom_features]]))
 
-        hc_features = list(set([i for i in self.hc_features + \
-                                [i for i in detected_hc_vars \
-                                 if i not in list(self.numeric_features) + \
-                                 list(self.lc_features) + \
-                                 list(discarded_features) + \
+        hc_features = list(set([i for i in self.hc_features +
+                                [i for i in detected_hc_vars
+                                 if i not in list(self.numeric_features) +
+                                 list(self.lc_features) +
+                                 list(discarded_features) +
                                  custom_features]]))
 
         if self.verbose:
-            print('Overlap between numeric and lc_features: ' + \
-                  str(list(set(np.intersect1d(numeric_features, lc_features)))))
-            print('Overlap between numeric and hc_features: ' + \
-                  str(list(set(np.intersect1d(numeric_features, hc_features)))))
-            print('Overlap between numeric lc_features and hc_features: ' + \
-                  str(list(set(np.intersect1d(lc_features, hc_features)))))
-            print('Overlap between lc_features and hc_features will be moved to lc_features')
+            self.logger.info('Overlap between numeric and lc_features: ' +
+                             str(list(set(np.intersect1d(numeric_features, lc_features)))))
+            self.logger.info('Overlap between numeric and hc_features: ' +
+                             str(list(set(np.intersect1d(numeric_features, hc_features)))))
+            self.logger.info('Overlap between numeric lc_features and hc_features: ' +
+                             str(list(set(np.intersect1d(lc_features, hc_features)))))
+            self.logger.info('Overlap between lc_features and hc_features will be moved to lc_features')
 
         if self.overwrite_detection:
-            numeric_features = [i for i in numeric_features \
-                                if i not in lc_features + \
-                                hc_features + \
-                                discarded_features + \
+            numeric_features = [i for i in numeric_features
+                                if i not in lc_features +
+                                hc_features +
+                                discarded_features +
                                 custom_features]
 
-            lc_features = [i for i in lc_features \
-                           if i not in hc_features + \
-                           numeric_features + \
-                           discarded_features + \
+            lc_features = [i for i in lc_features
+                           if i not in hc_features +
+                           numeric_features +
+                           discarded_features +
                            custom_features]
 
-            hc_features = [i for i in hc_features if i not in \
-                           lc_features + \
-                           numeric_features + \
-                           discarded_features + \
+            hc_features = [i for i in hc_features if i not in
+                           lc_features +
+                           numeric_features +
+                           discarded_features +
                            custom_features]
 
         else:
-            numeric_overlap = [i for i in numeric_features \
-                               if i in lc_features \
-                               or i in hc_features \
-                               and i not in discarded_features + \
+            numeric_overlap = [i for i in numeric_features
+                               if i in lc_features
+                               or i in hc_features
+                               and i not in discarded_features +
                                custom_features]
 
-            lc_overlap = [i for i in lc_features \
-                          if i in hc_features \
-                          or i in numeric_features \
-                          and i not in discarded_features + \
+            lc_overlap = [i for i in lc_features
+                          if i in hc_features
+                          or i in numeric_features
+                          and i not in discarded_features +
                           custom_features]
 
-            hc_overlap = [i for i in hc_features \
-                          if i in lc_features \
-                          or i in numeric_features \
-                          and i not in discarded_features + \
+            hc_overlap = [i for i in hc_features
+                          if i in lc_features
+                          or i in numeric_features
+                          and i not in discarded_features +
                           custom_features]
 
             if numeric_overlap or lc_overlap or hc_overlap:
                 raise AssertionError('There is an overlap between numeric, \
-                                     lc, and hc features! \
-                                     To ignore this set overwrite_detection to True.')
+                                      lc, and hc features! \
+                                      To ignore this set overwrite_detection to True.')
 
-        all_features = list(set(numeric_features + \
-                                lc_features + \
-                                hc_features + \
-                                discarded_features + \
+        all_features = list(set(numeric_features +
+                                lc_features +
+                                hc_features +
+                                discarded_features +
                                 custom_features))
 
-        all_features_debug = set(all_features) - \
-                             set([i for i in X.columns \
-                                  if i not in \
-                                  self.preserve_vars + [self.target_name]])
+        all_features_debug = set(all_features) - set(
+            [i for i in X.columns if i not in self.preserve_vars + [self.target_name]]
+        )
 
         if len(all_features_debug) > 0:
-            print('\n{}\n'.format(all_features_debug))
+            self.logger.info('{}'.format(all_features_debug))
             raise AssertionError('There was a problem detecting all features!! \
                 Check if there is an overlap between preserve_vars and other custom input features')
 
         if self.verbose:
-            print(f'\nnumeric_features: {numeric_features}')
-            print(f'\nlc_features: {lc_features}')
-            print(f'\nhc_features: {hc_features}')
-            print(f'\ndiscarded_features: {discarded_features}')
-            print(f'\ncustom_features: {custom_features}')
+            self.logger.info(f'numeric_features: {numeric_features}')
+            self.logger.info(f'lc_features: {lc_features}')
+            self.logger.info(f'hc_features: {hc_features}')
+            self.logger.info(f'discarded_features: {discarded_features}')
+            self.logger.info(f'custom_features: {custom_features}')
 
         feature_dict = {'numeric_features': numeric_features,
                         'lc_features': lc_features,
@@ -725,7 +763,7 @@ class FeatureTransformer(TransformerMixin):
         if self.target_name is None and y is not None:
             self.target_name = y.name
 
-        assert y is not None or self.target_name is not None, '\n Both self.target_name and y cannot be None!'
+        assert y is not None or self.target_name is not None, 'Both self.target_name and y cannot be None!'
 
         self.feature_groups = self.detect_feature_groups(X)
 
@@ -735,18 +773,17 @@ class FeatureTransformer(TransformerMixin):
             ### Default pipelines ###
 
             na_replacer = \
-                FunctionTransformer(lambda x: \
-                                        x.replace([-np.inf, np.inf, None, 'None', \
-                                                   '', ' ', 'nan', 'Nan'], \
-                                                  np.nan),
-                                    feature_names_out='one-to-one')
+                FunctionTransformer(
+                    lambda x: x.replace([-np.inf, np.inf, None, 'None', '', ' ', 'nan', 'Nan'], np.nan),
+                    feature_names_out='one-to-one'
+                )
 
             numeric_pipe = make_pipeline(
                 na_replacer,
                 # Winsorizer(distribution='gaussian', tail='both', fold=3, missing_values = 'ignore'),
                 MinMaxScaler(feature_range=(0, 1)),
                 SimpleImputer(strategy='median', add_indicator=True)
-                )
+            )
 
             hc_pipe = make_pipeline(
                 na_replacer,
@@ -759,12 +796,12 @@ class FeatureTransformer(TransformerMixin):
                               handle_unknown='value',
                               min_samples_leaf=1,
                               smoothing=10)
-                )
+            )
 
             lc_pipe = make_pipeline(
                 na_replacer,
                 OneHotEncoder(handle_unknown='ignore', sparse=False)
-                )
+            )
 
             custom_pipe = None
 
@@ -788,8 +825,8 @@ class FeatureTransformer(TransformerMixin):
                     if 'cols' in list(inspect.signature(t.__class__).parameters.keys()):
                         t.cols = cols
             else:
-                if 'cols' in list(inspect.signature(t.__class__).parameters.keys()):
-                    t.cols = transformer[-1]
+                if 'cols' in list(inspect.signature(transformer.__class__).parameters.keys()):
+                    transformer.cols = transformer[-1]
 
         if custom_pipe:
             setattr(self, 'custom_features', list(set(np.concatenate(list(custom_pipe.values())))))
@@ -809,11 +846,11 @@ class FeatureTransformer(TransformerMixin):
         else:
             self.column_transformer.fit(X, y)
 
-        self.output_cols = get_column_names_from_ColumnTransformer(self.column_transformer,
-                                                                   clean_column_names=self.clean_column_names,
-                                                                   verbose=self.verbose)
+        self.output_cols = get_column_names_from_column_transformer(self.column_transformer,
+                                                                    clean_column_names=self.clean_column_names,
+                                                                    verbose=self.verbose)
 
-        input_features = \
+        self.input_features = \
             self.feature_groups['numeric_features'] + \
             self.feature_groups['lc_features'] + \
             self.feature_groups['hc_features'] + \
@@ -842,7 +879,7 @@ class FeatureTransformer(TransformerMixin):
             return X_out
 
 
-class FeatureImportance:
+class FeatureImportance(MLFlowLogger):
     """
     Description
     -----------
@@ -855,7 +892,7 @@ class FeatureImportance:
     input_features: list of input features that went into the model training
     round_decimals: int of decimals to round the output feature importances to
 
-    verbose: Bool to print statements during calculation
+    verbose: Bool to self.logger.info statements during calculation
 
     """
 
@@ -869,19 +906,22 @@ class FeatureImportance:
         if self.df is not None:
             self.input_features = self.df.columns if self.input_features is None else self.input_features
 
+        super().__init__()
+
     def get_feature_importance(self):
 
         assert (self.df is not None or self.input_features is not None) \
-               and self.model is not None, \
-            "Both the input self.df and self.input_features \
-             cannot be None when calculating feature importance!"
+               and self.model is not None, """
+               Both the input self.df and self.input_features \
+               cannot be None when calculating feature importance!
+             """
 
         # sklearn tree models usually have the feature_importance_ attribute
         try:
             importances = self.model.feature_importances_
             feature_importances = \
                 pd.Series(importances,
-                          index=self.input_features)\
+                          index=self.input_features) \
                     .sort_values(ascending=False).reset_index()
 
         # sklearn linear models usually have the .coef_ attribute
@@ -893,12 +933,11 @@ class FeatureImportance:
                 feature_importances.reset_index(inplace=True)
                 feature_importances.drop('coefs', inplace=True, axis=1)
             except:
-                print("Cannot get feature importance for this model")
-                return
+                raise ValueError("Cannot get feature importance for this model")
 
         assert len(self.input_features) == len(feature_importances), \
             f"The number of feature names {len(self.input_features)}\
-              and importance values {len(importances)} don't match"
+              and importance values {len(feature_importances)} don't match"
 
         feature_importances.columns = ['feature', 'importance']
 
@@ -980,7 +1019,7 @@ class FeatureImportance:
             return
 
 
-class ImbResampler():
+class ImbResampler(MLFlowLogger):
     """
     Parameters
     ----------
@@ -997,17 +1036,20 @@ class ImbResampler():
     """
 
     def __init__(self, algorithm):
+        super().__init__()
         self.algorithm = algorithm
 
     def fit_transform(self, X, y):
-        ds_print('Running {}'.format(type(self.algorithm).__name__))
+        ds_self.logger.info('Running {}'.format(type(self.algorithm).__name__))
         df_resampled = self.algorithm.fit_resample(X, y)
         return df_resampled
+
 
 def r_squared(y_true, y_pred):
     return np.corrcoef(y_true, y_pred)[0, 1] ** 2
 
-class CalcMLMetrics:
+
+class CalcMLMetrics(MLFlowLogger):
     """
     Description
     -----------
@@ -1023,6 +1065,12 @@ class CalcMLMetrics:
 
     def __init__(self, round_decimals=3):
         self.round_decimals = round_decimals
+        self.target_name = None
+        self.df = None
+        self.fits = None
+        self.metric_fn = None
+
+        super().__init__()
 
     @staticmethod
     def calc_regression_metrics(y_true=None, y_pred=None):
@@ -1056,8 +1104,9 @@ class CalcMLMetrics:
         ----------
 
         Returns
-        dictionary of classification scores
         -------
+        dictionary of classification scores
+
         """
 
         assert not y_true.isnull().any(), 'y_true cannot have NAs!'
@@ -1101,6 +1150,8 @@ class CalcMLMetrics:
         :param df: pandas df witht he target_name and fits
         :param target_name: str of the target name
         :param fits: list or tuple of fits in the dataframe to evaluate
+        :param classification_or_regression: str if the model is a classification or regression model
+        :param clf_threshold: float threshold for classification models to predict a positive class
         :param groupby_cols: list or tuple of cols to groupby when calculating the ML metrics
         :param drop_nas: Bool to drop NA values before evaluation
         :param groupby_col_order: dict of the order to sort the groupby_cols
@@ -1109,6 +1160,9 @@ class CalcMLMetrics:
         Returns: pandas dataframe with calculated ML metrics
 
         """
+
+        # TODO: Make groupby_col_order immutable
+
         assert df[target_name].isnull().sum() == 0, 'There cannot be NAs in the target variable'
         num_threads = mp.cpu_count() if num_threads < 0 else num_threads
 
@@ -1129,6 +1183,8 @@ class CalcMLMetrics:
             self.fits = list(self.fits)
         elif isinstance(self.fits, str):
             self.fits = [self.fits]
+
+        assert len(self.fits) > 0, 'fits cannot empty.'
 
         if num_threads > 1:
             raise NotImplementedError('Multi-threading not implemented yet!')
@@ -1162,7 +1218,7 @@ class CalcMLMetrics:
                         df.groupby(self.groupby_cols, dropna=drop_nas) \
                             .apply(lambda x: self.metric_fn(x[self.target_name], x[fit])) \
                             .reset_index() \
-                            .pipe(lambda x: x[self.groupby_cols].join(json_normalize(x[0])))\
+                            .pipe(lambda x: x[self.groupby_cols].join(json_normalize(x[0]))) \
                             .assign(fit=fit)
 
                     self.metrics_df = pd.concat([self.metrics_df, _metrics_df])
@@ -1228,11 +1284,12 @@ class CalcMLMetrics:
             for data in fig.data:
                 data["width"] = 1
 
-        if save_plot_loc: plotly.offline.plot(fig, filename=save_plot_loc)
+        if save_plot_loc:
+            plotly.offline.plot(fig, filename=save_plot_loc)
         return fig
 
-class ThresholdOptimizer:
 
+class ThresholdOptimizer(MLFlowLogger):
     """
     Description
     -----------
@@ -1253,7 +1310,7 @@ class ThresholdOptimizer:
         self.pred_class_col = pred_class_col
         self.make_copy = make_copy
 
-        if self.make_copy:
+        if self.make_copy and isinstance(df, pd.DataFrame):
             self.df = self.df.copy()
 
     def optimize(self, thresholds=None):
@@ -1310,7 +1367,7 @@ class ThresholdOptimizer:
         assert (self.df is not None) and (self.pred_column is not None), \
             "Both self.df and self.pred_column must be provided when calling self.assign_predicted_class."
 
-        if (self.pred_class_col in self.df.columns):
+        if self.pred_class_col in self.df.columns:
             warnings.warn(f"pred_class_col {self.pred_class_col} is in self.df. \
                 The column {self.pred_class_col} will be overwritten.")
 
@@ -1361,9 +1418,17 @@ class ScoreThresholdOptimizer(ThresholdOptimizer):
     """
 
     def __init__(self, optimization_func, y_pred=None, y_true=None):
+        super().__init__()
+
         self.optimization_func = optimization_func
         self.y_pred = y_pred
         self.y_true = y_true
+
+        self.thresholds = None
+        self.scores = None
+        self.threshold_df = None
+        self.best_score = None
+        self.best_thresholds = None
 
     def optimize(self, thresholds=None, num_threads=1):
 
@@ -1448,7 +1513,6 @@ class ScoreThresholdOptimizer(ThresholdOptimizer):
 
         return self
 
-
     def run_optimization(self, fits, minimize_or_maximize, df=None, target_name=None, num_threads=1):
         """
         Description
@@ -1469,16 +1533,15 @@ class ScoreThresholdOptimizer(ThresholdOptimizer):
         df = df[fits + [target_name]]
 
         ### sanity checks ###
-        
+
         if df is None and len(fits) > 1:
             raise AssertionError('The parameter df must be specified (with fit columns present) len(fits) > 1.')
 
         if num_threads > 1:
             raise NotImplementedError("Multi-threading not implemented yet!")
 
-
         ### run the optimization ###
-        
+
         if len(fits) == 1:
             self.optimize()
             self.get_best_thresholds()
@@ -1494,36 +1557,54 @@ class ScoreThresholdOptimizer(ThresholdOptimizer):
 
         return self
 
-class AbstractSplitter:
+
+class AbstractSplitter(MLFlowLogger):
 
     def __init__(self, split_colname='dataset_split'):
+        super().__init__()
         self.split_colname = split_colname
 
     def split(self):
         raise ValueError('The split method must be overridden.')
 
+
 class SimpleSplitter(AbstractSplitter):
 
     def __init__(self, train_pct=0.7, val_pct=0.15):
         super().__init__()
+
         self.train_pct = train_pct
         self.val_pct = val_pct
+
     def split(self, df):
+        """
+        Add a column from self.dataset_split that splits the pandas dataframe (e.g. train, val, test)
+
+        :param df: pandas dataframe
+        :returns pandas df
+        """
+        assert isinstance(df, pd.DataFrame), 'Input data must be a pandas df.'
+
         df.reset_index(drop=True, inplace=True)
         df.loc[0: int(df.shape[0] * self.train_pct), self.split_colname] = 'train'
 
-        df.loc[int(df.shape[0] * self.train_pct):
-               int(df.shape[0] * self.train_pct) + int(df.shape[0] * self.val_pct),
-            self.split_colname] = 'val'
+        val_start = int(df.shape[0] * self.train_pct)
+        val_end = int(df.shape[0] * self.train_pct) + int(df.shape[0] * self.val_pct)
+        test_start = int(df.shape[0] * self.train_pct) + int(df.shape[0] * self.val_pct)
 
-        df.loc[int(df.shape[0] * self.train_pct) + int(df.shape[0] * self.val_pct): , self.split_colname] = 'test'
+        df.loc[val_start: val_end, self.split_colname] = 'val'
+        df.loc[test_start:, self.split_colname] = 'test'
         return df
 
 
-class AbstractEvaluator:
+class AbstractEvaluator(MLFlowLogger):
+
+    def __init__(self):
+        super().__init__()
 
     def evaluate(self):
         raise ValueError('The evaluate method must be overridden.')
+
 
 class GenericMLEvaluator(AbstractEvaluator):
 
@@ -1549,6 +1630,8 @@ class GenericMLEvaluator(AbstractEvaluator):
         self.num_threads = num_threads
         self.round_decimals = round_decimals
 
+        self.evaluation_output = None
+
     def evaluate(self, **calc_ml_metrics_params):
         evaluator = CalcMLMetrics(round_decimals=self.round_decimals)
 
@@ -1569,8 +1652,10 @@ class GenericMLEvaluator(AbstractEvaluator):
                 groupby_col_order=self.groupby_col_order,
                 num_threads=self.num_threads
             )
+
         self.evaluation_output.reset_index(drop=True, inplace=True)
-        self.evaluation_output =\
+
+        self.evaluation_output = \
             self.evaluation_output[['fit'] + [i for i in self.evaluation_output.columns if i != 'fit']]
 
         return self

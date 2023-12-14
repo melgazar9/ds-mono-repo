@@ -72,7 +72,7 @@ def flatten_multindex_columns(df):
 def flatten_list(lst):
     return [v for item in lst for v in (item if isinstance(item, list) else [item])]
 
-def cur_timestamp(clean_string=True):
+def cur_timestamp(clean_string=False):
     ts = datetime.today().replace(second=0, microsecond=0).strftime('%Y-%m-%d %H:%M:%S')
     if clean_string:
         ts = ts.replace(' ', '__').replace(':', '_')
@@ -96,14 +96,10 @@ def send_email(to_addrs,
                body='',
                files=None,
                password=None):
-
     if password is None or from_addr is None:
         email_credentials = os.environ.get('EMAIL_CREDENTIALS')
 
-        try:
-            email_credentials = json.loads(email_credentials)
-        except json.decoder.JSONDecodeError:
-            email_credentials = json.loads(email_credentials.replace("'", "\""))
+        email_credentials = json_string_to_dict(email_credentials)
 
         assert isinstance(email_credentials, dict), "Error parsing email credentials."
 
@@ -146,3 +142,72 @@ def json_string_to_dict(json_string):
                     raise AssertionError('String parsing failed!')
 
     return string_as_dict
+
+def get_contents_timestamps_from_dir(directory,
+                                     get_files_only=False,
+                                     get_directories_only=False,
+                                     excluded_files=None,
+                                     excluded_dirs=None):
+    assert not (get_files_only and get_directories_only),\
+        'Both parameters get_files_only and get_directories_only cannot be set to True!'
+
+    if not directory.endswith('/'):
+        directory = f"{directory}/"
+
+    excluded_files = (excluded_files,) if isinstance(excluded_files, str) else excluded_files
+    if excluded_dirs is not None:
+        if isinstance(excluded_dirs, str):
+            excluded_dirs = (excluded_dirs,)
+        excluded_dirs = [i[0:-1] if i.endswith('/') else i for i in excluded_dirs]
+
+    if not get_directories_only:
+        list_of_files = sorted(filter(os.path.isfile, glob(directory + '*')), key=os.path.getmtime)
+        if excluded_files is not None and len(excluded_files):
+            list_of_files = [i for i in list_of_files if i not in [f"{directory}{j}" for j in excluded_files]]
+    else:
+        list_of_files = []
+
+    if not get_files_only:
+        list_of_dirs = sorted(filter(os.path.isdir, glob(directory + '*')), key=os.path.getmtime)
+        if excluded_dirs is not None and len(excluded_dirs):
+            list_of_dirs = [i for i in list_of_dirs if i not in [f"{directory}{j}" for j in excluded_dirs]]
+    else:
+        list_of_dirs = []
+
+    list_of_contents = list(set(list_of_files + list_of_dirs))
+
+    df_contents = pd.DataFrame()
+    if list_of_contents:
+        print(f'*** {df_contents} ***')
+        for content_path in list_of_contents:
+            modified_timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(os.path.getmtime(content_path)))
+            df_tmp = pd.DataFrame({'content_path': [content_path], 'last_modified': [modified_timestamp]})
+            df_contents = pd.concat([df_contents, df_tmp], axis=0)
+
+        df_contents.drop_duplicates(inplace=True)
+        df_contents['last_modified'] = pd.to_datetime(df_contents['last_modified'])
+    return df_contents
+
+def remove_old_contents(directory,
+                        start_timestamp=datetime.now(),
+                        lookback_days=7,
+                        remove_files_only=False,
+                        remove_directories_only=False,
+                        excluded_files=('.gitignore', '.gitkeep'),
+                        excluded_dirs=None):
+
+    df_contents =\
+        get_contents_timestamps_from_dir(directory,
+                                         get_files_only=remove_files_only,
+                                         get_directories_only=remove_directories_only,
+                                         excluded_files=excluded_files,
+                                         excluded_dirs=excluded_dirs
+                                         )
+
+    if df_contents.shape[0]:
+        min_keep_timestamp = pd.to_datetime(start_timestamp - pd.Timedelta(days=lookback_days))
+        contents_to_delete = df_contents[df_contents['last_modified'] < min_keep_timestamp]['content_path'].tolist()
+
+        ### delete the files ###
+        subprocess.run(f"rm -rf {' '.join(contents_to_delete)}", shell=True)
+    return

@@ -1,0 +1,266 @@
+version: 1
+send_anonymous_usage_stats: false
+project_id: ${GCP_PROJECT_ID}
+
+default_environment: dev
+
+state_backend:
+  type: remote
+  uri: ${GCP_BUCKET_URI}
+  gcs:
+    application_credentials: ${GCP_TAP_YFINANCE_CREDENTIALS_PATH}
+
+environments:
+  - name: dev
+    config:
+      plugins:
+        loaders:
+          - name: target-snowflake
+            env:
+              TARGET_SNOWFLAKE_DEFAULT_TARGET_SCHEMA: TAP_YFINANCE_DEV
+
+  - name: production
+    config:
+      plugins:
+        loaders:
+          - name: target-snowflake
+            env:
+              TARGET_SNOWFLAKE_DEFAULT_TARGET_SCHEMA: TAP_YFINANCE_PRODUCTION
+
+plugins:
+  extractors:
+    - name: "tap-yfinance"
+      namespace: "tap_yfinance"
+      pip_url: git+https://github.com/melgazar9/tap-yfinance@bcd32e6319cf79f9a09dcf339e3cb62e37fbae9d
+
+      capabilities:
+        - state
+        - catalog
+        - discover
+        - about
+        - stream-maps
+
+      select:
+        - stock_tickers
+        - forex_tickers
+        - crypto_tickers
+        - stock_prices_1m
+        - forex_prices_1m
+        - crypto_prices_1m
+        - stock_prices_2m
+        - forex_prices_2m
+        - crypto_prices_2m
+        - stock_prices_5m
+        - forex_prices_5m
+        - crypto_prices_5m
+        - stock_prices_1h
+        - forex_prices_1h
+        - crypto_prices_1h
+        - stock_prices_1d
+        - forex_prices_1d
+        - crypto_prices_1d
+
+      config:
+        default_start_date: "1950-01-01"
+        add_record_metadata: true
+        financial_category:
+
+          ### tickers ###
+
+          tickers:
+            stock_tickers:
+              tickers: '*'
+              schema_category: stock_tickers
+            forex_tickers:
+              tickers: '*'
+              schema_category: forex_tickers
+            crypto_tickers:
+              tickers: '*'
+              schema_category: crypto_tickers
+
+          ### prices ###
+
+          prices:
+            stock_prices_1m:
+              tickers: '*'
+              yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+              schema_category: stock_prices
+
+            forex_prices_1m:
+              tickers: '*'
+              yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+              schema_category: forex_prices
+
+            crypto_prices_1m:
+              tickers: '*'
+              yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+              schema_category: crypto_prices
+
+
+            stock_prices_2m:
+              tickers: '*'
+              yf_params: { "interval": 2m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+              schema_category: stock_prices
+
+            forex_prices_2m:
+              tickers: '*'
+              yf_params: { "interval": 2m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+              schema_category: forex_prices
+
+            crypto_prices_2m:
+              tickers: '*'
+              yf_params: { "interval": 2m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+              schema_category: crypto_prices
+
+
+            stock_prices_5m:
+              tickers: '*'
+              yf_params: { "interval": 5m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+              schema_category: stock_prices
+
+            forex_prices_5m:
+              tickers: '*'
+              yf_params: { "interval": 5m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+              schema_category: forex_prices
+
+            crypto_prices_5m:
+              tickers: '*'
+              yf_params: { "interval": 5m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+              schema_category: crypto_prices
+
+
+            stock_prices_1h:
+              tickers: '*'
+              yf_params: { "interval": 1h, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+              schema_category: stock_prices
+
+            forex_prices_1h:
+              tickers: '*'
+              yf_params: { "interval": 1h, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+              schema_category: forex_prices
+
+            crypto_prices_1h:
+              tickers: '*'
+              yf_params: { "interval": 1h, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+              schema_category: crypto_prices
+
+
+            stock_prices_1d:
+              tickers: '*'
+              yf_params: { "interval": 1d, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+              schema_category: stock_prices
+
+            forex_prices_1d:
+              tickers: '*'
+              yf_params: { "interval": 1d, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+              schema_category: forex_prices
+
+            crypto_prices_1d:
+              tickers: '*'
+              yf_params: { "interval": 1d, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+              schema_category: crypto_prices
+
+
+      metadata:
+        ### tickers ###
+
+        stock_tickers:
+          replication-method: INCREMENTAL
+          replication-key: yahoo_ticker
+        forex_tickers:
+          replication-method: INCREMENTAL
+          replication-key: yahoo_ticker
+        crypto_tickers:
+          replication-method: INCREMENTAL
+          replication-key: yahoo_ticker
+
+        ### prices ###
+
+        stock_prices_1m:
+          replication-method: INCREMENTAL
+          replication-key: timestamp
+
+        forex_prices_1m:
+          replication-method: INCREMENTAL
+          replication-key: timestamp
+
+        crypto_prices_1m:
+          replication-method: INCREMENTAL
+          replication-key: timestamp
+
+        stock_prices_2m:
+          replication-method: INCREMENTAL
+          replication-key: timestamp
+
+        forex_prices_2m:
+          replication-method: INCREMENTAL
+          replication-key: timestamp
+
+        crypto_prices_2m:
+          replication-method: INCREMENTAL
+          replication-key: timestamp
+
+        stock_prices_5m:
+          replication-method: INCREMENTAL
+          replication-key: timestamp
+
+        forex_prices_5m:
+          replication-method: INCREMENTAL
+          replication-key: timestamp
+
+        crypto_prices_5m:
+          replication-method: INCREMENTAL
+          replication-key: timestamp
+
+        stock_prices_1h:
+          replication-method: INCREMENTAL
+          replication-key: timestamp
+
+        forex_prices_1h:
+          replication-method: INCREMENTAL
+          replication-key: timestamp
+
+        crypto_prices_1h:
+          replication-method: INCREMENTAL
+          replication-key: timestamp
+
+        stock_prices_1d:
+          replication-method: INCREMENTAL
+          replication-key: timestamp
+
+        forex_prices_1d:
+          replication-method: INCREMENTAL
+          replication-key: timestamp
+
+        crypto_prices_1d:
+          replication-method: INCREMENTAL
+          replication-key: timestamp
+
+
+  loaders:
+    - name: target-jsonl
+      variant: andyh1203
+      pip_url: target-jsonl
+
+    - name: target-bigquery
+      variant: z3z1ma
+      pip_url: git+https://github.com/z3z1ma/target-bigquery.git@a097d69545cbbb61a2b71bd2f26e5a8bc388ebc5
+      config:
+        project: ${GCP_PROJECT_ID}
+        credentials_path: ${GCP_TAP_YFINANCE_CREDENTIALS_PATH}
+        dataset: ${GCP_DATASET}
+        batch_size: 10000
+        denormalized: true
+
+    - name: target-snowflake
+      variant: meltanolabs
+      pip_url: git+https://github.com/MeltanoLabs/target-snowflake.git@37639ef16ad5c70905c776a7834b133c7eeaa6f4
+      config:
+        account: ${SNOWFLAKE_ACCOUNT}
+        user: ${SNOWFLAKE_USER}
+        password: ${SNOWFLAKE_PASSWORD}
+        warehouse: ${SNOWFLAKE_WAREHOUSE}
+        database: ${SNOWFLAKE_DATABASE}
+        role: ${SNOWFLAKE_ROLE}
+        file_format: CSV_FORMAT
+        batch_size_rows: 10000
