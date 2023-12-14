@@ -82,5 +82,5 @@ from feature_engine.outliers import Winsorizer, OutlierTrimmer, ArbitraryOutlier
 
 ### dask imports ###
 
-import dask
-from dask import delayed
+# import dask
+# from dask import delayed

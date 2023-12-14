@@ -16,7 +16,7 @@ import dill, feather
 import pandas as pd
 import numpy as np
 from pandas import json_normalize
-from skimpy import clean_columns
+#from skimpy import clean_columns
 
 
 

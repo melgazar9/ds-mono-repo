@@ -18,15 +18,14 @@
       - `alias python=python3.9`
       - `alias pip="python3.9 -m pip"`
       - `source ~/.zshrc`
-    
-      - If still encountering errors try the below instructions
+      - If still encountering errors try the below instructions:
         - `vi venv/lib/python3.8/site-packages/IPython/core/interactiveshell.py`
           - Change `p.readlink()` to `p._from_parts(os.readlink(p,))`
     - If everything looks good run `pip install -r requirements.txt`
 
 
 ### Handing credentials
-  - Access credentials through the global system environment `.env`.
+  - Access credentials through the global system environment `.env`
   - When running code in pycharm
     - Set the working directory to the project directory.
     - Set the environment variables needed to run the project.
