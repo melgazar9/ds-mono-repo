@@ -7,21 +7,16 @@ import json
 
 ENVIRONMENT = os.getenv('ENVIRONMENT')
 
-tap_yfinance_functions = {
-    'dev': tap_yfinance_dev,
-    'production': tap_yfinance_production
-}
-
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     logging.info(f'\n*** Running environment {ENVIRONMENT}. ***\n')
 
-    scheduler = BackgroundScheduler(job_defaults={'max_instances': 2})
+    scheduler = BackgroundScheduler(job_defaults={'max_instances': 3})
 
     ###### tap-yfinance ######
 
     tap_yfinance_cron = json.loads(os.getenv('TAP_YFINANCE_CRON'))
-    scheduler.add_job(tap_yfinance_functions[ENVIRONMENT], trigger='cron', **tap_yfinance_cron, jitter=120)
+    scheduler.add_job(tap_yfinance, trigger='cron', **tap_yfinance_cron, jitter=120)
 
     ###### host ######
 

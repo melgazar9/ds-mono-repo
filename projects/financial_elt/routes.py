@@ -10,9 +10,12 @@ app.url_map.strict_slashes = False
 
 ### GLOBALS ###
 
+ENVIRONMENT = os.getenv('ENVIRONMENT')
+
 TAP_YFINANCE_TARGET = os.getenv('TAP_YFINANCE_TARGET')
 
 assert isinstance(TAP_YFINANCE_TARGET, str), 'could not determine yfinance target'
+
 
 def cur_timestamp(utc=True):
     if utc:
@@ -39,18 +42,10 @@ def financial_elt():
 
 ###### tap yfinance routes ######
 
-@app.route('/financial-elt/yfinance/tap-yfinance-dev', methods=['GET'])
-def tap_yfinance_dev():
+@app.route(f'/financial-elt/yfinance/tap-yfinance-{ENVIRONMENT}', methods=['GET'])
+def tap_yfinance():
     with app.app_context():
         project_dir = 'yfinance/tap-yfinance'
-        run_command = f'meltano --environment=dev el tap-yfinance target-{TAP_YFINANCE_TARGET} --state-id tap_yfinance_dev_{TAP_YFINANCE_TARGET}'
+        run_command = f'meltano --environment={ENVIRONMENT} el tap-yfinance target-{TAP_YFINANCE_TARGET} --state-id tap_yfinance_{ENVIRONMENT}_{TAP_YFINANCE_TARGET}'
         subprocess.Popen(run_command, shell=True, cwd=os.path.join(app.root_path, project_dir))
-        return make_response(f'Last ran project tap-yfinance-dev target {TAP_YFINANCE_TARGET} at {cur_timestamp()}.', 200)
-
-@app.route('/financial-elt/yfinance/tap-yfinance-production', methods=['GET'])
-def tap_yfinance_production():
-    with app.app_context():
-        project_dir = 'yfinance/tap-yfinance'
-        run_command = f'meltano --environment=production el tap-yfinance target-{TAP_YFINANCE_TARGET} --state-id tap_yfinance_production_{TAP_YFINANCE_TARGET}'
-        subprocess.Popen(run_command, shell=True, cwd=os.path.join(app.root_path, project_dir))
-        return make_response(f'Last ran project tap-yfinance-production target {TAP_YFINANCE_TARGET} at {cur_timestamp()}.', 200)
+        return make_response(f'Last ran project tap-yfinance-{ENVIRONMENT} target {TAP_YFINANCE_TARGET} at {cur_timestamp()}.', 200)
