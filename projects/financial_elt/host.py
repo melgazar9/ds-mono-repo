@@ -7,6 +7,7 @@ import json
 
 ENVIRONMENT = os.getenv('ENVIRONMENT')
 
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     logging.info(f'\n*** Running environment {ENVIRONMENT}. ***\n')
@@ -16,7 +17,25 @@ if __name__ == "__main__":
     ###### tap-yfinance ######
 
     tap_yfinance_cron = json.loads(os.getenv('TAP_YFINANCE_CRON'))
-    scheduler.add_job(tap_yfinance, trigger='cron', **tap_yfinance_cron, jitter=120)
+    if os.getenv('TAP_YFINANCE_NUM_WORKERS') == 1:
+        scheduler.add_job(tap_yfinance, trigger='cron', **tap_yfinance_cron, jitter=120)
+    else:
+        import yaml
+
+        num_tasks = int(os.getenv('TAP_YFINANCE_NUM_WORKERS'))
+
+        assert isinstance(num_tasks, int) and num_tasks > 1, \
+            f"ENV variable TAP_YFINANCE_NUM_WORKERS must be >= 1. It is currently set to {num_tasks} with datatype {type(num_tasks)}"
+
+        with open("yfinance/tap-yfinance/meltano.yml", "r") as meltano_cfg:
+            cfg = yaml.safe_load(meltano_cfg)
+
+        tasks = cfg.get('plugins').get('extractors')[0].get('select')
+
+        tasks = [f'--select {i}' for i in tasks]
+        task_chunks = [tasks[i:i + num_tasks] for i in range(0, len(tasks), num_tasks)]
+        scheduler.add_job(tap_yfinance, kwargs={'task_chunks': task_chunks}, trigger='cron', **tap_yfinance_cron, jitter=120)
+
 
     ###### host ######
 
