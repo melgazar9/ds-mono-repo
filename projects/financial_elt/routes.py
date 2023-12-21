@@ -60,7 +60,7 @@ def tap_yfinance(task_chunks=None):
             processes = []
 
             for p in task_chunks:
-                run_command = base_run_command + ' ' + ' '.join(p)
+                run_command = base_run_command + ' ' + ' '.join(p) + ' --force'
                 process = \
                     mp.Process(
                         target=subprocess.run,
