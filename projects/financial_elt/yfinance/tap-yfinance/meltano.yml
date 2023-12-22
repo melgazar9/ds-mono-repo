@@ -263,4 +263,4 @@ plugins:
         database: ${SNOWFLAKE_DATABASE}
         role: ${SNOWFLAKE_ROLE}
         file_format: CSV_FORMAT
-        batch_size_rows: 10000
+        batch_size_rows: 100000

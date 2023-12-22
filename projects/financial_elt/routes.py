@@ -3,7 +3,7 @@ import os
 import subprocess
 from datetime import datetime
 import logging
-
+import time
 import multiprocessing as mp
 
 app = Flask(__name__)
@@ -67,6 +67,7 @@ def tap_yfinance(task_chunks=None):
                         kwargs={'args': run_command, 'shell': True, 'cwd': os.path.join(app.root_path, project_dir)}
                     )
                 process.start()
+                time.sleep(60)
                 processes.append(process)
 
             for p in processes:
