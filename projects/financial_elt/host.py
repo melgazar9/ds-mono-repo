@@ -17,7 +17,7 @@ if __name__ == "__main__":
     ###### tap-yfinance ######
 
     tap_yfinance_cron = json.loads(os.getenv('TAP_YFINANCE_CRON'))
-    if os.getenv('TAP_YFINANCE_NUM_WORKERS') == 1:
+    if int(os.getenv('TAP_YFINANCE_NUM_WORKERS')) == 1:
         scheduler.add_job(tap_yfinance, trigger='cron', **tap_yfinance_cron, jitter=120)
     else:
         import yaml
