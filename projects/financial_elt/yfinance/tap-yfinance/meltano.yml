@@ -8,7 +8,7 @@ state_backend:
   type: remote
   uri: ${GCP_BUCKET_URI}
   gcs:
-    application_credentials: ${GCP_TAP_YFINANCE_CREDENTIALS_PATH}
+    application_credentials: ${GCP_CREDENTIALS_PATH}
 
 environments:
   - name: dev
@@ -246,11 +246,13 @@ plugins:
       variant: z3z1ma
       pip_url: git+https://github.com/z3z1ma/target-bigquery.git@a097d69545cbbb61a2b71bd2f26e5a8bc388ebc5
       config:
+        method: ${TARGET_BIGQUERY_METHOD}
         project: ${GCP_PROJECT_ID}
-        credentials_path: ${GCP_TAP_YFINANCE_CREDENTIALS_PATH}
+        credentials_path: ${GCP_CREDENTIALS_PATH}
         dataset: ${GCP_DATASET}
-        batch_size: 10000
+        batch_size: ${TARGET_BIGQUERY_BATCH_SIZE}
         denormalized: true
+        bucket: ${GCP_BUCKET_NAME}
 
     - name: target-snowflake
       variant: meltanolabs
