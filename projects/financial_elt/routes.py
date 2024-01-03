@@ -50,25 +50,34 @@ def tap_yfinance(task_chunks=None):
     with app.app_context():
         project_dir = 'yfinance/tap-yfinance'
 
-        base_run_command = f'meltano --environment={ENVIRONMENT} el tap-yfinance target-{TAP_YFINANCE_TARGET} --state-id tap_yfinance_{ENVIRONMENT}_{TAP_YFINANCE_TARGET}'
+        base_run_command = f'meltano --environment={ENVIRONMENT} el tap-yfinance target-{TAP_YFINANCE_TARGET}'
 
         if task_chunks is None:
             logging.info('Running meltano ELT without multiprocessing.')
-            subprocess.run(base_run_command, shell=True, cwd=os.path.join(app.root_path, project_dir))
+            run_command = f"{base_run_command} --state-id tap_yfinance_{ENVIRONMENT}_{TAP_YFINANCE_TARGET}"
+            subprocess.run(run_command, shell=True, cwd=os.path.join(app.root_path, project_dir))
         else:
             logging.info(f"Running meltano ELT using multiprocessing. Number of processes set to {os.getenv('TAP_YFINANCE_NUM_WORKERS')}.")
+
+            # TODO: Currently, if multiple selects are passed via the CLI, it overrides the state. Need to run using all
+            #  available resources. Remove the below when meltano supports running multiple selects with one state-id.
+
+            task_chunks = [i for j in task_chunks for i in j]
+
             processes = []
 
             for p in task_chunks:
-                run_command = base_run_command + ' ' + ' '.join(p) + ' --force'
+                run_command = \
+                    f"{base_run_command} --state-id tap_yfinance_{TAP_YFINANCE_TARGET}_{p.replace('--select ', '')}_{ENVIRONMENT}"
                 process = \
                     mp.Process(
                         target=subprocess.run,
                         kwargs={'args': run_command, 'shell': True, 'cwd': os.path.join(app.root_path, project_dir)}
                     )
                 process.start()
-                time.sleep(60)
-                processes.append(process)
+                time.sleep(20)
+
+                processes.append(run_command)
 
             for p in processes:
                 p.join()
