@@ -59,8 +59,6 @@ def tap_yfinance(task_chunks=None):
         else:
             logging.info(f"Running meltano ELT using multiprocessing. Number of processes set to {os.getenv('TAP_YFINANCE_NUM_WORKERS')}.")
 
-            processes = []
-
             for p in task_chunks:
                 if isinstance(p, str):
                     run_command = \
@@ -80,12 +78,10 @@ def tap_yfinance(task_chunks=None):
                         target=subprocess.run,
                         kwargs={'args': run_command, 'shell': True, 'cwd': os.path.join(app.root_path, project_dir)}
                     )
+                process.daemon = True
                 process.start()
-                time.sleep(20)
+                process.join()
 
-                processes.append(process)
-
-            for p in processes:
-                p.join()
+                logging.info(f'*** Completed process {process} --- run_command: {run_command}')
 
         return make_response(f'Last ran project tap-yfinance-{ENVIRONMENT} target {TAP_YFINANCE_TARGET} at {cur_timestamp()}.', 200)

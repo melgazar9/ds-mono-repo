@@ -16,13 +16,13 @@ if __name__ == "__main__":
 
     ###### tap-yfinance ######
 
+    num_tasks = int(os.getenv('TAP_YFINANCE_NUM_WORKERS'))
     tap_yfinance_cron = json.loads(os.getenv('TAP_YFINANCE_CRON'))
-    if int(os.getenv('TAP_YFINANCE_NUM_WORKERS')) == 1:
+
+    if num_tasks == 1:
         scheduler.add_job(tap_yfinance, trigger='cron', **tap_yfinance_cron, jitter=120)
     else:
         import yaml
-
-        num_tasks = int(os.getenv('TAP_YFINANCE_NUM_WORKERS'))
 
         assert isinstance(num_tasks, int) and num_tasks > 1, \
             f"ENV variable TAP_YFINANCE_NUM_WORKERS must be >= 1. It is currently set to {num_tasks} with datatype {type(num_tasks)}"
