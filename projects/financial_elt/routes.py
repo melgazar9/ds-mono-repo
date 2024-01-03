@@ -59,16 +59,22 @@ def tap_yfinance(task_chunks=None):
         else:
             logging.info(f"Running meltano ELT using multiprocessing. Number of processes set to {os.getenv('TAP_YFINANCE_NUM_WORKERS')}.")
 
-            # TODO: Currently, if multiple selects are passed via the CLI, it overrides the state. Need to run using all
-            #  available resources. Remove the below when meltano supports running multiple selects with one state-id.
-
-            task_chunks = [i for j in task_chunks for i in j]
-
             processes = []
 
             for p in task_chunks:
-                run_command = \
-                    f"{base_run_command} --state-id tap_yfinance_{TAP_YFINANCE_TARGET}_{p.replace('--select ', '')}_{ENVIRONMENT}"
+                if isinstance(p, str):
+                    run_command = \
+                        f"{base_run_command} " \
+                        f"--state-id tap_yfinance_{TAP_YFINANCE_TARGET}_{p.replace('--select ', '')}_{ENVIRONMENT}"
+                elif isinstance(p, list):
+                    for i in range(len(p)):
+                        p[i] = \
+                            f"{base_run_command} " \
+                            f"--state-id tap_yfinance_{TAP_YFINANCE_TARGET}_{p[i].replace('--select ', '')}_{ENVIRONMENT}"
+                    run_command = p
+                else:
+                    raise ValueError("Invalid datatype task_chunks. Must be list when running multiprocessing.")
+
                 process = \
                     mp.Process(
                         target=subprocess.run,
@@ -77,7 +83,7 @@ def tap_yfinance(task_chunks=None):
                 process.start()
                 time.sleep(20)
 
-                processes.append(run_command)
+                processes.append(process)
 
             for p in processes:
                 p.join()
