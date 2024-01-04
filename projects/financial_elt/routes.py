@@ -59,29 +59,27 @@ def tap_yfinance(task_chunks=None):
         else:
             logging.info(f"Running meltano ELT using multiprocessing. Number of processes set to {os.getenv('TAP_YFINANCE_NUM_WORKERS')}.")
 
-            for p in task_chunks:
-                if isinstance(p, str):
+            processes = []
+
+            for chunk in task_chunks:
+                assert isinstance(chunk, list), "Invalid datatype task_chunks. Must be list when running multiprocessing."
+                for i in range(len(chunk)):
                     run_command = \
                         f"{base_run_command} " \
-                        f"--state-id tap_yfinance_{TAP_YFINANCE_TARGET}_{p.replace('--select ', '')}_{ENVIRONMENT}"
-                elif isinstance(p, list):
-                    for i in range(len(p)):
-                        p[i] = \
-                            f"{base_run_command} " \
-                            f"--state-id tap_yfinance_{TAP_YFINANCE_TARGET}_{p[i].replace('--select ', '')}_{ENVIRONMENT}"
-                    run_command = p
-                else:
-                    raise ValueError("Invalid datatype task_chunks. Must be list when running multiprocessing.")
+                        f"--state-id tap_yfinance_{TAP_YFINANCE_TARGET}_{chunk[i].replace('--select ', '')}_{ENVIRONMENT}"
+                    process = \
+                        mp.Process(
+                            target=subprocess.run,
+                            kwargs={'args': run_command, 'shell': True,
+                                    'cwd': os.path.join(app.root_path, project_dir)}
+                        )
+                    process.daemon = True
+                    process.start()
+                    processes.append(process)
 
-                process = \
-                    mp.Process(
-                        target=subprocess.run,
-                        kwargs={'args': run_command, 'shell': True, 'cwd': os.path.join(app.root_path, project_dir)}
-                    )
-                process.daemon = True
-                process.start()
-                process.join()
+                for p in processes:
+                    p.join()
 
-                logging.info(f'*** Completed process {process} --- run_command: {run_command}')
+                logging.info(f'*** Completed process {process} --- run_commands: {chunk}')
 
         return make_response(f'Last ran project tap-yfinance-{ENVIRONMENT} target {TAP_YFINANCE_TARGET} at {cur_timestamp()}.', 200)
