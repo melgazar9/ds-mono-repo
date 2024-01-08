@@ -14,7 +14,7 @@ class MetaclassMethodEnforcer:
         self.parent_class = parent_class
 
     @staticmethod
-    def overwrite_new(f, cls):
+    def override(f, cls):
         def method(*args, **kwargs):
             return f(*args, **kwargs)
 
@@ -46,7 +46,7 @@ class MetaclassMethodEnforcer:
                                      f"[{', '.join(self.required_methods)}]")
 
                 for m in self.required_methods:
-                    setattr(cls, m, self.overwrite_new(method_map[m], cls))
+                    setattr(cls, m, self.override(method_map[m], cls))
 
         MetaEnforcer.__name__ = "Meta" + self.parent_class
         return MetaEnforcer
