@@ -75,6 +75,7 @@ def tap_yfinance(task_chunks=None):
                         )
                     process.daemon = True
                     process.start()
+                    time.sleep(60)
                     processes.append(process)
 
                 for p in processes:

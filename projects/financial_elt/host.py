@@ -30,7 +30,7 @@ if __name__ == "__main__":
         with open("yfinance/tap-yfinance/meltano.yml", "r") as meltano_cfg:
             cfg = yaml.safe_load(meltano_cfg)
 
-        tasks = sorted(cfg.get('plugins').get('extractors')[0].get('select'), reverse=True)
+        tasks = cfg.get('plugins').get('extractors')[0].get('select')
 
         tasks = [f'--select {i}' for i in tasks]
         task_chunks = [tasks[i:i + num_tasks] for i in range(0, len(tasks), num_tasks)]

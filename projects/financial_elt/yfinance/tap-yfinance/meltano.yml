@@ -31,7 +31,7 @@ plugins:
   extractors:
     - name: "tap-yfinance"
       namespace: "tap_yfinance"
-      pip_url: git+https://github.com/melgazar9/tap-yfinance@bcd32e6319cf79f9a09dcf339e3cb62e37fbae9d
+      pip_url: git+https://github.com/melgazar9/tap-yfinance@17cd63e4e77011c387ed867a75f610c494321ce1
 
       capabilities:
         - state
@@ -42,23 +42,53 @@ plugins:
 
       select:
         - stock_tickers
+        - futures_tickers
         - forex_tickers
         - crypto_tickers
         - stock_prices_1m
+        - futures_prices_1m
         - forex_prices_1m
         - crypto_prices_1m
         - stock_prices_2m
+        - futures_prices_2m
         - forex_prices_2m
         - crypto_prices_2m
         - stock_prices_5m
+        - futures_prices_5m
         - forex_prices_5m
         - crypto_prices_5m
         - stock_prices_1h
+        - futures_prices_1h
         - forex_prices_1h
         - crypto_prices_1h
         - stock_prices_1d
+        - futures_prices_1d
         - forex_prices_1d
         - crypto_prices_1d
+        - actions
+        - balance_sheet
+        - cash_flow
+        - dividends
+        - earnings_dates
+        - fast_info
+        - financials
+        - history_metadata
+        - income_stmt
+        - institutional_holders
+        - major_holders
+        - mutualfund_holders
+        - news
+        - shares_full
+        - splits
+        - option_chain
+        - options
+        - quarterly_balance_sheet
+        - quarterly_cash_flow
+        - options
+        - quarterly_balance_sheet
+        - quarterly_cash_flow
+        - quarterly_financials
+        - quarterly_income_stmt
 
       config:
         default_start_date: "1950-01-01"
@@ -86,6 +116,11 @@ plugins:
               yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
               schema_category: stock_prices
 
+            futures_prices_1m:
+              tickers: '*'
+              yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+              schema_category: futures_prices
+
             forex_prices_1m:
               tickers: '*'
               yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
@@ -101,6 +136,11 @@ plugins:
               tickers: '*'
               yf_params: { "interval": 2m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
               schema_category: stock_prices
+
+            futures_prices_2m:
+              tickers: '*'
+              yf_params: { "interval": 2m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+              schema_category: futures_prices
 
             forex_prices_2m:
               tickers: '*'
@@ -118,6 +158,11 @@ plugins:
               yf_params: { "interval": 5m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
               schema_category: stock_prices
 
+            futures_prices_5m:
+              tickers: '*'
+              yf_params: { "interval": 5m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+              schema_category: futures_prices
+
             forex_prices_5m:
               tickers: '*'
               yf_params: { "interval": 5m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
@@ -133,6 +178,11 @@ plugins:
               tickers: '*'
               yf_params: { "interval": 1h, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
               schema_category: stock_prices
+
+            futures_prices_1h:
+              tickers: '*'
+              yf_params: { "interval": 1h, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+              schema_category: futures_prices
 
             forex_prices_1h:
               tickers: '*'
@@ -150,6 +200,11 @@ plugins:
               yf_params: { "interval": 1d, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
               schema_category: stock_prices
 
+            futures_prices_1d:
+              tickers: '*'
+              yf_params: { "interval": 1d, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+              schema_category: futures_prices
+
             forex_prices_1d:
               tickers: '*'
               yf_params: { "interval": 1d, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
@@ -160,30 +215,118 @@ plugins:
               yf_params: { "interval": 1d, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
               schema_category: crypto_prices
 
+          ### financials ###
+
+          financials:
+            actions:
+              tickers: "*"
+              schema_category: get_actions
+
+            balance_sheet:
+              tickers: "*"
+              schema_category: get_balance_sheet
+
+            cash_flow:
+              tickers: "*"
+              schema_category: get_cash_flow
+
+            dividends:
+              tickers: "*"
+              schema_category: get_dividends
+
+            earnings_dates:
+              tickers: "*"
+              schema_category: get_earnings_dates
+
+            fast_info:
+              tickers: "*"
+              schema_category: get_fast_info
+
+            financials:
+              tickers: "*"
+              schema_category: get_financials
+
+            history_metadata:
+              tickers: "*"
+              schema_category: get_history_metadata
+
+            income_stmt:
+              tickers: "*"
+              schema_category: get_income_stmt
+
+            institutional_holders:
+              tickers: "*"
+              schema_category: get_institutional_holders
+
+            major_holders:
+              tickers: "*"
+              schema_category: get_major_holders
+
+            news:
+              tickers: "*"
+              schema_category: get_news
+
+            shares_full:
+              tickers: "*"
+              schema_category: get_shares_full
+
+            splits:
+              tickers: "*"
+              schema_category: get_splits
+
+            option_chain:
+              tickers: "*"
+              schema_category: option_chain
+
+            options:
+              tickers: "*"
+              schema_category: options
+
+            quarterly_balance_sheet:
+              tickers: "*"
+              schema_category: quarterly_balance_sheet
+
+            quarterly_cash_flow:
+              tickers: "*"
+              schema_category: quarterly_cash_flow
+
+            quarterly_financials:
+              tickers: "*"
+              schema_category: quarterly_financials
+
+            quarterly_income_stmt:
+              tickers: "*"
+              schema_category: quarterly_income_stmt
+
 
       metadata:
+
         ### tickers ###
 
         stock_tickers:
           replication-method: INCREMENTAL
-          replication-key: yahoo_ticker
+          replication-key: ticker
+        futures_tickers:
+          replication-method: INCREMENTAL
+          replication-key: ticker
         forex_tickers:
           replication-method: INCREMENTAL
-          replication-key: yahoo_ticker
+          replication-key: ticker
         crypto_tickers:
           replication-method: INCREMENTAL
-          replication-key: yahoo_ticker
+          replication-key: ticker
 
         ### prices ###
 
         stock_prices_1m:
           replication-method: INCREMENTAL
           replication-key: timestamp
-
+        futures_prices_1m:
+          replication-method: INCREMENTAL
+          replication-key: timestamp
         forex_prices_1m:
           replication-method: INCREMENTAL
           replication-key: timestamp
-
         crypto_prices_1m:
           replication-method: INCREMENTAL
           replication-key: timestamp
@@ -191,11 +334,12 @@ plugins:
         stock_prices_2m:
           replication-method: INCREMENTAL
           replication-key: timestamp
-
+        futures_prices_2m:
+          replication-method: INCREMENTAL
+          replication-key: timestamp
         forex_prices_2m:
           replication-method: INCREMENTAL
           replication-key: timestamp
-
         crypto_prices_2m:
           replication-method: INCREMENTAL
           replication-key: timestamp
@@ -203,11 +347,12 @@ plugins:
         stock_prices_5m:
           replication-method: INCREMENTAL
           replication-key: timestamp
-
+        futures_prices_5m:
+          replication-method: INCREMENTAL
+          replication-key: timestamp
         forex_prices_5m:
           replication-method: INCREMENTAL
           replication-key: timestamp
-
         crypto_prices_5m:
           replication-method: INCREMENTAL
           replication-key: timestamp
@@ -215,11 +360,12 @@ plugins:
         stock_prices_1h:
           replication-method: INCREMENTAL
           replication-key: timestamp
-
+        futures_prices_1h:
+          replication-method: INCREMENTAL
+          replication-key: timestamp
         forex_prices_1h:
           replication-method: INCREMENTAL
           replication-key: timestamp
-
         crypto_prices_1h:
           replication-method: INCREMENTAL
           replication-key: timestamp
@@ -227,14 +373,102 @@ plugins:
         stock_prices_1d:
           replication-method: INCREMENTAL
           replication-key: timestamp
-
+        futures_prices_1d:
+          replication-method: INCREMENTAL
+          replication-key: timestamp
         forex_prices_1d:
           replication-method: INCREMENTAL
           replication-key: timestamp
-
         crypto_prices_1d:
           replication-method: INCREMENTAL
           replication-key: timestamp
+
+
+        ### financials ###
+
+        actions:
+          replication-method: INCREMENTAL
+          replication-key: timestamp
+
+        balance_sheet:
+          replication-method: INCREMENTAL
+          replication-key: date
+
+        cash_flow:
+          replication-method: INCREMENTAL
+          replication-key: date
+
+        dividends:
+          replication-method: INCREMENTAL
+          replication-key: timestamp
+
+        earnings_dates:
+          replication-method: INCREMENTAL
+          replication-key: timestamp
+
+        fast_info:
+          replication-method: INCREMENTAL
+          replication-key: timestamp_extracted
+
+        financials:
+          replication-method: INCREMENTAL
+          replication-key: date
+
+        history_metadata:
+          replication-method: INCREMENTAL
+          replication-key: timestamp_extracted
+
+        income_stmt:
+          replication-method: INCREMENTAL
+          replication-key: date
+
+        institutional_holders:
+          replication-method: INCREMENTAL
+          replication-key: date_reported
+
+        major_holders:
+          replication-method: INCREMENTAL
+          replication-key: timestamp_extracted
+
+        mutualfund_holders:
+          replication-method: INCREMENTAL
+          replication-key: date_reported
+
+        news:
+          replication-method: INCREMENTAL
+          replication-key: timestamp_extracted
+
+        shares_full:
+          replication-method: INCREMENTAL
+          replication-key: timestamp
+
+        splits:
+          replication-method: INCREMENTAL
+          replication-key: timestamp
+
+        option_chain:
+          replication-method: INCREMENTAL
+          replication-key: last_trade_date
+
+        options:
+          replication-method: INCREMENTAL
+          replication-key: timestamp_extracted
+
+        quarterly_balance_sheet:
+          replication-method: INCREMENTAL
+          replication-key: date
+
+        quarterly_cash_flow:
+          replication-method: INCREMENTAL
+          replication-key: date
+
+        quarterly_financials:
+          replication-method: INCREMENTAL
+          replication-key: date
+
+        quarterly_income_stmt:
+          replication-method: INCREMENTAL
+          replication-key: date
 
 
   loaders:
