@@ -472,14 +472,15 @@ plugins:
 
     - name: target-bigquery
       variant: z3z1ma
-      pip_url: git+https://github.com/z3z1ma/target-bigquery.git
+      pip_url: git+https://github.com/z3z1ma/target-bigquery.git@2d59eae0aa4a5468ed8ba5d04e8d239e05e373ee
       config:
-        method: batch_job
-        project: financial-elt-908001
-        credentials_path: .secrets/financial-elt-908001-8cb9e9ae0a95.json
-        dataset: meltano_yfinance_dev
-        batch_size: 100000
+        method: ${TARGET_BIGQUERY_METHOD}
+        project: ${GCP_PROJECT_ID}
+        credentials_path: ${GCP_CREDENTIALS_PATH}
+        dataset: ${GCP_DATASET}
+        batch_size: ${TARGET_BIGQUERY_BATCH_SIZE}
         denormalized: true
+        bucket: ${GCP_BUCKET_NAME}
 
     - name: target-snowflake
       variant: meltanolabs
