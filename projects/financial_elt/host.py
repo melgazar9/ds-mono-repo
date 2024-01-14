@@ -33,7 +33,15 @@ if __name__ == "__main__":
         tasks = cfg.get('plugins').get('extractors')[0].get('select')
         tasks = [f'--select {i}' for i in tasks]
         tasks_per_chunk = len(tasks) // num_tasks
-        task_chunks = [tasks[i:i + tasks_per_chunk] for i in range(0, len(tasks), tasks_per_chunk)]
+        remainder = len(tasks) % num_tasks
+
+        task_chunks = []
+        start_index = 0
+        for i in range(num_tasks):
+            chunk_size = tasks_per_chunk + (1 if i < remainder else 0)
+            task_chunks.append(tasks[start_index: start_index + chunk_size])
+            start_index += chunk_size
+        
         scheduler.add_job(tap_yfinance, kwargs={'task_chunks': task_chunks}, trigger='cron', **tap_yfinance_cron, jitter=120)
 
 
