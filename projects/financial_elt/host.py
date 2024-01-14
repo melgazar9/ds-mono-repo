@@ -31,9 +31,9 @@ if __name__ == "__main__":
             cfg = yaml.safe_load(meltano_cfg)
 
         tasks = cfg.get('plugins').get('extractors')[0].get('select')
-
         tasks = [f'--select {i}' for i in tasks]
-        task_chunks = [tasks[i:i + num_tasks] for i in range(0, len(tasks), num_tasks)]
+        tasks_per_chunk = len(tasks) // num_tasks
+        task_chunks = [tasks[i:i + tasks_per_chunk] for i in range(0, len(tasks), tasks_per_chunk)]
         scheduler.add_job(tap_yfinance, kwargs={'task_chunks': task_chunks}, trigger='cron', **tap_yfinance_cron, jitter=120)
 
 

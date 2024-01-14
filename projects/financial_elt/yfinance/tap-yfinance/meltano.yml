@@ -4,12 +4,6 @@ project_id: ${GCP_PROJECT_ID}
 
 default_environment: dev
 
-state_backend:
-  type: remote
-  uri: ${GCP_BUCKET_URI}
-  gcs:
-    application_credentials: ${GCP_CREDENTIALS_PATH}
-
 environments:
   - name: dev
     config:
@@ -31,7 +25,7 @@ plugins:
   extractors:
     - name: "tap-yfinance"
       namespace: "tap_yfinance"
-      pip_url: git+https://github.com/melgazar9/tap-yfinance@17cd63e4e77011c387ed867a75f610c494321ce1
+      pip_url: git+https://github.com/melgazar9/tap-yfinance@cb39c9d8b86da083e06b4b2640ca3fdcf2df8c49
 
       capabilities:
         - state
@@ -84,9 +78,6 @@ plugins:
         - options
         - quarterly_balance_sheet
         - quarterly_cash_flow
-        - options
-        - quarterly_balance_sheet
-        - quarterly_cash_flow
         - quarterly_financials
         - quarterly_income_stmt
 
@@ -101,6 +92,9 @@ plugins:
             stock_tickers:
               tickers: '*'
               schema_category: stock_tickers
+            futures_tickers:
+              tickers: '*'
+              schema_category: futures_tickers
             forex_tickers:
               tickers: '*'
               schema_category: forex_tickers
@@ -112,106 +106,106 @@ plugins:
 
           prices:
             stock_prices_1m:
-              tickers: '*'
+              tickers: "*"
               yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
               schema_category: stock_prices
 
             futures_prices_1m:
-              tickers: '*'
+              tickers: "*"
               yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
               schema_category: futures_prices
 
             forex_prices_1m:
-              tickers: '*'
+              tickers: "*"
               yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
               schema_category: forex_prices
 
             crypto_prices_1m:
-              tickers: '*'
+              tickers: "*"
               yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
               schema_category: crypto_prices
 
 
             stock_prices_2m:
-              tickers: '*'
+              tickers: "*"
               yf_params: { "interval": 2m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
               schema_category: stock_prices
 
             futures_prices_2m:
-              tickers: '*'
+              tickers: "*"
               yf_params: { "interval": 2m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
               schema_category: futures_prices
 
             forex_prices_2m:
-              tickers: '*'
+              tickers: "*"
               yf_params: { "interval": 2m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
               schema_category: forex_prices
 
             crypto_prices_2m:
-              tickers: '*'
+              tickers: "*"
               yf_params: { "interval": 2m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
               schema_category: crypto_prices
 
 
             stock_prices_5m:
-              tickers: '*'
+              tickers: "*"
               yf_params: { "interval": 5m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
               schema_category: stock_prices
 
             futures_prices_5m:
-              tickers: '*'
+              tickers: "*"
               yf_params: { "interval": 5m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
               schema_category: futures_prices
 
             forex_prices_5m:
-              tickers: '*'
+              tickers: "*"
               yf_params: { "interval": 5m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
               schema_category: forex_prices
 
             crypto_prices_5m:
-              tickers: '*'
+              tickers: "*"
               yf_params: { "interval": 5m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
               schema_category: crypto_prices
 
 
             stock_prices_1h:
-              tickers: '*'
+              tickers: "*"
               yf_params: { "interval": 1h, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
               schema_category: stock_prices
 
             futures_prices_1h:
-              tickers: '*'
+              tickers: "*"
               yf_params: { "interval": 1h, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
               schema_category: futures_prices
 
             forex_prices_1h:
-              tickers: '*'
+              tickers: "*"
               yf_params: { "interval": 1h, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
               schema_category: forex_prices
 
             crypto_prices_1h:
-              tickers: '*'
+              tickers: "*"
               yf_params: { "interval": 1h, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
               schema_category: crypto_prices
 
 
             stock_prices_1d:
-              tickers: '*'
+              tickers: "*"
               yf_params: { "interval": 1d, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
               schema_category: stock_prices
 
             futures_prices_1d:
-              tickers: '*'
+              tickers: "*"
               yf_params: { "interval": 1d, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
               schema_category: futures_prices
 
             forex_prices_1d:
-              tickers: '*'
+              tickers: "*"
               yf_params: { "interval": 1d, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
               schema_category: forex_prices
 
             crypto_prices_1d:
-              tickers: '*'
+              tickers: "*"
               yf_params: { "interval": 1d, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
               schema_category: crypto_prices
 
@@ -478,15 +472,14 @@ plugins:
 
     - name: target-bigquery
       variant: z3z1ma
-      pip_url: git+https://github.com/z3z1ma/target-bigquery.git@2d59eae0aa4a5468ed8ba5d04e8d239e05e373ee
+      pip_url: git+https://github.com/z3z1ma/target-bigquery.git
       config:
-        method: ${TARGET_BIGQUERY_METHOD}
-        project: ${GCP_PROJECT_ID}
-        credentials_path: ${GCP_CREDENTIALS_PATH}
-        dataset: ${GCP_DATASET}
-        batch_size: ${TARGET_BIGQUERY_BATCH_SIZE}
+        method: batch_job
+        project: financial-elt-908001
+        credentials_path: .secrets/financial-elt-908001-8cb9e9ae0a95.json
+        dataset: meltano_yfinance_dev
+        batch_size: 100000
         denormalized: true
-        bucket: ${GCP_BUCKET_NAME}
 
     - name: target-snowflake
       variant: meltanolabs
