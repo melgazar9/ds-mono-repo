@@ -4,6 +4,12 @@ project_id: ${GCP_PROJECT_ID}
 
 default_environment: dev
 
+state_backend:
+  type: remote
+  uri: ${GCP_BUCKET_URI}
+  gcs:
+    application_credentials: ${GCP_CREDENTIALS_PATH}
+
 environments:
   - name: dev
     config:
@@ -25,7 +31,7 @@ plugins:
   extractors:
     - name: "tap-yfinance"
       namespace: "tap_yfinance"
-      pip_url: git+https://github.com/melgazar9/tap-yfinance@cb39c9d8b86da083e06b4b2640ca3fdcf2df8c49
+      pip_url: git+https://github.com/melgazar9/tap-yfinance@65c66b828910077fa57af21596560e8d53064ec6
 
       capabilities:
         - state

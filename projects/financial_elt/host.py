@@ -1,9 +1,9 @@
 from routes import *
 from waitress import serve
 from apscheduler.schedulers.background import BackgroundScheduler
-
 import logging
 import json
+import yaml
 
 ENVIRONMENT = os.getenv('ENVIRONMENT')
 
@@ -22,8 +22,6 @@ if __name__ == "__main__":
     if num_tasks == 1:
         scheduler.add_job(tap_yfinance, trigger='cron', **tap_yfinance_cron, jitter=120)
     else:
-        import yaml
-
         assert isinstance(num_tasks, int) and num_tasks > 1, \
             f"ENV variable TAP_YFINANCE_NUM_WORKERS must be >= 1. It is currently set to {num_tasks} with datatype {type(num_tasks)}"
 
@@ -41,9 +39,8 @@ if __name__ == "__main__":
             chunk_size = tasks_per_chunk + (1 if i < remainder else 0)
             task_chunks.append(tasks[start_index: start_index + chunk_size])
             start_index += chunk_size
-        
-        scheduler.add_job(tap_yfinance, kwargs={'task_chunks': task_chunks}, trigger='cron', **tap_yfinance_cron, jitter=120)
 
+        scheduler.add_job(tap_yfinance, kwargs={'task_chunks': task_chunks}, trigger='cron', **tap_yfinance_cron, jitter=120)
 
     ###### host ######
 
