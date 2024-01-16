@@ -794,8 +794,8 @@ class FeatureTransformer(TransformerMixin, MLFlowLogger):
                               return_df=True,
                               handle_missing='value',
                               handle_unknown='value',
-                              min_samples_leaf=1,
-                              smoothing=10)
+                              min_samples_leaf=12,
+                              smoothing=8)
             )
 
             lc_pipe = make_pipeline(
