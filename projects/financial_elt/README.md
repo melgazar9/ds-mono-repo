@@ -9,7 +9,7 @@
 
 ### Overview
 - This project hosts ELT on schedule for financial data. The jobs are orchestrated to trigger endpoints that run the data pipelines on schedule.
-- The directory `yfinance/tap-yfinance` contains the open sourced `meltano` tap-yfinance project `https://github.com/melgazar9/tap-yfinance`.
+- The directory `tap-yfinance` contains the open sourced `meltano` tap-yfinance project `https://github.com/melgazar9/tap-yfinance`.
   - Targets can be set by using the meltano CLI (e.g. `meltano el tap-yfinance target-snowflake` or `target-bigquery`)
 - The script `host.py` hosts all Financial ELT apps specified in `config.ini`.
   - `config.ini` has configurations for each project such as scheduling parameters

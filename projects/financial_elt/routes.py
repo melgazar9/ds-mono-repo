@@ -45,10 +45,10 @@ def financial_elt():
 
 ###### tap yfinance routes ######
 
-@app.route(f'/financial-elt/yfinance/tap-yfinance-{ENVIRONMENT}', methods=['GET'])
+@app.route(f'/financial-elt/tap-yfinance-{ENVIRONMENT}', methods=['GET'])
 def tap_yfinance(task_chunks=None):
     with app.app_context():
-        project_dir = 'yfinance/tap-yfinance'
+        project_dir = 'tap-yfinance'
 
         base_run_command = f'meltano --environment={ENVIRONMENT} el tap-yfinance target-{TAP_YFINANCE_TARGET}'
 

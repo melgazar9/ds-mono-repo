@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y git && rm -rf /var/lib/{apt,dpkg,cache,
 
 RUN pip install -U pip && pip install -r requirements.txt
 
-WORKDIR yfinance/tap-yfinance
+WORKDIR tap-yfinance
 
 RUN pipx ensurepath && poetry install && pipx install "meltano[gcs]==3.1.0" && meltano install
 

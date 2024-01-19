@@ -25,7 +25,7 @@ if __name__ == "__main__":
         assert isinstance(num_tasks, int) and num_tasks > 1, \
             f"ENV variable TAP_YFINANCE_NUM_WORKERS must be >= 1. It is currently set to {num_tasks} with datatype {type(num_tasks)}"
 
-        with open("yfinance/tap-yfinance/meltano.yml", "r") as meltano_cfg:
+        with open("tap-yfinance/meltano.yml", "r") as meltano_cfg:
             cfg = yaml.safe_load(meltano_cfg)
 
         tasks = cfg.get('plugins').get('extractors')[0].get('select')
