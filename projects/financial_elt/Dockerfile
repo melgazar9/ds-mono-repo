@@ -1,22 +1,38 @@
 FROM amd64/python:3.10.12-slim-buster
 
+### Copy files and credentials ###
+
 ARG CI=true
-
+ARG GOOGLE_APPLICATION_CREDENTIALS
 RUN env
-
 ENV PATH="/root/.local/bin:$PATH"
 ENV APP_HOME=/app
 ENV PYTHONUNBUFFERED=1
 WORKDIR $APP_HOME
 COPY . $APP_HOME
+RUN mkdir -p /.secrets
 
-RUN apt-get update && apt-get install -y git && rm -rf /var/lib/{apt,dpkg,cache,log}/
+RUN cp .secrets/$(basename "$GOOGLE_APPLICATION_CREDENTIALS") /.secrets/$(basename "$GOOGLE_APPLICATION_CREDENTIALS")
+RUN mkdir -p $HOME/.config/gcloud/
+RUN cp .secrets/$(basename "$GOOGLE_APPLICATION_CREDENTIALS") $HOME/.config/gcloud/application_default_credentials.json
 
-RUN pip install -U pip && pip install -r requirements.txt
+### Installation ###
+
+RUN apt-get update && \
+    apt-get install -y git && \
+    rm -rf /var/lib/{apt,dpkg,cache,log}/ && \
+    pip install -U pip && \
+    pip install -r requirements.txt
 
 WORKDIR tap-yfinance
 
-RUN pipx ensurepath && poetry install && pipx install "meltano[gcs]==3.1.0" && meltano install
+RUN pipx ensurepath && \
+    pipx install "meltano[gcs]==3.3.1" && \
+    pipx inject meltano google-cloud-logging
+
+ENV PYTHONPATH .
+
+RUN meltano install && meltano config meltano set cli.log_config google.yaml
 
 WORKDIR $APP_HOME
 

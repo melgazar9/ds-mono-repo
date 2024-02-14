@@ -11,6 +11,7 @@ services:
       dockerfile: Dockerfile
       args:
         APP_ENV: dev
+        GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS}
     env_file:
       - .env
     environment:
@@ -20,5 +21,5 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2'
-          memory: 3000M
+          cpus: '8'
+          memory: 30000M

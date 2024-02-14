@@ -8,7 +8,7 @@ state_backend:
   type: remote
   uri: ${GCP_BUCKET_URI}
   gcs:
-    application_credentials: ${GCP_CREDENTIALS_PATH}
+    application_credentials: ${GOOGLE_APPLICATION_CREDENTIALS}
 
 environments:
   - name: dev
@@ -482,7 +482,7 @@ plugins:
       config:
         method: ${TARGET_BIGQUERY_METHOD}
         project: ${GCP_PROJECT_ID}
-        credentials_path: ${GCP_CREDENTIALS_PATH}
+        credentials_path: ${GOOGLE_APPLICATION_CREDENTIALS}
         dataset: ${GCP_DATASET}
         batch_size: ${TARGET_BIGQUERY_BATCH_SIZE}
         denormalized: true
