@@ -34,6 +34,8 @@ ENV PYTHONPATH .
 
 RUN meltano install && meltano config meltano set cli.log_config google.yaml
 
+RUN sed -i "s/\${GCP_PROJECT_ID}/$GCP_PROJECT_ID/g" google.yaml
+
 WORKDIR $APP_HOME
 
 EXPOSE 5000
