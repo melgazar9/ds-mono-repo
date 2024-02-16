@@ -5,8 +5,8 @@ disable_existing_loggers: false
 handlers:
   google:
     (): gcp_logging.get_handler
-    project: ${GCP_PROJECT_ID}
+    project: "financial-elt-908001"
     logger_name: meltano
 root:
-  level: DEBUG
+  level: INFO
   handlers: [google]

@@ -487,16 +487,3 @@ plugins:
         batch_size: ${TARGET_BIGQUERY_BATCH_SIZE}
         denormalized: true
         bucket: ${GCP_BUCKET_NAME}
-
-    - name: target-snowflake
-      variant: meltanolabs
-      pip_url: git+https://github.com/MeltanoLabs/target-snowflake.git@37639ef16ad5c70905c776a7834b133c7eeaa6f4
-      config:
-        account: ${SNOWFLAKE_ACCOUNT}
-        user: ${SNOWFLAKE_USER}
-        password: ${SNOWFLAKE_PASSWORD}
-        warehouse: ${SNOWFLAKE_WAREHOUSE}
-        database: ${SNOWFLAKE_DATABASE}
-        role: ${SNOWFLAKE_ROLE}
-        file_format: CSV_FORMAT
-        batch_size_rows: 100000
