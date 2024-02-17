@@ -262,6 +262,10 @@ plugins:
               tickers: "*"
               schema_category: get_major_holders
 
+            mutualfund_holders:
+              tickers: "*"
+              schema_category: get_mutualfund_holders
+
             news:
               tickers: "*"
               schema_category: get_news
