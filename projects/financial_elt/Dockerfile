@@ -15,6 +15,7 @@ COPY . $APP_HOME
 COPY $GOOGLE_APPLICATION_CREDENTIALS /root/.config/gcloud/application_default_credentials.json
 COPY $GOOGLE_APPLICATION_CREDENTIALS tap-yfinance/.secrets/
 
+
 ### Installation ###
 
 RUN apt-get update && \
