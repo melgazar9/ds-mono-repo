@@ -7,6 +7,10 @@ import yaml
 
 ENVIRONMENT = os.getenv('ENVIRONMENT')
 
+if os.getenv('LOGGING_AGENT') == 'google':
+    import google.cloud.logging
+    client = google.cloud.logging.Client()
+    client.setup_logging()
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
