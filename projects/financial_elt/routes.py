@@ -86,6 +86,6 @@ def tap_yfinance(task_chunks=None):
             for p in processes:
                 p.join()
 
-            logging.info(f'*** Completed process {process} --- run_commands: {chunk}')
+            logging.info(f'*** Completed process {process} --- run_commands: {task_chunks}')
 
         return make_response(f'Last ran project tap-yfinance-{ENVIRONMENT} target {TAP_YFINANCE_TARGET} at {cur_timestamp()}.', 200)
