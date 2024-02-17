@@ -14,7 +14,7 @@ COPY . $APP_HOME
 
 COPY $GOOGLE_APPLICATION_CREDENTIALS /root/.config/gcloud/application_default_credentials.json
 COPY $GOOGLE_APPLICATION_CREDENTIALS tap-yfinance/.secrets/
-RUN sed -i "s/\${GCP_PROJECT_ID}/$GCP_PROJECT_ID/g" tap-yfinance/logging.yaml
+
 
 ### Installation ###
 
@@ -25,6 +25,8 @@ RUN apt-get update && \
     pip install -r requirements.txt
 
 WORKDIR tap-yfinance
+
+RUN sed -i "s/\${GCP_PROJECT_ID}/$GCP_PROJECT_ID/g" logging.yaml
 
 RUN pipx ensurepath && \
     pipx install "meltano[gcs]==3.3.1" && \
