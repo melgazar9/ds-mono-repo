@@ -1,3 +1,39 @@
 [build-system]
-# Minimum requirements for the build system to execute.
-requires = ["setuptools", "wheel"]  # PEP 508 specifications.
+requires = ["setuptools", "wheel", "poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+
+[tool.poetry]
+name = "ds-mono-repo"
+version = "0.1.0"
+description = ""
+authors = ["melgazar9 <melgazar9@gmail.com>"]
+readme = "README.md"
+packages = [{include = "ds_mono_repo"}]
+
+
+[tool.poetry.dependencies]
+python = "^3.9"
+flask = "^3.0.2"
+matplotlib = "^3.8.3"
+numpy = "^1.26.4"
+pandas = "^2.2.0"
+pandas-gbq = "^0.21.0"
+plotly = "^5.19.0"
+pymongo = "^4.6.2"
+pyyaml = "^6.0.1"
+seaborn = "^0.13.2"
+scikit-learn = "^1.4.1.post1"
+snowflake-connector-python = "^3.7.0"
+snowflake-sqlalchemy = "^1.5.1"
+yagmail = "^0.15.293"
+ds-core = {path = "ds_core"}
+flatten-json = "^0.1.14"
+dill = "^0.3.8"
+feather-format = "^0.4.1"
+catboost = "^1.2.2"
+xgboost = "^2.0.3"
+category-encoders = "^2.6.3"
+imbalanced-learn = "^0.12.0"
+feature-engine = "^1.6.2"
+tqdm = "^4.66.2"
