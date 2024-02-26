@@ -1,19 +1,17 @@
 [build-system]
-requires = ["setuptools", "wheel", "poetry-core"]
+requires = ["poetry-core>=1.0.0", "setuptools", "wheel"]
 build-backend = "poetry.core.masonry.api"
-
 
 [tool.poetry]
 name = "ds-mono-repo"
 version = "0.1.0"
 description = ""
-authors = ["melgazar9 <melgazar9@gmail.com>"]
+authors = ["Matt Elgazar <melgazar9@gmail.com>"]
 readme = "README.md"
-packages = [{include = "ds_mono_repo"}]
-
+packages = [{include = "ds_core"}]
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = "^3.10"
 flask = "^3.0.2"
 matplotlib = "^3.8.3"
 numpy = "^1.26.4"
