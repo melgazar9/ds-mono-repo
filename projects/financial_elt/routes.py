@@ -54,9 +54,9 @@ def tap_yfinance(task_chunks=None):
 
         if task_chunks is None:
             logging.info('Running meltano ELT without multiprocessing.')
-            run_command = f"{base_run_command} --state-id tap_yfinance_{ENVIRONMENT}_{TAP_YFINANCE_TARGET}"
+            run_command = f"{base_run_command} --state-id tap_yfinance_{ENVIRONMENT}_{TAP_YFINANCE_TARGET}".split(" ")
             logging.info(f"Running command {run_command}")
-            subprocess.run(run_command, shell=True, cwd=os.path.join(app.root_path, project_dir))
+            subprocess.run(run_command, cwd=os.path.join(app.root_path, project_dir))
         else:
             logging.info(f"Running meltano ELT using multiprocessing. Number of processes set to {os.getenv('TAP_YFINANCE_NUM_WORKERS')}.")
 
@@ -68,12 +68,13 @@ def tap_yfinance(task_chunks=None):
                 select_param = ' '.join(chunk)
                 run_command = \
                     f"{base_run_command} " \
-                    f"--state-id tap_yfinance_target_{TAP_YFINANCE_TARGET}_{ENVIRONMENT}_{state_id} {select_param}"
+                    f"--state-id tap_yfinance_target_{TAP_YFINANCE_TARGET}_{ENVIRONMENT}_{state_id} {select_param}"\
+                        .split(" ")
 
                 process = \
                     mp.Process(
                         target=subprocess.run,
-                        kwargs={'args': run_command, 'shell': True,
+                        kwargs={'args': run_command,
                                 'cwd': os.path.join(app.root_path, project_dir)}
                     )
 
