@@ -3,6 +3,7 @@
 sudo docker build \
   --build-arg ENVIRONMENT=dev \
   --build-arg GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS} \
+  --build-arg GCP_PROJECT_ID=${GCP_PROJECT_ID} \
   -t financial-elt:latest . && \
 sudo docker run \
   --name financial-elt \
@@ -10,7 +11,6 @@ sudo docker run \
   --env-file .env \
   --restart always -d \
   financial-elt:latest
-
 
 ### docker-compose ###
 

@@ -5,16 +5,16 @@ FROM amd64/python:3.10.12-slim-buster
 ARG CI=true
 ARG ENVIRONMENT
 ARG GOOGLE_APPLICATION_CREDENTIALS
+ARG GCP_PROJECT_ID
 RUN env
 ENV PATH="/root/.local/bin:$PATH"
 ENV APP_HOME=/app
 ENV PYTHONUNBUFFERED=1
 WORKDIR $APP_HOME
-COPY . $APP_HOME
 
+COPY . $APP_HOME
 COPY $GOOGLE_APPLICATION_CREDENTIALS /root/.config/gcloud/application_default_credentials.json
 COPY $GOOGLE_APPLICATION_CREDENTIALS tap-yfinance/.secrets/
-
 
 ### Installation ###
 
