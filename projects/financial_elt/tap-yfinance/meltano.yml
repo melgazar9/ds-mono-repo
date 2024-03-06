@@ -31,7 +31,7 @@ plugins:
   extractors:
     - name: "tap-yfinance"
       namespace: "tap_yfinance"
-      pip_url: git+https://github.com/melgazar9/tap-yfinance@93fb9817a695c9cf3b50d8fc71ac7ca37a711f35
+      pip_url: git+https://github.com/melgazar9/tap-yfinance@a09f008b9f3e22a81f2fed7ead1bb46684b7e83d
 
       capabilities:
         - state
