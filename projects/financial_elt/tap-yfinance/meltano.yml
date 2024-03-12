@@ -45,6 +45,7 @@ plugins:
         - futures_tickers
         - forex_tickers
         - crypto_tickers
+        - crypto_tickers_top_250
         - stock_prices_1m
         - futures_prices_1m
         - forex_prices_1m
@@ -112,6 +113,10 @@ plugins:
             crypto_tickers:
               tickers: '*'
               schema_category: crypto_tickers
+            crypto_tickers_top_250:
+              tickers: '*'
+              schema_category: crypto_tickers_top_250
+
 
           ### prices ###
 
@@ -344,6 +349,10 @@ plugins:
         crypto_tickers:
           replication-method: INCREMENTAL
           replication-key: ticker
+        crypto_tickers_top_250:
+          replication-method: INCREMENTAL
+          replication-key: ticker
+
 
         ### prices ###
 
