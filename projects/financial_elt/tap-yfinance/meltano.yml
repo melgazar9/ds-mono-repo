@@ -31,7 +31,7 @@ plugins:
   extractors:
     - name: "tap-yfinance"
       namespace: "tap_yfinance"
-      pip_url: git+https://github.com/melgazar9/tap-yfinance@59caf5cfbf66e098e81c78dc16b7c1d66092fc0f
+      pip_url: git+https://github.com/melgazar9/tap-yfinance@9963480f8d6b7b0946845a6bdf135428bcd7a211
 
       capabilities:
         - state
@@ -505,7 +505,7 @@ plugins:
 
     - name: target-bigquery
       variant: z3z1ma
-      pip_url: git+https://github.com/z3z1ma/target-bigquery.git@2d59eae0aa4a5468ed8ba5d04e8d239e05e373ee
+      pip_url: git+https://github.com/z3z1ma/target-bigquery.git
       config:
         method: ${TARGET_BIGQUERY_METHOD}
         project: ${GCP_PROJECT_ID}
@@ -514,3 +514,16 @@ plugins:
         batch_size: ${TARGET_BIGQUERY_BATCH_SIZE}
         denormalized: true
         bucket: ${GCP_BUCKET_NAME}
+
+    - name: target-snowflake
+      variant: meltanolabs
+      pip_url: git+https://github.com/MeltanoLabs/target-snowflake.git
+      config:
+        account: ${SNOWFLAKE_ACCOUNT}
+        user: MELTANO
+        password: ${SNOWFLAKE_PASSWORD}
+        warehouse: ${SNOWFLAKE_WAREHOUSE}
+        database: MELTANO
+        role: MELTANO
+        file_format: CSV_FORMAT
+        batch_size_rows: 100000

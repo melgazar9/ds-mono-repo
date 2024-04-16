@@ -22,7 +22,9 @@ RUN apt-get update && \
     apt-get install -y git && \
     rm -rf /var/lib/{apt,dpkg,cache,log}/ && \
     pip install -U pip && \
-    pip install -r requirements.txt
+    pip install poetry && \
+    pip install pipx && \
+    poetry install
 
 WORKDIR tap-yfinance
 
@@ -40,4 +42,4 @@ WORKDIR $APP_HOME
 
 EXPOSE 5000
 
-CMD ["python", "host.py"]
+CMD ["poetry", "run", "python", "host.py"]
