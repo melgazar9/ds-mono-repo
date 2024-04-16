@@ -197,6 +197,23 @@ plugins:
           tickers: "*"
           yf_params: { "interval": 1d, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
 
+        ### wide ###
+  
+        stock_prices_wide_1m:
+          tickers: "*"
+          yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+        futures_prices_wide_1m:
+          tickers: [ "ES=F", "CL=F" ]
+          yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+        forex_prices_wide_1m:
+          tickers: [ "EURUSD=X", "RUB=X" ]
+          yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+        crypto_prices_wide_1m:
+          tickers: [ "BTC-USD", "ETH-USD" ]
+          yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
 
         ### financials ###
 
