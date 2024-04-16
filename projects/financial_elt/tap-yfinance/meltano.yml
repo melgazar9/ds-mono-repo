@@ -31,7 +31,7 @@ plugins:
   extractors:
     - name: "tap-yfinance"
       namespace: "tap_yfinance"
-      pip_url: git+https://github.com/melgazar9/tap-yfinance@3e30f48a3f980103286ff03b07bc17cd0b522032
+      pip_url: git+https://github.com/melgazar9/tap-yfinance@59caf5cfbf66e098e81c78dc16b7c1d66092fc0f
 
       capabilities:
         - state
@@ -41,296 +41,245 @@ plugins:
         - stream-maps
 
       select:
-        - stock_tickers
-        - futures_tickers
-        - forex_tickers
-        - crypto_tickers
-        - crypto_tickers_top_250
-        - stock_prices_1m
-        - futures_prices_1m
-        - forex_prices_1m
-        - crypto_prices_1m
-        - stock_prices_2m
-        - futures_prices_2m
-        - forex_prices_2m
-        - crypto_prices_2m
-        - stock_prices_5m
-        - futures_prices_5m
-        - forex_prices_5m
-        - crypto_prices_5m
-        - stock_prices_1h
-        - futures_prices_1h
-        - forex_prices_1h
-        - crypto_prices_1h
-        - stock_prices_1d
-        - futures_prices_1d
-        - forex_prices_1d
-        - crypto_prices_1d
-        - actions
-        - balance_sheet
-        - calendar
-        - cash_flow
-        - dividends
-        - earnings_dates
-        - fast_info
-        - financials
-        - history_metadata
-        - income_stmt
-        - insider_purchases
-        - insider_roster_holders
-        - insider_transactions
-        - institutional_holders
-        - major_holders
-        - mutualfund_holders
-        - news
-        - shares_full
-        - splits
-        - option_chain
-        - options
-        - quarterly_balance_sheet
-        - quarterly_cash_flow
-        - quarterly_financials
-        - quarterly_income_stmt
-        - upgrades_downgrades
+        - stock_tickers.*
+        - futures_tickers.*
+        - forex_tickers.*
+        - crypto_tickers.*
+        - crypto_tickers_top_250.*
+        - stock_prices_1m.*
+        - futures_prices_1m.*
+        - forex_prices_1m.*
+        - crypto_prices_1m.*
+        - stock_prices_2m.*
+        - futures_prices_2m.*
+        - forex_prices_2m.*
+        - crypto_prices_2m.*
+        - stock_prices_5m.*
+        - futures_prices_5m.*
+        - forex_prices_5m.*
+        - crypto_prices_5m.*
+        - stock_prices_1h.*
+        - futures_prices_1h.*
+        - forex_prices_1h.*
+        - crypto_prices_1h.*
+        - stock_prices_1d.*
+        - futures_prices_1d.*
+        - forex_prices_1d.*
+        - crypto_prices_1d.*
+        - actions.*
+        - balance_sheet.*
+        - calendar.*
+        - cash_flow.*
+        - dividends.*
+        - earnings_dates.*
+        - fast_info.*
+        - financials.*
+        - history_metadata.*
+        - income_stmt.*
+        - insider_purchases.*
+        - insider_roster_holders.*
+        - insider_transactions.*
+        - institutional_holders.*
+        - major_holders.*
+        - mutualfund_holders.*
+        - news.*
+        - recommendations.*
+        - shares_full.*
+        - splits.*
+        - option_chain.*
+        - options.*
+        - quarterly_balance_sheet.*
+        - quarterly_cash_flow.*
+        - quarterly_financials.*
+        - quarterly_income_stmt.*
+        - upgrades_downgrades.*
 
       config:
         default_start_date: "1950-01-01"
         add_record_metadata: true
-        financial_category:
 
-          ### tickers ###
+        ### tickers ###
 
-          tickers:
-            stock_tickers:
-              tickers: '*'
-              schema_category: stock_tickers
-            futures_tickers:
-              tickers: '*'
-              schema_category: futures_tickers
-            forex_tickers:
-              tickers: '*'
-              schema_category: forex_tickers
-            crypto_tickers:
-              tickers: '*'
-              schema_category: crypto_tickers
-            crypto_tickers_top_250:
-              tickers: '*'
-              schema_category: crypto_tickers_top_250
+        stock_tickers:
+          tickers: '*'
+        futures_tickers:
+          tickers: '*'
+        forex_tickers:
+          tickers: '*'
+        crypto_tickers:
+          tickers: '*'
+        crypto_tickers_top_250:
+          tickers: '*'
 
+        ### prices ###
 
-          ### prices ###
+        stock_prices_1m:
+          tickers: "*"
+          yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
 
-          prices:
-            stock_prices_1m:
-              tickers: "*"
-              yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
-              schema_category: stock_prices
+        futures_prices_1m:
+          tickers: "*"
+          yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
 
-            futures_prices_1m:
-              tickers: "*"
-              yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
-              schema_category: futures_prices
+        forex_prices_1m:
+          tickers: "*"
+          yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
 
-            forex_prices_1m:
-              tickers: "*"
-              yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
-              schema_category: forex_prices
-
-            crypto_prices_1m:
-              tickers: "*"
-              yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
-              schema_category: crypto_prices
+        crypto_prices_1m:
+          tickers: "*"
+          yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
 
 
-            stock_prices_2m:
-              tickers: "*"
-              yf_params: { "interval": 2m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
-              schema_category: stock_prices
+        stock_prices_2m:
+          tickers: "*"
+          yf_params: { "interval": 2m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
 
-            futures_prices_2m:
-              tickers: "*"
-              yf_params: { "interval": 2m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
-              schema_category: futures_prices
+        futures_prices_2m:
+          tickers: "*"
+          yf_params: { "interval": 2m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
 
-            forex_prices_2m:
-              tickers: "*"
-              yf_params: { "interval": 2m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
-              schema_category: forex_prices
+        forex_prices_2m:
+          tickers: "*"
+          yf_params: { "interval": 2m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
 
-            crypto_prices_2m:
-              tickers: "*"
-              yf_params: { "interval": 2m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
-              schema_category: crypto_prices
+        crypto_prices_2m:
+          tickers: "*"
+          yf_params: { "interval": 2m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
 
 
-            stock_prices_5m:
-              tickers: "*"
-              yf_params: { "interval": 5m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
-              schema_category: stock_prices
+        stock_prices_5m:
+          tickers: "*"
+          yf_params: { "interval": 5m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
 
-            futures_prices_5m:
-              tickers: "*"
-              yf_params: { "interval": 5m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
-              schema_category: futures_prices
+        futures_prices_5m:
+          tickers: "*"
+          yf_params: { "interval": 5m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
 
-            forex_prices_5m:
-              tickers: "*"
-              yf_params: { "interval": 5m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
-              schema_category: forex_prices
+        forex_prices_5m:
+          tickers: "*"
+          yf_params: { "interval": 5m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
 
-            crypto_prices_5m:
-              tickers: "*"
-              yf_params: { "interval": 5m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
-              schema_category: crypto_prices
+        crypto_prices_5m:
+          tickers: "*"
+          yf_params: { "interval": 5m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
 
 
-            stock_prices_1h:
-              tickers: "*"
-              yf_params: { "interval": 1h, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
-              schema_category: stock_prices
+        stock_prices_1h:
+          tickers: "*"
+          yf_params: { "interval": 1h, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
 
-            futures_prices_1h:
-              tickers: "*"
-              yf_params: { "interval": 1h, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
-              schema_category: futures_prices
+        futures_prices_1h:
+          tickers: "*"
+          yf_params: { "interval": 1h, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
 
-            forex_prices_1h:
-              tickers: "*"
-              yf_params: { "interval": 1h, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
-              schema_category: forex_prices
+        forex_prices_1h:
+          tickers: "*"
+          yf_params: { "interval": 1h, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
 
-            crypto_prices_1h:
-              tickers: "*"
-              yf_params: { "interval": 1h, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
-              schema_category: crypto_prices
+        crypto_prices_1h:
+          tickers: "*"
+          yf_params: { "interval": 1h, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
 
 
-            stock_prices_1d:
-              tickers: "*"
-              yf_params: { "interval": 1d, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
-              schema_category: stock_prices
+        stock_prices_1d:
+          tickers: "*"
+          yf_params: { "interval": 1d, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
 
-            futures_prices_1d:
-              tickers: "*"
-              yf_params: { "interval": 1d, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
-              schema_category: futures_prices
+        futures_prices_1d:
+          tickers: "*"
+          yf_params: { "interval": 1d, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
 
-            forex_prices_1d:
-              tickers: "*"
-              yf_params: { "interval": 1d, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
-              schema_category: forex_prices
+        forex_prices_1d:
+          tickers: "*"
+          yf_params: { "interval": 1d, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
 
-            crypto_prices_1d:
-              tickers: "*"
-              yf_params: { "interval": 1d, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
-              schema_category: crypto_prices
+        crypto_prices_1d:
+          tickers: "*"
+          yf_params: { "interval": 1d, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
 
-          ### financials ###
 
-          financials:
-            actions:
-              tickers: "*"
-              schema_category: get_actions
+        ### financials ###
 
-            balance_sheet:
-              tickers: "*"
-              schema_category: get_balance_sheet
+        actions:
+          tickers: "*"
 
-            calendar:
-              tickers: "*"
-              schema_category: get_calendar
+        balance_sheet:
+          tickers: "*"
 
-            cash_flow:
-              tickers: "*"
-              schema_category: get_cash_flow
+        calendar:
+          tickers: "*"
 
-            dividends:
-              tickers: "*"
-              schema_category: get_dividends
+        cash_flow:
+          tickers: "*"
 
-            earnings_dates:
-              tickers: "*"
-              schema_category: get_earnings_dates
+        dividends:
+          tickers: "*"
 
-            fast_info:
-              tickers: "*"
-              schema_category: get_fast_info
+        earnings_dates:
+          tickers: "*"
 
-            financials:
-              tickers: "*"
-              schema_category: get_financials
+        fast_info:
+          tickers: "*"
 
-            history_metadata:
-              tickers: "*"
-              schema_category: get_history_metadata
+        financials:
+          tickers: "*"
 
-            income_stmt:
-              tickers: "*"
-              schema_category: get_income_stmt
+        history_metadata:
+          tickers: "*"
 
-            insider_purchases:
-              tickers: "*"
-              schema_category: get_insider_purchases
+        income_stmt:
+          tickers: "*"
 
-            insider_roster_holders:
-              tickers: "*"
-              schema_category: get_insider_roster_holders
+        insider_purchases:
+          tickers: "*"
 
-            insider_transactions:
-              tickers: "*"
-              schema_category: get_insider_transactions
+        insider_roster_holders:
+          tickers: "*"
 
-            institutional_holders:
-              tickers: "*"
-              schema_category: get_institutional_holders
+        insider_transactions:
+          tickers: "*"
 
-            major_holders:
-              tickers: "*"
-              schema_category: get_major_holders
+        institutional_holders:
+          tickers: "*"
 
-            mutualfund_holders:
-              tickers: "*"
-              schema_category: get_mutualfund_holders
+        major_holders:
+          tickers: "*"
 
-            news:
-              tickers: "*"
-              schema_category: get_news
+        mutualfund_holders:
+          tickers: "*"
 
-            shares_full:
-              tickers: "*"
-              schema_category: get_shares_full
+        news:
+          tickers: "*"
 
-            splits:
-              tickers: "*"
-              schema_category: get_splits
+        recommendations:
+          tickers: "*"
 
-            option_chain:
-              tickers: "*"
-              schema_category: option_chain
+        shares_full:
+          tickers: "*"
 
-            options:
-              tickers: "*"
-              schema_category: options
+        splits:
+          tickers: "*"
 
-            quarterly_balance_sheet:
-              tickers: "*"
-              schema_category: quarterly_balance_sheet
+        option_chain:
+          tickers: "*"
 
-            quarterly_cash_flow:
-              tickers: "*"
-              schema_category: quarterly_cash_flow
+        options:
+          tickers: "*"
 
-            quarterly_financials:
-              tickers: "*"
-              schema_category: quarterly_financials
+        quarterly_balance_sheet:
+          tickers: "*"
 
-            quarterly_income_stmt:
-              tickers: "*"
-              schema_category: quarterly_income_stmt
+        quarterly_cash_flow:
+          tickers: "*"
 
-            upgrades_downgrades:
-              tickers: "*"
-              schema_category: get_upgrades_downgrades
+        quarterly_financials:
+          tickers: "*"
+
+        quarterly_income_stmt:
+          tickers: "*"
+
+        upgrades_downgrades:
+          tickers: "*"
 
 
       metadata:
@@ -489,6 +438,10 @@ plugins:
           replication-key: date_reported
 
         news:
+          replication-method: INCREMENTAL
+          replication-key: timestamp_extracted
+
+        recommendations:
           replication-method: INCREMENTAL
           replication-key: timestamp_extracted
 
