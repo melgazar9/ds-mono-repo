@@ -64,7 +64,7 @@ def tap_yfinance(task_chunks=None):
 
             for chunk in task_chunks:
                 assert isinstance(chunk, list), "Invalid datatype task_chunks. Must be list when running multiprocessing."
-                state_id = ' '.join(chunk).replace('--select ', '').replace(' ', '__')
+                state_id = ' '.join(chunk).replace('--select ', '').replace(' ', '__').replace('.*', '')
                 select_param = ' '.join(chunk)
                 run_command = \
                     f"{base_run_command} " \
