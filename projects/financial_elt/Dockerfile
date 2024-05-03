@@ -23,6 +23,7 @@ COPY $GOOGLE_APPLICATION_CREDENTIALS tap-yfinance/.secrets/
 ### Installation ###
 
 RUN apt-get update &&\
+    apt-get install -y git && \
     rm -rf /var/lib/{apt,dpkg,cache,log}/ && \
     pip install -U pip && \
     pip install -U pipx
@@ -30,7 +31,6 @@ RUN apt-get update &&\
 WORKDIR tap-yfinance
 
 # RUN sed -i "s/\${GCP_PROJECT_ID}/$GCP_PROJECT_ID/g" logging.yaml
-
 
 RUN pipx ensurepath && \
     pipx install poetry==1.8.2 && \
