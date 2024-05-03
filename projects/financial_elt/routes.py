@@ -90,5 +90,4 @@ def tap_yfinance(task_chunks=[['--select stock_tickers.*'], ['--select futures_t
             logging.info(f'*** Completed process {process} --- run_commands: {task_chunks}')
 
         logging.info(f'*** ELT Process took {round(time.monotonic() - start, 2)} minutes. ***')
-
         return make_response(f'Last ran project tap-yfinance-{ENVIRONMENT} target {TAP_YFINANCE_TARGET} at {cur_timestamp()}.', 200)
