@@ -31,7 +31,7 @@ plugins:
   extractors:
     - name: "tap-yfinance"
       namespace: "tap_yfinance"
-      pip_url: git+https://github.com/melgazar9/tap-yfinance@2222cd1e2038902514c396689e46f1b45ecce0da
+      pip_url: git+https://github.com/melgazar9/tap-yfinance@3517b1d42f77773e13cd0d0e25d6301af0a079a6
 
       capabilities:
         - state
@@ -526,4 +526,4 @@ plugins:
         database: MELTANO
         role: MELTANO
         file_format: CSV_FORMAT
-        batch_size_rows: 100000
+        batch_size_rows: 1000000
