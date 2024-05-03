@@ -6,9 +6,9 @@ sudo docker build \
   --build-arg GCP_PROJECT_ID=${GCP_PROJECT_ID} \
   -t financial-elt:latest . && \
 sudo docker run \
+  --env-file .env \
   --name financial-elt \
   -p 5000:5000 \
-  --env-file .env \
   --restart always -d \
   financial-elt:latest
 
