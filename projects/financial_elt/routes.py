@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 ENVIRONMENT = os.getenv('ENVIRONMENT')
 
-TAP_YFINANCE_TARGET = 'snowflake'  # os.getenv('TAP_YFINANCE_TARGET')
+TAP_YFINANCE_TARGET = os.getenv('TAP_YFINANCE_TARGET')
 
 assert isinstance(TAP_YFINANCE_TARGET, str), 'could not determine yfinance target'
 
@@ -46,7 +46,7 @@ def financial_elt():
 ###### tap yfinance routes ######
 
 @app.route(f'/financial-elt/tap-yfinance-{ENVIRONMENT}', methods=['GET'])
-def tap_yfinance(task_chunks=None)
+def tap_yfinance(task_chunks=None):
     with app.app_context():
         start = time.monotonic()
         project_dir = 'tap-yfinance'
