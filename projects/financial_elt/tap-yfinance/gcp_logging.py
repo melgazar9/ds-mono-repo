@@ -1,5 +1,6 @@
 import sys
 
+
 def get_handler(*, project=None, logger_name=None):
     """Return a handler based on the environment."""
     try:
