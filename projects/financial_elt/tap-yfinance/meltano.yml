@@ -526,4 +526,4 @@ plugins:
         database: MELTANO
         role: MELTANO
         file_format: CSV_FORMAT
-        batch_size_rows: 1000000
+        batch_size_rows: ${SNOWFLAKE_BATCH_SIZE_ROWS}

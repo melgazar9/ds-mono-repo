@@ -1,7 +1,7 @@
 ### docker ###
 
 sudo docker build \
-  --build-arg ENVIRONMENT=dev \
+  --build-arg ENVIRONMENT=${ENVIRONMENT} \
   --build-arg GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS} \
   --build-arg GCP_PROJECT_ID=${GCP_PROJECT_ID} \
   -t financial-elt:latest . && \
@@ -10,6 +10,8 @@ sudo docker run \
   --name financial-elt \
   -p 5000:5000 \
   --restart always -d \
+  --log-opt max-size=100m \
+  --log-opt max-file=30 \
   financial-elt:latest
 
 ### docker-compose ###
