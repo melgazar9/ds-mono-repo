@@ -9,7 +9,7 @@ sudo docker run \
   --env-file .env \
   --name financial-elt \
   -p 5000:5000 \
-  --restart always -d \
+  -d \
   --log-opt max-size=100m \
   --log-opt max-file=30 \
   financial-elt:latest

@@ -1,2 +1,0 @@
-0 17 */1 * * nordvpn connect
-0 12 */1 * * nordvpn disconnect
