@@ -92,7 +92,7 @@ def tap_yfinance(task_chunks=None):
                     .replace(" ", "__")
                     .replace(".*", "")
                 )
-                select_param = " ".join(chunk)
+                select_param = " ".join(chunk).replace(".*", "")
                 run_command = (
                     f"{base_run_command} "
                     f"--state-id tap_yfinance_target_{TAP_YFINANCE_TARGET}_{ENVIRONMENT}_{state_id} {select_param}".split(
