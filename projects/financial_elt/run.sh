@@ -10,8 +10,6 @@ sudo docker run \
   --name financial-elt \
   -p 5000:5000 \
   -d \
-  --log-opt max-size=100m \
-  --log-opt max-file=30 \
   financial-elt:latest
 
 ### docker-compose ###
