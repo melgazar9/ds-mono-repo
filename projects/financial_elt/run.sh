@@ -9,6 +9,7 @@ sudo docker run \
   --env-file .env \
   --name financial-elt \
   -p 5000:5000 \
+  --restart always \
   -d \
   financial-elt:latest
 
