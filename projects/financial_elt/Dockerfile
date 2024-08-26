@@ -28,6 +28,8 @@ RUN apt-get update &&\
     pip install -U pip && \
     pip install -U pipx
 
+RUN ulimit -c unlimited
+
 WORKDIR tap-yfinance
 
 # RUN sed -i "s/\${GCP_PROJECT_ID}/$GCP_PROJECT_ID/g" logging.yaml
@@ -38,7 +40,6 @@ RUN pipx ensurepath && \
 
 RUN pipx install "meltano[gcs]==3.3.2"
 RUN pipx inject meltano google-cloud-logging
-
 ENV PYTHONPATH .
 
 RUN meltano install

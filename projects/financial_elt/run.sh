@@ -8,6 +8,7 @@ sudo docker build \
 sudo docker run \
   --env-file .env \
   --name financial-elt \
+  --ulimit core=-1 \
   -p 5000:5000 \
   --restart always \
   -d \
