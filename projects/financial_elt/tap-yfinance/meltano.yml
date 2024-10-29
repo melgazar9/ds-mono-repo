@@ -505,7 +505,7 @@ plugins:
 
     - name: target-bigquery
       variant: z3z1ma
-      pip_url: git+https://github.com/z3z1ma/target-bigquery.git@f48f1d409a38e3d6669acec4cf3efe5b43763c9c
+      pip_url: git+https://github.com/z3z1ma/target-bigquery.git@9d1d0b08606a716a5a36f53b3388cbd6055535a8
       config:
         method: ${TARGET_BIGQUERY_METHOD}
         project: ${GCP_PROJECT_ID}
