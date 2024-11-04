@@ -40,7 +40,7 @@ RUN pipx ensurepath && \
 
 RUN pipx install "meltano[gcs]==3.3.2"
 RUN pipx inject meltano google-cloud-logging
-ENV PYTHONPATH .
+ENV PYTHONPATH=.
 
 RUN meltano install
 
