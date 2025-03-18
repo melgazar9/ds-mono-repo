@@ -12,6 +12,8 @@ sudo docker run \
   -p 5000:5000 \
   --restart always \
   -d \
+  --memory="30g" \
+  --cpus="16" \
   financial-elt:latest
 
 ### docker-compose ###
