@@ -18,6 +18,9 @@ environments:
           - name: target-snowflake
             env:
               TARGET_SNOWFLAKE_DEFAULT_TARGET_SCHEMA: TAP_YFINANCE_DEV
+          - name: target-postgres
+            env:
+              default_target_schema: tap_yfinance_dev
 
   - name: production
     config:
@@ -26,6 +29,9 @@ environments:
           - name: target-snowflake
             env:
               TARGET_SNOWFLAKE_DEFAULT_TARGET_SCHEMA: TAP_YFINANCE_PRODUCTION
+          - name: target-postgres
+            env:
+              default_target_schema: tap_yfinance_production
 
 plugins:
   extractors:
@@ -503,20 +509,6 @@ plugins:
       variant: andyh1203
       pip_url: target-jsonl
 
-    - name: target-postgres
-      variant: meltanolabs
-      pip_url: git+https://github.com/MeltanoLabs/target-postgres
-      config:
-        host: ${POSTGRES_HOST)
-        port: ${POSTGRES_PORT}
-        user: ${POSTGRES_USER}
-        password: ${POSTGRES_PASSWORD}
-        dialect: ${POSTGRES_DIALECT}
-        database: financial_elt
-        default_target_schema: tap_yfinance_${ENV}
-        use_copy: true    # Faster bulk loading
-        add_record_metadata: true
-
     - name: target-bigquery
       variant: z3z1ma
       pip_url: git+https://github.com/z3z1ma/target-bigquery.git@9d1d0b08606a716a5a36f53b3388cbd6055535a8
@@ -541,3 +533,16 @@ plugins:
         role: MELTANO
         file_format: CSV_FORMAT
         batch_size_rows: ${SNOWFLAKE_BATCH_SIZE_ROWS}
+
+    - name: target-postgres
+      variant: meltanolabs
+      pip_url: git+https://github.com/MeltanoLabs/target-postgres
+      config:
+        host: ${POSTGRES_HOST)
+        port: ${POSTGRES_PORT}
+        user: ${POSTGRES_USER}
+        password: ${POSTGRES_PASSWORD}
+        dialect: ${POSTGRES_DIALECT}
+        database: financial_elt
+        use_copy: true    # Faster bulk loading
+        add_record_metadata: true
