@@ -507,12 +507,13 @@ plugins:
       variant: meltanolabs
       pip_url: git+https://github.com/MeltanoLabs/target-postgres
       config:
-        host: localhost
-        port: 5432
+        host: ${POSTGRES_HOST)
+        port: ${POSTGRES_PORT}
         user: ${POSTGRES_USER}
         password: ${POSTGRES_PASSWORD}
+        dialect: ${POSTGRES_DIALECT}
         database: financial_elt
-        default_target_schema: tap_yfinance_dev
+        default_target_schema: tap_yfinance_${ENV}
         use_copy: true    # Faster bulk loading
         add_record_metadata: true
 
