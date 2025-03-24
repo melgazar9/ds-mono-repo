@@ -38,7 +38,7 @@ RUN pipx ensurepath && \
     pipx install poetry==1.8.2 && \
     poetry install
 
-RUN pipx install "meltano[gcs]==3.3.2"
+RUN pipx install "meltano[gcs]==3.6.0"
 RUN pipx inject meltano google-cloud-logging
 ENV PYTHONPATH=.
 
