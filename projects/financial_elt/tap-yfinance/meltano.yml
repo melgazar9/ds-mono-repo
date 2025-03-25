@@ -19,7 +19,7 @@ environments:
             env:
               TARGET_SNOWFLAKE_DEFAULT_TARGET_SCHEMA: TAP_YFINANCE_DEV
           - name: target-postgres
-            env:
+            config:
               default_target_schema: tap_yfinance_dev
 
   - name: production
@@ -30,7 +30,7 @@ environments:
             env:
               TARGET_SNOWFLAKE_DEFAULT_TARGET_SCHEMA: TAP_YFINANCE_PRODUCTION
           - name: target-postgres
-            env:
+            config:
               default_target_schema: tap_yfinance_production
 
 plugins:
