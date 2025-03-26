@@ -1,3 +1,5 @@
+set -e
+
 ### docker ###
 
 sudo docker build \
@@ -15,7 +17,9 @@ sudo docker run \
   -d \
   --memory="30g" \
   --cpus="16" \
+  --network host \
   financial-elt:latest
+
 
 ### docker-compose ###
 
