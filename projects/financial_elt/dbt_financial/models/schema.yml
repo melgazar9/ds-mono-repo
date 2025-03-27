@@ -27,8 +27,8 @@ sources:
       - name: balance_sheet
 
 models:
-  - name: yf_stock_prices_deduped_1d
-    description: "Yahoo finance stock prices deduplicated by day and ticker"
+  - name: yf_stock_prices_1d
+    description: "Yahoo finance stock prices deduped by day and ticker"
     config:
       contract:
         enforced: true

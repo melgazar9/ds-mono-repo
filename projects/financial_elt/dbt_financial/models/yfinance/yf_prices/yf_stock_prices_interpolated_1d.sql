@@ -1,11 +1,11 @@
-{{ config(schema='yfinance_prices', materialized='incremental', unique_key=['day', 'ticker']) }}
+{{ config(schema='yf_prices', materialized='incremental', unique_key=['day', 'ticker']) }}
 
 with recursive day_intervals as (
   select
     min(timestamp) as interval_start,
     current_date at time zone 'UTC' as interval_end
   from
-    {{ ref('yf_stock_prices_deduped_1d') }}
+    {{ ref('yf_stock_prices_1d') }}
 
   union all
 
@@ -29,7 +29,7 @@ cte_ticker_intervals as (
   from
     cte_generated_days cgm
   cross join
-    (select distinct ticker from {{ ref('yf_stock_prices_deduped_1d') }}) t
+    (select distinct ticker from {{ ref('yf_stock_prices_1d') }}) t
 ),
 
 cte_stock_tickers as (
@@ -51,7 +51,7 @@ cte_stock_tickers as (
     cte_ticker_intervals ti
 
   left join
-    {{ ref('yf_stock_prices_deduped_1d') }} fp
+    {{ ref('yf_stock_prices_1d') }} fp
   on
     date_trunc('day', ti.day) = date_trunc('day', fp.timestamp)
     and ti.ticker = fp.ticker

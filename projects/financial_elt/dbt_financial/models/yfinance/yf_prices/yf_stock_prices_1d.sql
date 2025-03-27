@@ -1,11 +1,13 @@
 {{
   config(
-    schema='yfinance_prices',
+    schema='yf_prices',
     materialized='incremental',
     unique_key=['timestamp', 'ticker'],
     on_schema_change='append_new_columns'
   )
 }}
+
+-- deduped stock prices by timestamp, ticker
 
 with cte as (
   select
