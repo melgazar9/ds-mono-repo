@@ -32,4 +32,6 @@ clean-targets:         # directories to be removed by `dbt clean`
 # files using the `{{ config(...) }}` macro.
 #models:
 #  dbt_financial_elt:
-#    # Config indicated by + and applies to all files under models/example/
+#    +enabled: true
+#    yfinance:
+#      +schema: yfinance

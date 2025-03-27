@@ -1,12 +1,12 @@
 sources:
-  - name: meltano_yfinance_dev
-    schema: meltano_yfinance_dev
-    database: "{{ env_var('GCP_PROJECT_NAME') }}" 
-    loaded_at_field: timestamp
+  - name: tap_yfinance_dev
+    schema: tap_yfinance_dev
+    database: financial_elt
+    loaded_at_field: _sdc_batched_at
     freshness:
       error_after:
-        count: 12
-        period: hour
+        count: 1
+        period: day
     tables:
       - name: stock_prices_1m
       - name: stock_prices_2m
@@ -24,4 +24,42 @@ sources:
       - name: crypto_prices_1h
       - name: crypto_prices_1d
 
-
+models:
+  - name: yf_stock_prices_deduped_1d
+    description: "Yahoo finance stock prices deduplicated by day and ticker"
+    config:
+      contract:
+        enforced: true
+    constraints:
+      - type: primary_key
+        columns:
+          - timestamp
+          - ticker
+    columns:
+      - name: ticker
+        data_type: text
+        constraints:
+          - type:
+              not_null
+      - name: timestamp
+        data_type: timestamp
+        constraints:
+          - type: not_null
+      - name: timestamp_tz_aware
+        data_type: text
+      - name: timezone
+        data_type: text
+      - name: open
+        data_type: decimal(18, 2)
+      - name: high
+        data_type: decimal(18, 2)
+      - name: low
+        data_type: decimal(18, 2)
+      - name: close
+        data_type: decimal(18, 2)
+      - name: volume
+        data_type: decimal(18, 2)
+      - name: repaired
+        data_type: boolean
+      - name: replication_key
+        data_type: text
