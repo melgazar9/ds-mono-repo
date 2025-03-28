@@ -1,11 +1,4 @@
-{{
-  config(
-    schema='yf_prices',
-    materialized='incremental',
-    unique_key=['timestamp', 'ticker'],
-    on_schema_change='append_new_columns'
-  )
-}}
+{{ config(schema='yfinance', materialized='incremental', unique_key=['timestamp', 'ticker'] ) }}
 
 -- deduped stock prices by timestamp, ticker
 
