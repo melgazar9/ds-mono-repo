@@ -6,11 +6,12 @@ with cte as (
     timestamp_tz_aware,
     timezone,
     ticker,
-    dividends,
-    stock_splits,
-    row_number() over (partition by ticker, dividends, stock_splits order by _sdc_batched_at desc) as rn
+    eps_estimate,
+    reported_eps,
+    pct_surprise,
+    row_number() over (partition by ticker, eps_estimate, reported_eps, pct_surprise order by _sdc_batched_at desc) as rn
   from
-    {{ source('tap_yfinance_dev', 'actions') }}
+    {{ source('tap_yfinance_dev', 'earnings_dates') }}
 )
 
 select
@@ -18,8 +19,9 @@ select
   timestamp_tz_aware,
   timezone,
   ticker,
-  dividends,
-  stock_splits
+  eps_estimate,
+  reported_eps,
+  pct_surprise,
 from
   cte
 where

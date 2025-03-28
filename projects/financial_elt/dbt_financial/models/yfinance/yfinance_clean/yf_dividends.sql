@@ -7,10 +7,9 @@ with cte as (
     timezone,
     ticker,
     dividends,
-    stock_splits,
-    row_number() over (partition by ticker, dividends, stock_splits order by _sdc_batched_at desc) as rn
+    row_number() over (partition by ticker, dividends order by _sdc_batched_at desc) as rn
   from
-    {{ source('tap_yfinance_dev', 'actions') }}
+    {{ source('tap_yfinance_dev', 'dividends') }}
 )
 
 select
@@ -18,8 +17,7 @@ select
   timestamp_tz_aware,
   timezone,
   ticker,
-  dividends,
-  stock_splits
+  dividends
 from
   cte
 where
