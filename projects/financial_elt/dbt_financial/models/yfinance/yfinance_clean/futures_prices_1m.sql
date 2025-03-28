@@ -1,6 +1,6 @@
 {{ config(schema='yfinance_clean', materialized='incremental', unique_key=['timestamp', 'ticker'] ) }}
 
--- deduped stock prices by timestamp, ticker
+-- deduped futures prices by timestamp, ticker
 
 with cte as (
   select
@@ -13,13 +13,11 @@ with cte as (
     low,
     close,
     volume,
-    dividends,
-    stock_splits,
     repaired,
     replication_key,
     row_number() over (partition by timestamp, ticker order by _sdc_batched_at desc) as rn
   from
-    {{ source('tap_yfinance_dev', 'stock_prices_1m') }}
+    {{ source('tap_yfinance_dev', 'futures_prices_1m') }}
 )
 
 select
@@ -32,8 +30,6 @@ select
   low,
   close,
   volume,
-  dividends,
-  stock_splits,
   repaired,
   replication_key
 from

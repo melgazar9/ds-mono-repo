@@ -1,4 +1,4 @@
-{{ config(schema='yfinance', materialized='incremental', unique_key=['timestamp', 'ticker'] ) }}
+{{ config(schema='yfinance_clean', materialized='incremental', unique_key=['timestamp', 'ticker'] ) }}
 
 -- deduped crypto prices by timestamp, ticker
 

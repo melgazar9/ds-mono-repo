@@ -1,4 +1,4 @@
-{{ config(schema='yfinance', materialized='incremental', unique_key=['day', 'ticker']) }}
+{{ config(schema='yfinance_clean', materialized='incremental', unique_key=['day', 'ticker']) }}
 
 -- interpolated crypto prices from timestamp, ticker. It forward-fills prices from missing timestamps.
 

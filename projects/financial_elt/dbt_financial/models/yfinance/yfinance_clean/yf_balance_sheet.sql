@@ -1,4 +1,4 @@
-{{ config(schema='yfinance', materialized='incremental', unique_key=['date', 'ticker']) }}
+{{ config(schema='yfinance_clean', materialized='incremental', unique_key=['date', 'ticker']) }}
 
 with cte as (
   select

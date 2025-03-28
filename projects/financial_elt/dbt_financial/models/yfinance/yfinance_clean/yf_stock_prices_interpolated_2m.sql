@@ -1,4 +1,4 @@
-{{ config(schema='yfinance', materialized='incremental', unique_key=['two_minute', 'ticker']) }}
+{{ config(schema='yfinance_clean', materialized='incremental', unique_key=['two_minute', 'ticker']) }}
 
 -- interpolated stock prices from timestamp, ticker. It forward-fills prices from missing timestamps.
 
