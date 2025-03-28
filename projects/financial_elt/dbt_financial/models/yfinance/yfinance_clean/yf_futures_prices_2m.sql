@@ -1,6 +1,6 @@
 {{ config(schema='yfinance_clean', materialized='incremental', unique_key=['timestamp', 'ticker'] ) }}
 
--- deduped forex prices by timestamp, ticker
+-- deduped futures prices by timestamp, ticker
 
 with cte as (
   select
@@ -17,7 +17,7 @@ with cte as (
     replication_key,
     row_number() over (partition by timestamp, ticker order by _sdc_batched_at desc) as rn
   from
-    {{ source('tap_yfinance_dev', 'forex_prices_2m') }}
+    {{ source('tap_yfinance_dev', 'futures_prices_2m') }}
 )
 
 select
