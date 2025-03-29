@@ -211,7 +211,6 @@ models:
 #  - name: yf_recommendations
 #  - name: yf_shares_full
 #  - name: yf_splits
-  - name: yf_stock_prices_1m
   - name: yf_stock_prices_2m
     extends: yf_stock_prices_1m
   - name: yf_stock_prices_5m

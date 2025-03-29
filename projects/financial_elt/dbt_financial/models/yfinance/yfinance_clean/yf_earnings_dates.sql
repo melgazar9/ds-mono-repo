@@ -21,7 +21,7 @@ select
   ticker,
   eps_estimate,
   reported_eps,
-  pct_surprise,
+  pct_surprise
 from
   cte
 where

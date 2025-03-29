@@ -1,4 +1,4 @@
-{{ config(schema='yfinance_clean', materialized='incremental', unique_key=['timestamp', 'ticker']) }}
+{{ config(schema='yfinance_clean', materialized='table') }}
 
 with cte as (
   select
@@ -31,13 +31,9 @@ select
   total_volume_all_currencies_24h,
   circulating_supply,
   change_pct_52wk,
-  open_interest,
+  open_interest
 from
   cte
 where
   rn = 1
-  {% if is_incremental() %}
-    and timestamp >= (select max(timestamp) from {{ this }})
-  {% endif %}
-
 order by 1
