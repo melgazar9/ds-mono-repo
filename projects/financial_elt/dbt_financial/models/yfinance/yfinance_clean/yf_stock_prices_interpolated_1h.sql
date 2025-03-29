@@ -98,6 +98,6 @@ where
   ct.rn = 1
 
   {% if is_incremental() %}
-    and ct.one_hour >= (select max(date(one_hour)) - interval '5 day' from {{ this }})
+    and ct.one_hour >= (select max(date(one_hour)) - interval '3 day' from {{ this }})
   {% endif %}
 order by 1

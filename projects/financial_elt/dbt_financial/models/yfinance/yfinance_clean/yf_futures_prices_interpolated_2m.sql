@@ -92,6 +92,6 @@ where
   ct.rn = 1
 
   {% if is_incremental() %}
-    and ct.two_minute >= (select max(date(two_minute)) - interval '5 day' from {{ this }})
+    and ct.two_minute >= (select max(date(two_minute)) - interval '3 day' from {{ this }})
   {% endif %}
 order by 1

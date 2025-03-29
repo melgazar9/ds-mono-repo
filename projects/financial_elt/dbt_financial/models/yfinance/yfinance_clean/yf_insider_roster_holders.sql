@@ -44,5 +44,5 @@ from
 where
   rn = 1
   {% if is_incremental() %}
-    and latest_transaction_date >= (select max(latest_transaction_date) - 3 from {{ this }})
+    and date(latest_transaction_date) >= (select max(date(latest_transaction_date)) - interval '3 days' from {{ this }})
   {% endif %}

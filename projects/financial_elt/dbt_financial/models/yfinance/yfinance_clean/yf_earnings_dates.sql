@@ -1,4 +1,4 @@
-{{ config(schema='yfinance_clean', materialized='incremental', unique_key=['timestamp', 'ticker']) }}
+{{ config(schema='yfinance_clean', materialized='incremental', unique_key=['ticker', 'eps_estimate', 'reported_eps', 'pct_surprise']) }}
 
 with cte as (
   select
@@ -27,7 +27,7 @@ from
 where
   rn = 1
   {% if is_incremental() %}
-    and timestamp >= (select max(timestamp) from {{ this }})
+    and timestamp >= (select max(date(timestamp)) - interval '3 days' from {{ this }})
   {% endif %}
 
 order by 1

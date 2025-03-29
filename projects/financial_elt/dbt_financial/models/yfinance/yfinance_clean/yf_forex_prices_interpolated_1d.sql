@@ -92,6 +92,6 @@ where
   ct.rn = 1
 
   {% if is_incremental() %}
-    and ct.day >= (select max(date(day)) - interval '5 day' from {{ this }})
+    and ct.day >= (select max(date(day)) - interval '3 day' from {{ this }})
   {% endif %}
 order by 1

@@ -7,7 +7,7 @@ with cte as (
       'ticker',
       'dividends',
       'stock_splits'
-    ]) }}
+    ]) }} as surrogate_key,
     timestamp,
     timestamp_tz_aware,
     timezone,
@@ -20,6 +20,7 @@ with cte as (
 )
 
 select
+  surrogate_key,
   timestamp,
   timestamp_tz_aware,
   timezone,
@@ -31,7 +32,7 @@ from
 where
   rn = 1
   {% if is_incremental() %}
-    and timestamp >= (select max(timestamp) - 3 from {{ this }})
+    and timestamp >= (select max(timestamp) - interval '3 days' from {{ this }})
   {% endif %}
 
 order by 1
