@@ -1,4 +1,4 @@
-{{ config(schema='yfinance_clean', materialized='incremental', unique_key=['minute', 'ticker']) }}
+{{ config(schema='yfinance_clean', materialized='table', unique_key=['hour', 'ticker']) }}
 
 -- interpolated crypto prices from timestamp, ticker. It forward-fills prices from missing timestamps.
 
@@ -92,6 +92,6 @@ where
   ct.rn = 1
 
   {% if is_incremental() %}
-    and ct.hour >= (select max(date(hour)) - interval '3 day' from {{ this }})
+    and date(ct.hour) >= (select max(date(hour)) - interval '3 day' from {{ this }})
   {% endif %}
 order by 1

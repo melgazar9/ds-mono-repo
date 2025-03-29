@@ -36,5 +36,5 @@ from
 where
   rn = 1
   {% if is_incremental() %}
-    and date(start_date) >= (select max(date(start_date)) - interval '3 days' from {{ this }})
+    and date(date_reported) >= (select max(date(date_reported)) - interval '3 days' from {{ this }})
   {% endif %}

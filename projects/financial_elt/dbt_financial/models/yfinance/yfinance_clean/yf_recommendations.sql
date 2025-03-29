@@ -27,13 +27,13 @@ cte as (
 select
   surrogate_key,
   ticker,
-  timestamp_extracted
   period,
   strong_buy,
   buy,
   hold,
   sell,
-  strong_sell
+  strong_sell,
+  timestamp_extracted
 from
   cte
 where

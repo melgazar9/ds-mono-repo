@@ -1,4 +1,4 @@
-{{ config(schema='yfinance_clean', materialized='incremental', unique_key=['day', 'ticker']) }}
+{{ config(schema='yfinance_clean', materialized='table', unique_key=['day', 'ticker']) }}
 
 -- interpolated futures prices from timestamp, ticker. It forward-fills prices from missing timestamps.
 
@@ -92,6 +92,6 @@ where
   ct.rn = 1
 
   {% if is_incremental() %}
-    and ct.day >= (select max(date(day)) - interval '3 day' from {{ this }})
+    and date(ct.day) >= (select max(date(day)) - interval '3 day' from {{ this }})
   {% endif %}
 order by 1

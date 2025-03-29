@@ -1,4 +1,4 @@
-{{ config(schema='yfinance_clean', materialized='incremental', unique_key=['minute', 'ticker']) }}
+{{ config(schema='yfinance_clean', materialized='table', unique_key=['minute', 'ticker']) }}
 
 -- interpolated stock prices from timestamp, ticker. It forward-fills prices from missing timestamps.
 
@@ -98,6 +98,6 @@ where
   ct.rn = 1
 
   {% if is_incremental() %}
-    and ct.minute >= (select max(date(minute)) - interval '3 day' from {{ this }})
+    and date(ct.minute) >= (select max(date(minute)) - interval '3 day' from {{ this }})
   {% endif %}
 order by 1
