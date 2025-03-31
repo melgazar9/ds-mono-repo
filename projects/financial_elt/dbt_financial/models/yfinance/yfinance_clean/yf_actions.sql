@@ -1,6 +1,6 @@
 {{ config(schema='yfinance_clean', materialized='incremental', unique_key='surrogate_key') }}
 
-with cte as (
+with cte_surrogate as (
   select
     {{ dbt_utils.generate_surrogate_key([
       'timestamp',
@@ -8,15 +8,23 @@ with cte as (
       'dividends',
       'stock_splits'
     ]) }} as surrogate_key,
+    *
+  from
+    {{ source('tap_yfinance_dev', 'actions') }}
+),
+
+cte as (
+  select
+    surrogate_key,
     timestamp,
     timestamp_tz_aware,
     timezone,
     ticker,
     dividends,
     stock_splits,
-    row_number() over (partition by timestamp, ticker, dividends, stock_splits order by _sdc_batched_at desc) as rn
+    row_number() over(partition by timestamp, ticker order by _sdc_batched_at desc) as rn
   from
-    {{ source('tap_yfinance_dev', 'actions') }}
+    cte_surrogate
 )
 
 select

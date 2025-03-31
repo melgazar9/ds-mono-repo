@@ -7,7 +7,7 @@ with cte as (
     timezone,
     ticker,
     dividends,
-    row_number() over (partition by ticker, dividends order by _sdc_batched_at desc) as rn
+    row_number() over (partition by timestamp, ticker order by _sdc_batched_at desc) as rn
   from
     {{ source('tap_yfinance_dev', 'dividends') }}
 )

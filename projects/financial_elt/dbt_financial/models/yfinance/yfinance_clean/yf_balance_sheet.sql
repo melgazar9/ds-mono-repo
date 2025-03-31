@@ -1,6 +1,14 @@
-{{ config(schema='yfinance_clean', materialized='table') }}
+{{ config(schema='yfinance_clean', materialized='table', unique_key=['date', 'ticker']) }}
 
-select distinct
+with cte as (
+  select
+    *,
+    row_number() over(partition by date, ticker order by _sdc_batched_at desc) as rn
+  from
+    {{ source('tap_yfinance_dev', 'balance_sheet') }}
+)
+
+select
   date,
   ticker,
   capital_stock,
@@ -149,4 +157,6 @@ select distinct
   other_capital_stock,
   financial_assets_designatedas_fv_thru_profitor_loss_total
 from
-  {{ source('tap_yfinance_dev', 'balance_sheet') }}
+  cte
+where
+  rn = 1
