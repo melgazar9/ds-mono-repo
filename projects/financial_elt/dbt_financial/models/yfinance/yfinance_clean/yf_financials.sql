@@ -1,6 +1,14 @@
-{{ config(schema='yfinance_clean', materialized='table') }}
+{{ config(schema='yfinance_clean', materialized='table', unique_key=['date', 'ticker']) }}
 
-select distinct
+with cte as (
+  select distinct
+    *,
+    row_number() over(partition by date, ticker order by _sdc_batched_at desc) as rn
+  from
+    {{ source('tap_yfinance_dev', 'financials') }}
+)
+
+select
   date,
   ticker,
   basic_average_shares,
@@ -81,6 +89,7 @@ select distinct
   depletion_income_statement,
   depreciation,
   net_interest_income
-
 from
-  {{ source('tap_yfinance_dev', 'financials') }}
+  cte
+where
+  rn = 1

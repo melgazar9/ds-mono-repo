@@ -2,6 +2,8 @@
 
 select distinct
   ticker,
+  timestamp_extracted,
+  timestamp_tz_aware,
   currency,
   day_high,
   day_low,
@@ -21,8 +23,6 @@ select distinct
   two_hundred_day_average,
   year_change,
   year_high,
-  year_low,
-  timestamp_extracted,
-  timestamp_tz_aware
+  year_low
 from
   {{ source('tap_yfinance_dev', 'fast_info') }}

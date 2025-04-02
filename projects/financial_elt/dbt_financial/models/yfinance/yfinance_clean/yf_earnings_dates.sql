@@ -9,6 +9,7 @@ with cte as (
     eps_estimate,
     reported_eps,
     pct_surprise,
+    _sdc_batched_at,
     row_number() over (partition by timestamp, ticker order by _sdc_batched_at desc) as rn
   from
     {{ source('tap_yfinance_dev', 'earnings_dates') }}
@@ -21,7 +22,8 @@ select distinct
   ticker,
   eps_estimate,
   reported_eps,
-  pct_surprise
+  pct_surprise,
+  _sdc_batched_at
 from
   cte
 where
