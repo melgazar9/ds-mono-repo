@@ -30,7 +30,8 @@ select
   holder,
   pct_out,
   shares,
-  value
+  value,
+  _sdc_batched_at
 from
   cte
 where

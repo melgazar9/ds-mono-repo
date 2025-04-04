@@ -38,7 +38,8 @@ select
   position,
   transaction,
   ownership,
-  value
+  value,
+  _sdc_batched_at
 from
   cte
 where

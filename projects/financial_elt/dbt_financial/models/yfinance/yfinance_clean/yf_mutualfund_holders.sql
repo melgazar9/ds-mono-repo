@@ -24,6 +24,7 @@ cte as (
     pct_held,
     shares,
     value,
+    _sdc_batched_at,
     row_number() over(partition by surrogate_key order by _sdc_batched_at desc) as rn
   from
     cte_surrogate
@@ -36,7 +37,8 @@ select
   holder,
   pct_held,
   shares,
-  value
+  value,
+  _sdc_batched_at
 from
   cte
 where

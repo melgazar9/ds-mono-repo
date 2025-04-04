@@ -1,6 +1,14 @@
-{{ config(schema='yfinance_clean', materialized='table') }}
+{{ config(schema='yfinance_clean', materialized='table', unique_key=['date', 'ticker']) }}
 
-select distinct
+with cte as (
+  select
+    *,
+    row_number() over(partition by date, ticker order by _sdc_batched_at desc) as rn
+  from
+    {{ source('tap_yfinance_dev', 'quarterly_balance_sheet') }}
+)
+
+select
   date,
   ticker,
   capital_stock,
@@ -148,4 +156,6 @@ select distinct
   restricted_common_stock,
   other_capital_stock
 from
-  {{ source('tap_yfinance_dev', 'quarterly_balance_sheet') }}
+  cte
+where
+  rn = 1

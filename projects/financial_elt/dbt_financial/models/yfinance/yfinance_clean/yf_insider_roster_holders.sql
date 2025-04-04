@@ -38,7 +38,8 @@ select
   position,
   name,
   most_recent_transaction,
-  latest_transaction_date
+  latest_transaction_date,
+  _sdc_batched_at
 from
   cte
 where
