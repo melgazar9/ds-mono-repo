@@ -15,13 +15,7 @@ with cte_surrogate as (
 
 cte as (
   select
-    surrogate_key,
-    timestamp,
-    timestamp_tz_aware,
-    timezone,
-    ticker,
-    dividends,
-    stock_splits,
+    *,
     row_number() over(partition by timestamp, ticker order by _sdc_batched_at desc) as rn
   from
     cte_surrogate
@@ -34,7 +28,8 @@ select
   timezone,
   ticker,
   dividends,
-  stock_splits
+  stock_splits,
+  _sdc_batched_at
 from
   cte
 where

@@ -1000,7 +1000,14 @@ with cte as (
   from
     {{ ref('yf_stock_prices_1d') }} spi
 
-  left join {{ ref('yf_actions') }} a on spi.ticker = a.ticker and date(spi.timestamp) = date(a.timestamp)
+  left join (
+    select * from (
+      select *, row_number() over(partition by date(timestamp), ticker order by _sdc_batched_at desc) as rn
+        from {{ ref('yf_actions') }}
+      ) a2
+    where a2.rn = 1
+  ) a on spi.ticker = a.ticker and date(spi.timestamp) = date(a.timestamp)
+
   left join {{ ref('yf_balance_sheet') }} bs on spi.ticker = bs.ticker and date(spi.timestamp) = date(bs.date)
   left join (select distinct dividend_date, ex_dividend_date, ticker from {{ ref('yf_calendar') }}) cd on spi.ticker = cd.ticker and date(spi.timestamp) = date(cd.dividend_date)
   left join (select distinct ticker, earnings_date, earnings_high, earnings_low, earnings_average, revenue_high, revenue_low, revenue_average from {{ ref('yf_calendar') }}) ce on spi.ticker = ce.ticker and date(spi.timestamp) = date(ce.earnings_date)
