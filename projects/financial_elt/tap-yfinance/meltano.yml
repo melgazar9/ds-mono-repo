@@ -37,7 +37,7 @@ plugins:
   extractors:
     - name: "tap-yfinance"
       namespace: "tap_yfinance"
-      pip_url: git+https://github.com/melgazar9/tap-yfinance@9eade7d3c283844f42d5e6aaf85894253d6204dd
+      pip_url: git+https://github.com/melgazar9/tap-yfinance@69554d4edb59ac04f3a7198c1289d4ab166e2c24
 
       capabilities:
         - state
@@ -73,6 +73,7 @@ plugins:
         - forex_prices_1d.*
         - crypto_prices_1d.*
         - actions.*
+        - analyst_price_targets.*
         - balance_sheet.*
         - calendar.*
         - cash_flow.*
@@ -92,6 +93,7 @@ plugins:
         - recommendations.*
         - shares_full.*
         - splits.*
+        - sustainability.*
         - option_chain.*
         - options.*
         - quarterly_balance_sheet.*
@@ -226,6 +228,9 @@ plugins:
         actions:
           tickers: "*"
 
+        analyst_price_targets:
+          tickers: "*"
+
         balance_sheet:
           tickers: "*"
 
@@ -281,6 +286,9 @@ plugins:
           tickers: "*"
 
         splits:
+          tickers: "*"
+
+        sustainability:
           tickers: "*"
 
         option_chain:
@@ -400,6 +408,10 @@ plugins:
           replication-method: INCREMENTAL
           replication-key: timestamp
 
+        analyst_price_targets:
+          replication-method: INCREMENTAL
+          replication-key: timestamp_extracted
+
         balance_sheet:
           replication-method: INCREMENTAL
           replication-key: date
@@ -475,6 +487,10 @@ plugins:
         splits:
           replication-method: INCREMENTAL
           replication-key: timestamp
+
+        sustainability:
+          replication-method: INCREMENTAL
+          replication-key: timestamp_extracted
 
         option_chain:
           replication-method: INCREMENTAL
