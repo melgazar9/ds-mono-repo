@@ -158,6 +158,7 @@ class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
                 "username": self.user,
                 "password": self.password,
                 "host": self.host,
+                "query": {}
             }
 
             self.engine_string = URL(**mysql_connection_params)
@@ -387,4 +388,77 @@ class MongoDBConnect(metaclass=MetaclassNoSQLEnforcer):
         if not self.keep_session_alive:
             self.disconnect()
 
+        return self
+
+
+class PostgresConnect(metaclass=MetaclassRDBMSEnforcer):
+    """
+    Description
+    -----------
+    Connect to PostgreSQL database and run sql queries.
+
+    Example
+    -------
+    db = PostgresConnect()
+    df = db.run_sql('SELECT * FROM my_table LIMIT 10')
+    """
+
+    def __init__(
+        self,
+        user=os.getenv("POSTGRES_USER"),
+        password=os.getenv("POSTGRES_PASSWORD"),
+        host=os.getenv("POSTGRES_HOST"),
+        port=os.getenv("POSTGRES_PORT", 5432),
+        database=os.getenv("POSTGRES_DB"),
+        drivername="postgresql",
+        engine_string=None,
+        keep_session_alive=False
+    ):
+        self.user = user
+        self.password = password
+        self.host = host
+        self.port = port
+        self.database = database
+        self.drivername = drivername
+        self.engine_string = engine_string
+        self.keep_session_alive = keep_session_alive
+
+        self.dwh_name = "postgres"
+        self.engine = None
+        self.con = None
+
+    def connect(self, **kwargs):
+        if self.engine_string is None:
+            connection_params = {
+                "drivername": self.drivername,
+                "username": self.user,
+                "password": self.password,
+                "host": self.host,
+                "port": self.port,
+                "database": self.database,
+                "query": {}
+            }
+            self.engine_string = URL(**connection_params)
+
+        self.engine = create_engine(self.engine_string, **kwargs)
+        self.con = self.engine.connect()
+        return self
+
+    def disconnect(self):
+        self.con.close()
+        self.engine.dispose()
+        return self
+
+    def run_sql(self, query, **read_sql_kwargs):
+        self.connect()
+        if query.strip().lower().startswith("select"):
+            df = pd.read_sql(query, con=self.con, **read_sql_kwargs)
+            if not self.keep_session_alive:
+                self.disconnect()
+            return df
+        else:
+            query = text(query)
+            self.con.execute(query)
+            if not self.keep_session_alive:
+                self.disconnect()
         return self
