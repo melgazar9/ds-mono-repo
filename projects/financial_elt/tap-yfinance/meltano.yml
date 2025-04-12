@@ -37,7 +37,7 @@ plugins:
   extractors:
     - name: "tap-yfinance"
       namespace: "tap_yfinance"
-      pip_url: git+https://github.com/melgazar9/tap-yfinance@69554d4edb59ac04f3a7198c1289d4ab166e2c24
+      pip_url: git+https://github.com/melgazar9/tap-yfinance@efa8d7d052c95c40906d44204a3f8d4c48c3b26e
 
       capabilities:
         - state
@@ -79,21 +79,34 @@ plugins:
         - cash_flow.*
         - dividends.*
         - earnings_dates.*
+        - earnings_estimate.*
+        - earnings_history.*
+        - eps_revisions.*
+        - eps_trend.*
         - fast_info.*
         - financials.*
+        - growth_estimates.*
         - history_metadata.*
+        - info.*
         - income_stmt.*
         - insider_purchases.*
         - insider_roster_holders.*
         - insider_transactions.*
         - institutional_holders.*
+        - isin.*
         - major_holders.*
         - mutualfund_holders.*
         - news.*
         - recommendations.*
+        - recommendations_summary.*
+        - revenue_estimate.*
+        - sec_filings.*
         - shares_full.*
         - splits.*
         - sustainability.*
+        - ttm_cash_flow.*
+        - ttm_financials.*
+        - ttm_income_stmt.*
         - option_chain.*
         - options.*
         - quarterly_balance_sheet.*
@@ -246,13 +259,31 @@ plugins:
         earnings_dates:
           tickers: "*"
 
+        earnings_estimate:
+          tickers: "*"
+
+        earnings_history:
+          tickers: "*"
+
+        eps_revisions:
+          tickers: "*"
+
+        eps_trend:
+          tickers: "*"
+
         fast_info:
           tickers: "*"
 
         financials:
           tickers: "*"
 
+        growth_estimates:
+          tickers: "*"
+
         history_metadata:
+          tickers: "*"
+
+        info:
           tickers: "*"
 
         income_stmt:
@@ -270,6 +301,9 @@ plugins:
         institutional_holders:
           tickers: "*"
 
+        isin:
+          tickers: "*"
+
         major_holders:
           tickers: "*"
 
@@ -282,6 +316,15 @@ plugins:
         recommendations:
           tickers: "*"
 
+        recommendations_summary:
+          tickers: "*"
+
+        revenue_estimate:
+          tickers: "*"
+
+        sec_filings:
+          tickers: "*"
+
         shares_full:
           tickers: "*"
 
@@ -289,6 +332,15 @@ plugins:
           tickers: "*"
 
         sustainability:
+          tickers: "*"
+
+        ttm_cash_flow:
+          tickers: "*"
+
+        ttm_financials:
+          tickers: "*"
+
+        ttm_income_stmt:
           tickers: "*"
 
         option_chain:
@@ -432,6 +484,22 @@ plugins:
           replication-method: INCREMENTAL
           replication-key: timestamp
 
+        earnings_estimate:
+          replication-method: INCREMENTAL
+          replication-key: timestamp_extracted
+
+        earnings_history:
+          replication-method: INCREMENTAL
+          replication-key: quarter
+
+        eps_revisions:
+          replication-method: INCREMENTAL
+          replication-key: timestamp_extracted
+
+        eps_trend:
+          replication-method: INCREMENTAL
+          replication-key: timestamp_extracted
+
         fast_info:
           replication-method: INCREMENTAL
           replication-key: timestamp_extracted
@@ -440,7 +508,15 @@ plugins:
           replication-method: INCREMENTAL
           replication-key: date
 
+        growth_estimates:
+          replication-method: INCREMENTAL
+          replication-key: timestamp_extracted
+
         history_metadata:
+          replication-method: INCREMENTAL
+          replication-key: timestamp_extracted
+
+        info:
           replication-method: INCREMENTAL
           replication-key: timestamp_extracted
 
@@ -464,6 +540,10 @@ plugins:
           replication-method: INCREMENTAL
           replication-key: date_reported
 
+        isin:
+          replication-method: INCREMENTAL
+          replication-key: timestamp_extracted
+
         major_holders:
           replication-method: INCREMENTAL
           replication-key: timestamp_extracted
@@ -471,6 +551,18 @@ plugins:
         mutualfund_holders:
           replication-method: INCREMENTAL
           replication-key: date_reported
+
+        recommendations_summary:
+          replication-method: INCREMENTAL
+          replication-key: timestamp_extracted
+
+        revenue_estimate:
+          replication-method: INCREMENTAL
+          replication-key: timestamp_extracted
+
+        sec_filings:
+          replication-method: INCREMENTAL
+          replication-key: epoch_date
 
         news:
           replication-method: INCREMENTAL
@@ -499,6 +591,18 @@ plugins:
         options:
           replication-method: INCREMENTAL
           replication-key: timestamp_extracted
+
+        ttm_cash_flow:
+          replication-method: INCREMENTAL
+          replication-key: date
+
+        ttm_financials:
+          replication-method: INCREMENTAL
+          replication-key: date
+
+        ttm_income_stmt:
+          replication-method: INCREMENTAL
+          replication-key: date
 
         quarterly_balance_sheet:
           replication-method: INCREMENTAL
