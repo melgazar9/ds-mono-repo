@@ -34,9 +34,11 @@ class YFPriceGetter:
         if "prepost" not in self.yf_params.keys():
             self.yf_params["prepost"] = True
         if "start" not in self.yf_params.keys():
-            print(
-                "*** YF params start set to 1950-01-01! ***"
-            ) if self.verbose else None
+            (
+                print("*** YF params start set to 1950-01-01! ***")
+                if self.verbose
+                else None
+            )
             self.yf_params["start"] = "1950-01-01"
 
         self.start_date = self.yf_params["start"]
@@ -494,9 +496,13 @@ class YFPriceETL(YFPriceGetter):
 
     def etl_stock_tickers(self, table_name="stock_tickers"):
         df_tickers = self.ticker_downloader.download_valid_stock_tickers()
-        print(
-            f"\nOverwriting stock_tickers to database(s): {self.dwh_connections.keys()}...\n"
-        ) if self.verbose else None
+        (
+            print(
+                f"\nOverwriting stock_tickers to database(s): {self.dwh_connections.keys()}...\n"
+            )
+            if self.verbose
+            else None
+        )
 
         df_tickers["batch_timestamp"] = datetime.utcnow()
 
@@ -517,9 +523,11 @@ class YFPriceETL(YFPriceGetter):
             )
 
         if self.populate_bigquery:
-            print(
-                "\nOverwriting stock_tickers to BigQuery...\n"
-            ) if self.verbose else None
+            (
+                print("\nOverwriting stock_tickers to BigQuery...\n")
+                if self.verbose
+                else None
+            )
 
             job_config = bigquery.job.LoadJobConfig(
                 write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE
@@ -568,9 +576,11 @@ class YFPriceETL(YFPriceGetter):
             # """)
 
         if self.populate_snowflake:
-            print(
-                "\nOverwriting stock_tickers to Snowflake...\n"
-            ) if self.verbose else None
+            (
+                print("\nOverwriting stock_tickers to Snowflake...\n")
+                if self.verbose
+                else None
+            )
 
             if self.write_method in [pd_writer, "write_pandas"]:
                 df_tickers.columns = df_tickers.columns.str.upper()
@@ -779,9 +789,11 @@ class YFPriceETL(YFPriceGetter):
             yf_params = self.yf_params.copy()
 
             for i in intervals_to_download:
-                print(
-                    f"\nRunning {asset_class} interval {i}\n"
-                ) if self.verbose else None
+                (
+                    print(f"\nRunning {asset_class} interval {i}\n")
+                    if self.verbose
+                    else None
+                )
 
                 n_tickers_counter = 0
                 yf_params["interval"] = i
@@ -815,9 +827,11 @@ class YFPriceETL(YFPriceGetter):
                     else:
                         start_date = "1950-01-01"
 
-                    print(
-                        f"\nStart date for ticker {ticker} is {start_date}\n"
-                    ) if self.verbose else None
+                    (
+                        print(f"\nStart date for ticker {ticker} is {start_date}\n")
+                        if self.verbose
+                        else None
+                    )
 
                     yf_params["start"] = get_valid_yfinance_start_timestamp(
                         interval=i, start=start_date
@@ -833,9 +847,11 @@ class YFPriceETL(YFPriceGetter):
                     df = pd.merge(df, df_tickers, on="yahoo_ticker", how="left")
                     df = df[self.column_order].ffill().bfill()
 
-                    print(
-                        f"\nConverting dtypes in df_{i} for ticker {ticker}\n"
-                    ) if self.verbose else None
+                    (
+                        print(f"\nConverting dtypes in df_{i} for ticker {ticker}\n")
+                        if self.verbose
+                        else None
+                    )
                     for k, v in self.df_dtype_mappings.items():
                         try:
                             df[v] = df[v].astype(k)
@@ -1040,9 +1056,11 @@ class YFPriceETL(YFPriceGetter):
         df_top_crypto_tickers_new = df_top_crypto_tickers_new[column_order]
 
         if self.populate_mysql:
-            print(
-                "\nOverwriting top_250_crypto_tickers to MySQL...\n"
-            ) if self.verbose else None
+            (
+                print("\nOverwriting top_250_crypto_tickers to MySQL...\n")
+                if self.verbose
+                else None
+            )
             method = (
                 "multi" if self.write_method == "write_pandas" else self.write_method
             )
@@ -1093,9 +1111,11 @@ class YFPriceETL(YFPriceGetter):
             )
 
         if self.populate_bigquery:
-            print(
-                "\nOverwriting crypto_pairs_top_250 to BigQuery...\n"
-            ) if self.verbose else None
+            (
+                print("\nOverwriting crypto_pairs_top_250 to BigQuery...\n")
+                if self.verbose
+                else None
+            )
 
             job_config = bigquery.job.LoadJobConfig(
                 write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE
@@ -1163,9 +1183,11 @@ class YFPriceETL(YFPriceGetter):
             )
 
         if self.populate_snowflake:
-            print(
-                "\nOverwriting crypto_pairs_top_250 to Snowflake...\n"
-            ) if self.verbose else None
+            (
+                print("\nOverwriting crypto_pairs_top_250 to Snowflake...\n")
+                if self.verbose
+                else None
+            )
 
             tables = self.snowflake_client.run_sql(
                 f"""
@@ -1317,9 +1339,11 @@ class YFPriceETL(YFPriceGetter):
             )
 
         if self.populate_bigquery:
-            print(
-                "\nOverwriting forex_pairs to BigQuery...\n"
-            ) if self.verbose else None
+            (
+                print("\nOverwriting forex_pairs to BigQuery...\n")
+                if self.verbose
+                else None
+            )
 
             job_config = bigquery.job.LoadJobConfig(
                 write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE
@@ -1369,9 +1393,11 @@ class YFPriceETL(YFPriceGetter):
             )
 
         if self.populate_snowflake:
-            print(
-                "\nOverwriting forex_pairs to Snowflake...\n"
-            ) if self.verbose else None
+            (
+                print("\nOverwriting forex_pairs to Snowflake...\n")
+                if self.verbose
+                else None
+            )
 
             tables = self.snowflake_client.run_sql(
                 f"""
@@ -1453,7 +1479,6 @@ class YFPriceETL(YFPriceGetter):
     ###### dwh attribute methods ######
 
     def create_prices_table_if_not_exists(self, table_name, asset_class):
-
         """
         Description
         -----------
@@ -2221,10 +2246,14 @@ class YFPriceETL(YFPriceGetter):
         try:
             df.to_gbq(f"{self.schema}.{table_name}", if_exists="append")
         except:
-            print(
-                "\nCould not directly upload df to bigquery! "
-                "Dumping to csv, loading, then trying again via bigquery client...\n"
-            ) if self.verbose else None
+            (
+                print(
+                    "\nCould not directly upload df to bigquery! "
+                    "Dumping to csv, loading, then trying again via bigquery client...\n"
+                )
+                if self.verbose
+                else None
+            )
 
             os.makedirs(retry_cache_dir, exist_ok=True)
             df.to_csv(f"{retry_cache_dir}/tmp.csv", index=False)
@@ -2561,9 +2590,11 @@ class TickerDownloader:
             ticker_map, eligible_tickers, on="bloomberg_ticker", how="right"
         )
 
-        print(
-            f"Number of eligible tickers in map: {len(ticker_map)}"
-        ) if verbose else None
+        (
+            print(f"Number of eligible tickers in map: {len(ticker_map)}")
+            if verbose
+            else None
+        )
 
         # Remove null / empty tickers from the yahoo tickers
         valid_tickers = [
