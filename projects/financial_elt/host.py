@@ -1,23 +1,19 @@
 from routes import *
-from waitress import serve
+from utils import *
 from apscheduler.schedulers.background import BackgroundScheduler
+
+from waitress import serve
 import logging
 import json
 
 ENVIRONMENT = os.getenv("ENVIRONMENT")
 
-if os.getenv("LOGGING_AGENT") == "google":
-    import google.cloud.logging
-
-    client = google.cloud.logging.Client()
-    client.setup_logging()
+signal.signal(signal.SIGINT, shutdown_handler)
+signal.signal(signal.SIGTERM, shutdown_handler)
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-    )
-    logging.info(f"\n*** Running environment {ENVIRONMENT}. ***\n")
+    setup_logging()
 
     scheduler = BackgroundScheduler(job_defaults={"max_instances": 3})
 

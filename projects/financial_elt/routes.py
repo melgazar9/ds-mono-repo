@@ -1,21 +1,8 @@
-from flask import Flask, make_response, request, redirect, Blueprint, render_template
-import os
-import subprocess
-from datetime import datetime
-import logging
-import time
-from concurrent.futures import ThreadPoolExecutor
-import yaml
-import multiprocessing as mp
+from utils import *
 
 app = Flask(__name__)
 
 app.url_map.strict_slashes = False
-
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
-
 
 ### GLOBALS ###
 
@@ -23,39 +10,6 @@ ENVIRONMENT = os.getenv("ENVIRONMENT")
 TAP_YFINANCE_TARGET = os.getenv("TAP_YFINANCE_TARGET")
 
 assert isinstance(TAP_YFINANCE_TARGET, str), "could not determine yfinance target"
-
-
-def cur_timestamp(utc=True):
-    if utc:
-        return (
-            datetime.utcnow()
-            .replace(second=0, microsecond=0)
-            .strftime("%Y-%m-%d %H:%M:%S")
-        )
-    else:
-        return (
-            datetime.now()
-            .replace(second=0, microsecond=0)
-            .strftime("%Y-%m-%d %H:%M:%S")
-        )
-
-
-def get_task_chunks(num_tasks: int):
-    with open("tap-yfinance/meltano.yml", "r") as meltano_cfg:
-        cfg = yaml.safe_load(meltano_cfg)
-
-    tasks = cfg.get("plugins").get("extractors")[0].get("select")
-    tasks = [f"--select {i}" for i in tasks]
-    tasks_per_chunk = len(tasks) // num_tasks
-    remainder = len(tasks) % num_tasks
-
-    chunks = []
-    start_index = 0
-    for i in range(num_tasks):
-        chunk_size = tasks_per_chunk + (1 if i < remainder else 0)
-        chunks.append(tasks[start_index : start_index + chunk_size])
-        start_index += chunk_size
-    return chunks
 
 
 ### GENERAL ROUTES ###
@@ -78,12 +32,7 @@ def financial_elt():
         return make_response("Financial-ELT is running.", 200)
 
 
-###### tap yfinance routes ######
-
-def run_meltano_task(run_command, concurrency_semaphore, cwd):
-    with concurrency_semaphore:
-        logging.info(f"Running command: {run_command}")
-        subprocess.run(run_command, cwd=cwd)
+###### tap yfinance route ######
 
 @app.route(f"/financial-elt/tap-yfinance-{ENVIRONMENT}", methods=["GET"])
 def tap_yfinance():
