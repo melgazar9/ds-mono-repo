@@ -6,7 +6,7 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 import yaml
-
+import multiprocessing as mp
 
 app = Flask(__name__)
 
@@ -80,6 +80,10 @@ def financial_elt():
 
 ###### tap yfinance routes ######
 
+def run_meltano_task(run_command, concurrency_semaphore, cwd):
+    with concurrency_semaphore:
+        logging.info(f"Running command: {run_command}")
+        subprocess.run(run_command, cwd=cwd)
 
 @app.route(f"/financial-elt/tap-yfinance-{ENVIRONMENT}", methods=["GET"])
 def tap_yfinance():
@@ -97,14 +101,62 @@ def tap_yfinance():
             logging.info(f"Running command {run_command}")
             subprocess.run(run_command, cwd=os.path.join(app.root_path, project_dir))
         else:
+            parallelism_method = os.getenv("TAP_YFINANCE_PARALLELISM_METHOD")
+            assert isinstance(parallelism_method, str), f"parallelism_method is not a str, it is set to {parallelism_method}"
+
             logging.info(
-                f"Running meltano ELT using multiprocessing. Number of processes set to {os.getenv('TAP_YFINANCE_NUM_WORKERS')}."
+                f"Running meltano ELT using approach {parallelism_method}. Number of workers set to {os.getenv('TAP_YFINANCE_NUM_WORKERS')}."
             )
 
-            with ThreadPoolExecutor(
-                max_workers=int(os.getenv("TAP_YFINANCE_NUM_WORKERS", 16))
-            ) as executor:
-                futures = []
+            if parallelism_method.lower() == "threadpool":
+                logging.info(f"Using ThreadPoolExecutor with {num_workers} workers.")
+
+                with ThreadPoolExecutor(
+                    max_workers=int(os.getenv("TAP_YFINANCE_NUM_WORKERS", 16))
+                ) as executor:
+                    futures = []
+
+                    for chunk in task_chunks:
+                        assert isinstance(
+                            chunk, list
+                        ), "Invalid datatype task_chunks. Must be list when running multiprocessing."
+
+                        state_id = (
+                            " ".join(chunk)
+                            .replace("--select ", "")
+                            .replace(" ", "__")
+                            .replace(".*", "")
+                        )
+
+                        select_param = " ".join(chunk).replace(".*", "")
+
+                        run_command = (
+                            f"{base_run_command} "
+                            f"--state-id tap_yfinance_target_{TAP_YFINANCE_TARGET}_{ENVIRONMENT}_{state_id} {select_param}".split(
+                                " "
+                            )
+                        )
+
+                        futures.append(
+                            executor.submit(
+                                subprocess.run,
+                                run_command,
+                                cwd=os.path.join(app.root_path, project_dir),
+                            )
+                        )
+
+                    for future in futures:
+                        future.result()
+
+                    logging.info(f"Running command {run_command}")
+
+                logging.info(
+                    f"*** Completed run_commands: {task_chunks}"
+                )
+
+            elif parallelism_method.lower() == "processpool":
+                processes = []
+                concurrency_semaphore = mp.Semaphore(int(os.getenv("TAP_YFINANCE_NUM_WORKERS")))
 
                 for chunk in task_chunks:
                     assert isinstance(
@@ -127,22 +179,27 @@ def tap_yfinance():
                         )
                     )
 
-                    futures.append(
-                        executor.submit(
-                            subprocess.run,
-                            run_command,
-                            cwd=os.path.join(app.root_path, project_dir),
-                        )
+                    process = mp.Process(
+                        target=run_meltano_task,
+                        kwargs={
+                            "run_command": run_command,
+                            "concurrency_semaphore": concurrency_semaphore,
+                            "cwd": os.path.join(app.root_path, project_dir)
+                        },
                     )
 
-                for future in futures:
-                    future.result()
+                    logging.info(f"Running command {run_command}")
+                    process.start()
+                    processes.append(process)
 
-                logging.info(f"Running command {run_command}")
+                for p in processes:
+                    p.join()
 
-            logging.info(
-                f"*** Completed process {process} --- run_commands: {task_chunks}"
-            )
+                logging.info(
+                    f"*** Completed process {process} --- run_commands: {task_chunks}"
+                )
+            else:
+                raise ValueError(f"Could not determine parallelism_method. It's currenctly set to {parallelism_method}")
 
         total_seconds = time.monotonic() - start
         logging.info(
