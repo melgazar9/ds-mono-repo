@@ -34,6 +34,7 @@ def financial_elt():
 
 ###### tap yfinance route ######
 
+
 @app.route(f"/financial-elt/tap-yfinance-{ENVIRONMENT}", methods=["GET"])
 def tap_yfinance():
     with app.app_context():
@@ -41,6 +42,7 @@ def tap_yfinance():
         task_chunks = get_task_chunks(int(os.getenv("TAP_YFINANCE_NUM_WORKERS")))
         project_dir = "tap-yfinance"
         base_run_command = f"meltano --environment={ENVIRONMENT} el tap-yfinance target-{TAP_YFINANCE_TARGET}"
+        num_workers = os.getenv("TAP_YFINANCE_NUM_WORKERS")
 
         if task_chunks is None:
             logging.info("Running meltano ELT without multiprocessing.")
@@ -51,17 +53,21 @@ def tap_yfinance():
             subprocess.run(run_command, cwd=os.path.join(app.root_path, project_dir))
         else:
             parallelism_method = os.getenv("TAP_YFINANCE_PARALLELISM_METHOD")
-            assert isinstance(parallelism_method, str), f"parallelism_method is not a str, it is set to {parallelism_method}"
+            assert isinstance(
+                parallelism_method, str
+            ), f"parallelism_method is not a str, it is set to {parallelism_method}"
 
             logging.info(
-                f"Running meltano ELT using approach {parallelism_method}. Number of workers set to {os.getenv('TAP_YFINANCE_NUM_WORKERS')}."
+                f"Running meltano ELT using approach {parallelism_method}. Number of workers set to {num_workers}."
             )
 
             if parallelism_method.lower() == "threadpool":
                 logging.info(f"Using ThreadPoolExecutor with {num_workers} workers.")
 
                 with ThreadPoolExecutor(
-                    max_workers=int(os.getenv("TAP_YFINANCE_NUM_WORKERS", 16))
+                    max_workers=int(
+                        os.getenv("TAP_YFINANCE_NUM_WORKERS", os.cpu_count())
+                    )
                 ) as executor:
                     futures = []
 
@@ -99,13 +105,13 @@ def tap_yfinance():
 
                     logging.info(f"Running command {run_command}")
 
-                logging.info(
-                    f"*** Completed run_commands: {task_chunks}"
-                )
+                logging.info(f"*** Completed run_commands: {task_chunks}")
 
-            elif parallelism_method.lower() == "processpool":
+            elif parallelism_method.lower() == "processes":
                 processes = []
-                concurrency_semaphore = mp.Semaphore(int(os.getenv("TAP_YFINANCE_NUM_WORKERS")))
+                concurrency_semaphore = mp.Semaphore(
+                    int(os.getenv("TAP_YFINANCE_MP_SEMAPHORE"))
+                )
 
                 for chunk in task_chunks:
                     assert isinstance(
@@ -133,7 +139,7 @@ def tap_yfinance():
                         kwargs={
                             "run_command": run_command,
                             "concurrency_semaphore": concurrency_semaphore,
-                            "cwd": os.path.join(app.root_path, project_dir)
+                            "cwd": os.path.join(app.root_path, project_dir),
                         },
                     )
 
@@ -148,7 +154,9 @@ def tap_yfinance():
                     f"*** Completed process {process} --- run_commands: {task_chunks}"
                 )
             else:
-                raise ValueError(f"Could not determine parallelism_method. It's currenctly set to {parallelism_method}")
+                raise ValueError(
+                    f"Could not determine parallelism_method. It's currenctly set to {parallelism_method}"
+                )
 
         total_seconds = time.monotonic() - start
         logging.info(

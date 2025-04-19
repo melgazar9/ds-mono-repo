@@ -1,7 +1,7 @@
 from routes import *
 from utils import *
 from apscheduler.schedulers.background import BackgroundScheduler
-
+import signal
 from waitress import serve
 import logging
 import json
