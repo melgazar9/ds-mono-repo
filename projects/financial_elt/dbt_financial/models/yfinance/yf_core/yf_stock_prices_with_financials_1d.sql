@@ -1,4 +1,4 @@
-{{ config(schema='yf_core', materialized='incremental', unique_key=['day', 'ticker']) }}
+{{ config(schema='yf_core', materialized='table', unique_key=['day', 'ticker']) }}
 
 with cte as (
   select
@@ -544,25 +544,6 @@ with cte as (
     mfh.value as mfh_value,
     news.id as news_id,
     news.content as news_content,
-    oc.last_trade_date,
-    oc.last_trade_date_tz_aware as oc_last_trade_date_tz_aware,
-    oc.timezone as oc_timezone,
-    oc.timestamp_extracted as oc_timestamp_extracted,
-    oc.ticker as oc_ticker,
-    oc.contract_symbol as oc_contract_symbol,
-    oc.strike as oc_strike,
-    oc.last_price as oc_last_price,
-    oc.bid as oc_bid,
-    oc.ask as oc_ask,
-    oc.change as oc_change,
-    oc.percent_change as oc_percent_change,
-    oc.volume as oc_volume,
-    oc.open_interest as oc_open_interest,
-    oc.implied_volatility as oc_implied_volatility,
-    oc.in_the_money as oc_in_the_money,
-    oc.contract_size as oc_contract_size,
-    oc.currency as oc_currency,
-    oc.metadata as oc_metadata,
     qbs.capital_stock as qbs_capital_stock,
     qbs.current_capital_lease_obligation as qbs_current_capital_lease_obligation,
     qbs.payables_and_accrued_expenses as qbs_payables_and_accrued_expenses,
@@ -1091,14 +1072,6 @@ with cte as (
       ) news2
     where news2.rn = 1
   ) news on spi.ticker = news.ticker and date(spi.timestamp) = date(news.timestamp_extracted)
-
-  left join (
-    select * from (
-      select *, row_number() over(partition by date(last_trade_date), ticker order by timestamp_extracted desc) as rn
-        from {{ ref('yf_option_chain') }}
-      ) oc2
-    where oc2.rn = 1
-  ) oc on spi.ticker = oc.ticker and date(spi.timestamp) = date(oc.last_trade_date)
 
   left join {{ ref('yf_quarterly_balance_sheet') }} qbs on spi.ticker = qbs.ticker and date(spi.timestamp) = date(qbs.date)
   left join {{ ref('yf_quarterly_cash_flow') }} qcf on spi.ticker = qcf.ticker and date(spi.timestamp) = date(qcf.date)

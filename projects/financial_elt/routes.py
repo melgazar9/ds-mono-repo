@@ -39,10 +39,10 @@ def financial_elt():
 def tap_yfinance():
     with app.app_context():
         start = time.monotonic()
-        task_chunks = get_task_chunks(int(os.getenv("TAP_YFINANCE_NUM_WORKERS")))
+        num_workers = int(os.getenv("TAP_YFINANCE_NUM_WORKERS"))
+        task_chunks = get_task_chunks(num_workers)
         project_dir = "tap-yfinance"
         base_run_command = f"meltano --environment={ENVIRONMENT} el tap-yfinance target-{TAP_YFINANCE_TARGET}"
-        num_workers = os.getenv("TAP_YFINANCE_NUM_WORKERS")
 
         if task_chunks is None:
             logging.info("Running meltano ELT without multiprocessing.")
@@ -64,11 +64,7 @@ def tap_yfinance():
             if parallelism_method.lower() == "threadpool":
                 logging.info(f"Using ThreadPoolExecutor with {num_workers} workers.")
 
-                with ThreadPoolExecutor(
-                    max_workers=int(
-                        os.getenv("TAP_YFINANCE_NUM_WORKERS", os.cpu_count())
-                    )
-                ) as executor:
+                with ThreadPoolExecutor(max_workers=num_workers) as executor:
                     futures = []
 
                     for chunk in task_chunks:
