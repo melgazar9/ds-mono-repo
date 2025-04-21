@@ -163,7 +163,7 @@ def tap_yfinance():
         start = time.monotonic()
         num_workers = int(os.getenv("TAP_YFINANCE_NUM_WORKERS"))
         project_dir = "tap-yfinance"
-        base_run_command = f"meltano --environment={ENVIRONMENT} el tap-yfinance target-{TAP_YFINANCE_TARGET} --force"
+        base_run_command = f"meltano --environment={ENVIRONMENT} el tap-yfinance target-{TAP_YFINANCE_TARGET}"
         cwd = os.path.join(app.root_path, project_dir)
         task_chunks = get_task_chunks(num_workers) if num_workers > 1 else None
 
