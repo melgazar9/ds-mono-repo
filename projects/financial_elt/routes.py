@@ -34,24 +34,100 @@ def financial_elt():
 
 ###### tap yfinance route ######
 
+"""
+  Meltano tap-yfinance tests on 10 tickers
+    - Test 0 — BENCHMARK
+        - Test a direct single meltano el run —> meltano el tap-yfinance target-jsonl
+        - Time taken: 15.96 minutes
+    - Test 1
+        - NUM_WORKERS = 1 (same as above, except use hosting and gcp storage (other parallelization params are irrelevant)
+        - Outcome: 
+            - Total time taken: 32.81 minutes
+    - Test 2
+        - NUM_WORKERS = 67
+        - TAP_YFINANCE_PARALLELISM_METHOD=process
+        - TAP_YFINANCE_MP_SEMAPHORE=67
+        - Outcome:
+            - Total time taken: 18.63 minutes
+            - Took 16 minutes to initialize —> read from cloud storage step (first ticker read)
+            - => time taken after initialization was less than 3 minutes
+    - Test 3
+        - NUM_WORKERS = 67
+        - TAP_YFINANCE_PARALLELISM_METHOD=process
+        - TAP_YFINANCE_MP_SEMAPHORE=20
+        - Outcome:
+            - Total time taken: 18.38 minutes
+    - Test 4
+        - NUM_WORKERS = 67
+        - TAP_YFINANCE_PARALLELISM_METHOD=processpool
+        - TAP_YFINANCE_MP_SEMAPHORE => IRRELEVANT
+        - Outcome:
+            - Total time taken: 18.49 minutes
+    - Test 5
+        - NUM_WORKERS = 32
+        - TAP_YFINANCE_PARALLELISM_METHOD=processpool
+        - TAP_YFINANCE_MP_SEMAPHORE => IRRELEVANT
+        - Outcome:
+            - Total time taken: 10.95 minutes
+    - Test 6
+        - NUM_WORKERS = 67
+        - TAP_YFINANCE_PARALLELISM_METHOD=threadpool
+        - TAP_YFINANCE_MP_SEMAPHORE => IRRELEVANT
+        - Outcome:
+            - Total time taken: 18.92 minutes
+    - Test 7
+        - NUM_WORKERS = 32
+        - TAP_YFINANCE_PARALLELISM_METHOD=threadpool
+        - TAP_YFINANCE_MP_SEMAPHORE => IRRELEVANT
+        - Outcome:
+            - Total time taken: 10.86 minutes
+    - Test 8
+        - NUM_WORKERS = 200
+        - TAP_YFINANCE_PARALLELISM_METHOD=threadpool
+        - TAP_YFINANCE_MP_SEMAPHORE => IRRELEVANT
+        - Outcome:
+            - Total time taken: 18.5 minutes
+    - Test 9
+        - NUM_WORKERS = 16
+        - TAP_YFINANCE_PARALLELISM_METHOD=threadpool
+        - TAP_YFINANCE_MP_SEMAPHORE => IRRELEVANT
+        - Outcome:
+            - Total time taken: 9.56 minutes
+    - Test 10
+        - NUM_WORKERS = 16
+        - TAP_YFINANCE_PARALLELISM_METHOD=processpool
+        - TAP_YFINANCE_MP_SEMAPHORE => IRRELEVANT
+        - Outcome:
+            - Total time taken: 9.50 minutes
+"""
+
 
 @app.route(f"/financial-elt/tap-yfinance-{ENVIRONMENT}", methods=["GET"])
 def tap_yfinance():
     with app.app_context():
         start = time.monotonic()
         num_workers = int(os.getenv("TAP_YFINANCE_NUM_WORKERS"))
-        task_chunks = get_task_chunks(num_workers)
         project_dir = "tap-yfinance"
-        base_run_command = f"meltano --environment={ENVIRONMENT} el tap-yfinance target-{TAP_YFINANCE_TARGET}"
+        base_run_command = f"meltano --environment={ENVIRONMENT} el tap-yfinance target-{TAP_YFINANCE_TARGET} --force"
+        cwd = os.path.join(app.root_path, project_dir)
+        task_chunks = get_task_chunks(num_workers) if num_workers > 1 else None
 
         if task_chunks is None:
             logging.info("Running meltano ELT without multiprocessing.")
             run_command = f"{base_run_command} --state-id tap_yfinance_{ENVIRONMENT}_{TAP_YFINANCE_TARGET}".split(
                 " "
             )
+            run_meltano_task(run_command=run_command, cwd=cwd)
+
             logging.info(f"Running command {run_command}")
-            subprocess.run(run_command, cwd=os.path.join(app.root_path, project_dir))
+            subprocess.run(run_command, cwd=cwd, check=True)
         else:
+            run_commands = get_run_commands(
+                base_run_command=base_run_command,
+                task_chunks=task_chunks,
+                target=TAP_YFINANCE_TARGET,
+            )
+
             parallelism_method = os.getenv("TAP_YFINANCE_PARALLELISM_METHOD")
             assert isinstance(
                 parallelism_method, str
@@ -61,97 +137,25 @@ def tap_yfinance():
                 f"Running meltano ELT using approach {parallelism_method}. Number of workers set to {num_workers}."
             )
 
-            if parallelism_method.lower() == "threadpool":
-                logging.info(f"Using ThreadPoolExecutor with {num_workers} workers.")
-
-                with ThreadPoolExecutor(max_workers=num_workers) as executor:
-                    futures = []
-
-                    for chunk in task_chunks:
-                        assert isinstance(
-                            chunk, list
-                        ), "Invalid datatype task_chunks. Must be list when running multiprocessing."
-
-                        state_id = (
-                            " ".join(chunk)
-                            .replace("--select ", "")
-                            .replace(" ", "__")
-                            .replace(".*", "")
-                        )
-
-                        select_param = " ".join(chunk).replace(".*", "")
-
-                        run_command = (
-                            f"{base_run_command} "
-                            f"--state-id tap_yfinance_target_{TAP_YFINANCE_TARGET}_{ENVIRONMENT}_{state_id} {select_param}".split(
-                                " "
-                            )
-                        )
-
-                        futures.append(
-                            executor.submit(
-                                subprocess.run,
-                                run_command,
-                                cwd=os.path.join(app.root_path, project_dir),
-                            )
-                        )
-
-                    for future in futures:
-                        future.result()
-
-                    logging.info(f"Running command {run_command}")
-
-                logging.info(f"*** Completed run_commands: {task_chunks}")
-
-            elif parallelism_method.lower() == "processes":
-                processes = []
-                concurrency_semaphore = mp.Semaphore(
-                    int(os.getenv("TAP_YFINANCE_MP_SEMAPHORE"))
+            if parallelism_method.lower() in ["threadpool", "processpool"]:
+                run_pool_task(
+                    run_commands=run_commands,
+                    cwd=cwd,
+                    num_workers=num_workers,
+                    pool_task=parallelism_method.lower(),
                 )
 
-                for chunk in task_chunks:
-                    assert isinstance(
-                        chunk, list
-                    ), "Invalid datatype task_chunks. Must be list when running multiprocessing."
-
-                    state_id = (
-                        " ".join(chunk)
-                        .replace("--select ", "")
-                        .replace(" ", "__")
-                        .replace(".*", "")
-                    )
-
-                    select_param = " ".join(chunk).replace(".*", "")
-
-                    run_command = (
-                        f"{base_run_command} "
-                        f"--state-id tap_yfinance_target_{TAP_YFINANCE_TARGET}_{ENVIRONMENT}_{state_id} {select_param}".split(
-                            " "
-                        )
-                    )
-
-                    process = mp.Process(
-                        target=run_meltano_task,
-                        kwargs={
-                            "run_command": run_command,
-                            "concurrency_semaphore": concurrency_semaphore,
-                            "cwd": os.path.join(app.root_path, project_dir),
-                        },
-                    )
-
-                    logging.info(f"Running command {run_command}")
-                    process.start()
-                    processes.append(process)
-
-                for p in processes:
-                    p.join()
-
-                logging.info(
-                    f"*** Completed process {process} --- run_commands: {task_chunks}"
+            elif parallelism_method.lower() == "process":
+                run_process_task(
+                    run_commands=run_commands,
+                    cwd=cwd,
+                    concurrency_semaphore=mp.Semaphore(
+                        int(os.getenv("TAP_YFINANCE_MP_SEMAPHORE"))
+                    ),
                 )
             else:
                 raise ValueError(
-                    f"Could not determine parallelism_method. It's currenctly set to {parallelism_method}"
+                    f"Could not determine parallelism_method. It's currently set to {parallelism_method}"
                 )
 
         total_seconds = time.monotonic() - start

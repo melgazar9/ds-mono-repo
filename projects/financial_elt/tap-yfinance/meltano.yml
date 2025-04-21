@@ -37,7 +37,7 @@ plugins:
   extractors:
     - name: "tap-yfinance"
       namespace: "tap_yfinance"
-      pip_url: git+https://github.com/melgazar9/tap-yfinance
+      pip_url: git+https://github.com/melgazar9/tap-yfinance@641c5dc296b6b1c67b671f51f4ab78d14a04ad8c
 
       capabilities:
         - state
@@ -122,15 +122,15 @@ plugins:
         ### tickers ###
 
         stock_tickers:
-          tickers: '*'
+          tickers: "*"
         futures_tickers:
-          tickers: '*'
+          tickers: "*"
         forex_tickers:
-          tickers: '*'
+          tickers: "*"
         crypto_tickers:
-          tickers: '*'
+          tickers: "*"
         crypto_tickers_top_250:
-          tickers: '*'
+          tickers: "*"
 
         ### prices ###
 
@@ -219,7 +219,7 @@ plugins:
           yf_params: { "interval": 1d, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
 
         ### wide ###
-  
+
         stock_prices_wide_1m:
           tickers: "*"
           yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
