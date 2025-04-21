@@ -11,7 +11,7 @@ def get_handler(*, project=None, logger_name=None):
 
         client = google.cloud.logging.Client(project=project)
         handler = CloudLoggingHandler(
-            client, name=logger_name, batch_size=32000, batch_timeout=5.0
+            client, name=logger_name, batch_size=32000, batch_timeout=120
         )
 
         handler.setFormatter(logging.Formatter("%(message)s"))
