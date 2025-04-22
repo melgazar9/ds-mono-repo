@@ -3,7 +3,7 @@ import sys
 import logging
 
 
-def get_handler(*, project=None, logger_name=None):
+def get_handler(*, project=os.getenv("GCP_PROJECT_ID"), logger_name=None):
     """Return a handler based on the environment."""
     try:
         import google.cloud.logging
