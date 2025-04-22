@@ -4,7 +4,9 @@ Created on Sat Jan 30 10:57:45 2021
 
 @author: melgazar9
 """
+
 import inspect
+
 from ds_core.ds_imports import *
 from ds_core.ds_utils import *
 from ds_core.sklearn_workflow.ml_imports import *
@@ -133,7 +135,6 @@ class SklearnMLFlow(MLFlowLogger):
         return self
 
     def create_features(self):
-
         """
         Description
         -----------
@@ -269,16 +270,16 @@ class SklearnMLFlow(MLFlowLogger):
         if not isinstance(self.algorithms, (tuple, list)) and hasattr(
             self.algorithms, "predict_proba"
         ):
-            self.df_out[
-                type(self.algorithms).__name__ + "_pred"
-            ] = self.algorithms.predict_proba(self.df_out[self.output_features])[:, 1]
+            self.df_out[type(self.algorithms).__name__ + "_pred"] = (
+                self.algorithms.predict_proba(self.df_out[self.output_features])[:, 1]
+            )
 
         elif not isinstance(self.algorithms, (tuple, list)) and hasattr(
             self.algorithms, "decision_function"
         ):
-            self.df_out[
-                type(self.algorithms).__name__ + "_pred"
-            ] = algo.decision_function(self.df_out[self.output_features])[:, 1]
+            self.df_out[type(self.algorithms).__name__ + "_pred"] = (
+                algo.decision_function(self.df_out[self.output_features])[:, 1]
+            )
 
         else:
             assert isinstance(self.algorithms, (tuple, list))
@@ -399,8 +400,8 @@ class SklearnMLFlow(MLFlowLogger):
                 )
 
                 if self.optimizer.best_thresholds[fit].index.name != "threshold":
-                    self.optimizer.best_thresholds[fit].set_index(
-                        "threshold", inplace=True
+                    self.optimizer.best_thresholds[fit] = (
+                        self.optimizer.best_thresholds[fit].set_index("threshold")
                     )
 
                 thres_opt.assign_predicted_class(self.optimizer.best_thresholds[fit])
@@ -469,22 +470,28 @@ class SklearnMLFlow(MLFlowLogger):
         ### create features ###
 
         if self.feature_creator is not None:
-            self.create_features() if create_features_params is None else self.create_features(
-                **create_features_params
+            (
+                self.create_features()
+                if create_features_params is None
+                else self.create_features(**create_features_params)
             )
 
         ### transform features ###
 
         if self.feature_transformer is not None:
-            self.transform_features() if transform_features_params is None else self.transform_features(
-                **transform_features_params
+            (
+                self.transform_features()
+                if transform_features_params is None
+                else self.transform_features(**transform_features_params)
             )
 
         ### resample data ###
 
         if self.resampler is not None:
-            self.resample() if resampler_params is None else self.resample(
-                **resampler_params
+            (
+                self.resample()
+                if resampler_params is None
+                else self.resample(**resampler_params)
             )
 
         ### train models ###
@@ -504,22 +511,28 @@ class SklearnMLFlow(MLFlowLogger):
         ### predict models ###
 
         if len(fitted_algorithms) == len(self.algorithms):
-            self.predict() if predict_model_params is None else self.predict(
-                **predict_model_params
+            (
+                self.predict()
+                if predict_model_params is None
+                else self.predict(**predict_model_params)
             )
 
             ### optimize models ###
 
             if self.optimizer is not None:
-                self.optimize() if optimize_models_params is None else self.optimize(
-                    **optimize_models_params
+                (
+                    self.optimize()
+                    if optimize_models_params is None
+                    else self.optimize(**optimize_models_params)
                 )
 
             ### evaluate models ###
 
             if self.evaluator is not None:
-                self.evaluate() if evaluate_model_params is None else self.evaluate(
-                    **evaluate_model_params
+                (
+                    self.evaluate()
+                    if evaluate_model_params is None
+                    else self.evaluate(**evaluate_model_params)
                 )
 
             ### get feature importances ###
@@ -1074,7 +1087,7 @@ class FeatureTransformer(TransformerMixin, MLFlowLogger):
             )
 
             lc_pipe = make_pipeline(
-                na_replacer, OneHotEncoder(handle_unknown="ignore", sparse=False)
+                na_replacer, OneHotEncoder(handle_unknown="ignore", sparse_output=False)
             )
 
             custom_pipe = None
@@ -1235,11 +1248,11 @@ class FeatureImportance(MLFlowLogger):
                     self.model.coef_, index=self.input_features, columns=["coefs"]
                 )
                 feature_importances["importance"] = feature_importances["coefs"].abs()
-                feature_importances.sort_values(
-                    by="importance", ascending=False, inplace=True
+                feature_importances = (
+                    feature_importances.sort_values(by="importance", ascending=False)
+                    .reset_index()
+                    .drop("coefs", axis=1)
                 )
-                feature_importances.reset_index(inplace=True)
-                feature_importances.drop("coefs", inplace=True, axis=1)
             except:
                 raise ValueError("Cannot get feature importance for this model")
 
@@ -1269,7 +1282,6 @@ class FeatureImportance(MLFlowLogger):
         yaxes_tickfont_size=15,
         **px_bar_params,
     ):
-
         """
         Description
         -----------
@@ -1313,7 +1325,7 @@ class FeatureImportance(MLFlowLogger):
                 else f"Top {top_n_features} (of {n_all_importances}) Feature Importances"
             )
 
-            feature_importances.sort_values(by="importance", inplace=True)
+            feature_importances = feature_importances.sort_values(by="importance")
             if self.round_decimals:
                 feature_importances["text"] = (
                     feature_importances["importance"]
@@ -1423,7 +1435,6 @@ class CalcMLMetrics(MLFlowLogger):
 
     @staticmethod
     def calc_classification_metrics(y_true, y_pred, threshold=0.5):
-
         """
         Parameters
         ----------
@@ -1464,7 +1475,6 @@ class CalcMLMetrics(MLFlowLogger):
         groupby_col_order=dict(dataset_split=("train", "val", "test")),
         num_threads=1,
     ):
-
         """
 
         Description
@@ -1573,8 +1583,8 @@ class CalcMLMetrics(MLFlowLogger):
                     )
                     self.metrics_df[col] = self.metrics_df[col].astype(col_order)
 
-                self.metrics_df.sort_values(
-                    by=list(groupby_col_order.keys()), inplace=True
+                self.metrics_df = self.metrics_df.sort_values(
+                    by=list(groupby_col_order.keys())
                 )
 
         return self.metrics_df
@@ -1606,14 +1616,14 @@ class CalcMLMetrics(MLFlowLogger):
 
         if self.groupby_cols is None:
             metrics_df = metrics_output.reset_index().melt(id_vars="index")
-            metrics_df.rename(
-                columns={"index": "metric", "variable": "fit"}, inplace=True
+            metrics_df = metrics_df.rename(
+                columns={"index": "metric", "variable": "fit"}
             )
         else:
             metrics_df = metrics_output.melt(
                 id_vars=list(set(self.groupby_cols + ["fit"]))
             )
-            metrics_df.rename(columns={"variable": "metric"}, inplace=True)
+            metrics_df = metrics_df.rename(columns={"variable": "metric"})
 
         metrics_df["text"] = (
             (metrics_df["value"] * 100).round(2).astype(str).pipe(lambda x: x + "%")
@@ -1676,7 +1686,6 @@ class ThresholdOptimizer(MLFlowLogger):
             self.df = self.df.copy()
 
     def optimize(self, thresholds=None):
-
         """
         Description
         -----------
@@ -1696,7 +1705,6 @@ class ThresholdOptimizer(MLFlowLogger):
 
     @staticmethod
     def get_best_thresholds(threshold_df):
-
         """
         Description
         -----------
@@ -1713,7 +1721,6 @@ class ThresholdOptimizer(MLFlowLogger):
         return
 
     def assign_predicted_class(self, best_threshold_df):
-
         """
         Description: Assign a positive predicted class based on the output of get_best_thresholds
 
@@ -1771,7 +1778,7 @@ class ThresholdOptimizer(MLFlowLogger):
 
         else:
             if "threshold" in self.df.columns:
-                self.df.drop("threshold", axis=1, inplace=True)
+                self.df = self.df.drop("threshold", axis=1)
 
             self.df = self.df.merge(
                 best_threshold_df.reset_index()[groupby_cols + ["threshold"]],
@@ -1814,7 +1821,6 @@ class ScoreThresholdOptimizer(ThresholdOptimizer):
         self.best_thresholds = None
 
     def optimize(self, thresholds=None, num_threads=1):
-
         """
         Description: Find the optimal thresholds based on the optimization_func passed.
 
@@ -1866,7 +1872,6 @@ class ScoreThresholdOptimizer(ThresholdOptimizer):
         return self
 
     def get_best_thresholds(self, minimize_or_maximize, threshold_df=None):
-
         """
         Description: Pull the best scores from the output of self.optimize_score.
 
@@ -1901,7 +1906,8 @@ class ScoreThresholdOptimizer(ThresholdOptimizer):
             indices = np.flatnonzero(
                 pd.Index(best_score.index.names).duplicated()
             ).tolist()
-            best_score.reset_index(indices, drop=True, inplace=True)
+
+            best_score = best_score.reset_index(indices, drop=True)
         else:
             if minimize_or_maximize.lower() == "maximize":
                 self.best_score = self.threshold_df[
@@ -1988,7 +1994,7 @@ class SimpleSplitter(AbstractSplitter):
         """
         assert isinstance(df, pd.DataFrame), "Input data must be a pandas df."
 
-        df.reset_index(drop=True, inplace=True)
+        df = df.reset_index(drop=True)
         df.loc[0 : int(df.shape[0] * self.train_pct), self.split_colname] = "train"
 
         val_start = int(df.shape[0] * self.train_pct)
@@ -2055,7 +2061,7 @@ class GenericMLEvaluator(AbstractEvaluator):
             num_threads=self.num_threads,
         )
 
-        self.evaluation_output.reset_index(drop=True, inplace=True)
+        self.evaluation_output = self.evaluation_output.reset_index(drop=True)
 
         self.evaluation_output = self.evaluation_output[
             ["fit"] + [i for i in self.evaluation_output.columns if i != "fit"]

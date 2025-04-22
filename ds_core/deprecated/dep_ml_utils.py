@@ -196,7 +196,6 @@ class RunModel:
         return model
 
     def predict_model(self, model):
-
         """
         Parameters
         ----------
@@ -269,7 +268,6 @@ class RunModel:
 
 ### thinking about how to integrate split optimization ###
 class SplitOptimizer(ScoreThresholdOptimizer):
-
     """
     The goal of this class is to optimize the predicted class decision by capturing the maximum score value from
         self.optimize, while minimumizing the distance across the train, val, and test to reduce over-fitting.

@@ -20,6 +20,8 @@ from pandas import json_normalize
 # from skimpy import clean_columns
 
 
+### instead of importing skimpy, such a big library for column cleaning, let's define our own
+
 ### plotting ###
 
 import matplotlib.pyplot as plt

@@ -119,7 +119,6 @@ class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
         engine_string=None,
         keep_session_alive=False,
     ):
-
         """
         Description
         -----------
@@ -158,7 +157,7 @@ class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
                 "username": self.user,
                 "password": self.password,
                 "host": self.host,
-                "query": {}
+                "query": {},
             }
 
             self.engine_string = URL(**mysql_connection_params)
@@ -412,7 +411,7 @@ class PostgresConnect(metaclass=MetaclassRDBMSEnforcer):
         database=os.getenv("POSTGRES_DB"),
         drivername="postgresql",
         engine_string=None,
-        keep_session_alive=False
+        keep_session_alive=False,
     ):
         self.user = user
         self.password = password
@@ -436,7 +435,7 @@ class PostgresConnect(metaclass=MetaclassRDBMSEnforcer):
                 "host": self.host,
                 "port": self.port,
                 "database": self.database,
-                "query": {}
+                "query": {},
             }
             self.engine_string = URL(**connection_params)
 

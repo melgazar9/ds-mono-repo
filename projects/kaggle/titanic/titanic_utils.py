@@ -32,7 +32,7 @@ class TitanicFeatureCreator:
         for key, d in self.survival_categories.items():
             for k, v in d.items():
                 df.loc[df[key] == k, key + "_survived"] = max(d[k], 0)
-            df[key + "_survived"].fillna(2, inplace=True)
+            df[key + "_survived"] = df[key + "_survived"].fillna(2)
 
         return df
 
@@ -44,11 +44,11 @@ class TitanicSplitter(AbstractSplitter):
         self.val_pct = val_pct
 
     def split(self, df):
-        df.reset_index(drop=True, inplace=True)
+        df = df.reset_index(drop=True)
         non_submission_shape = df[df["survived"].notnull()].shape[0]
-        df.loc[
-            0 : int(non_submission_shape * self.train_pct), self.split_colname
-        ] = "train"
+        df.loc[0 : int(non_submission_shape * self.train_pct), self.split_colname] = (
+            "train"
+        )
 
         df.loc[
             int(non_submission_shape * self.train_pct)
@@ -57,7 +57,7 @@ class TitanicSplitter(AbstractSplitter):
             self.split_colname,
         ] = "val"
 
-        df[self.split_colname].fillna("test", inplace=True)
+        df[self.split_colname] = df[self.split_colname].fillna("test")
         df.loc[df["survived"].isnull(), self.split_colname] = "submission"
 
         return df

@@ -22,9 +22,9 @@ df_train_orig = pd.read_csv(TRAIN_LOC)
 df_train_labels_orig = pd.read_csv(TRAIN_LABELS_LOC)
 df_test_orig = pd.read_csv(TEST_LOC)
 
-df_train_orig.set_index("customer_ID", inplace=True)
-df_train_labels_orig.set_index("customer_ID", inplace=True)
-df_test_orig.set_index("customer_ID", inplace=True)
+df_train_orig = df_train_orig.set_index("customer_ID")
+df_train_labels_orig = df_train_labels_orig.set_index("customer_ID")
+df_test_orig = df_test_orig.set_index("customer_ID")
 
 df_train = df_train_orig.join(df_train_labels_orig)
 assert df_train["target"].isnull().sum() == 0

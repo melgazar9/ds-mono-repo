@@ -4,26 +4,41 @@ from ds_core.ds_imports import *
 from ds_core.ds_utils import *
 from ds_core.sklearn_workflow.ml_utils import *
 from titanic_utils import *
+import kagglehub
 
-np.random.seed(9)
 
 ### global variables ###
 
-TRAIN_LOC = "/Volumes/Inland NVME 4TB/Datasets/kaggle/titanic/titanic/train.csv"
-TEST_LOC = "/Volumes/Inland NVME 4TB/Datasets/kaggle/titanic/titanic/test.csv"
-TARGET_NAME = "Survived"
+# TRAIN_LOC = "/Volumes/Inland NVME 4TB/Datasets/kaggle/titanic/titanic/train.csv"
+# TEST_LOC = "/Volumes/Inland NVME 4TB/Datasets/kaggle/titanic/titanic/test.csv"
 
+np.random.seed(9)
+
+path = kagglehub.dataset_download(
+    "yasserh/titanic-dataset"
+)  # Download latest version --> use this if TRAIN_LOC and TEST_LOC are net set
+
+print("Path to dataset files:", path)
+
+TARGET_NAME = "Survived"
 PRESERVE_VARS = ["PassengerId", "Name", "name_survived", "dataset_split"]
 pd.options.display.max_columns = 10
 
 ### load dfs ###
 
-df_train = pd.read_csv(TRAIN_LOC)
-df_test = pd.read_csv(TEST_LOC)
+# df_train = pd.read_csv(TRAIN_LOC)
+# df_test = pd.read_csv(TEST_LOC)
+
+df = pd.read_csv(path + "/" + os.listdir(path)[0])
+df_train = df.iloc[0 : int(len(df) * 0.66)]
+df_test = df.iloc[int(len(df) * 0.66) :]
+
 
 ### intersection of features between train / test datasets ###
 
-keep_cols = list(np.intersect1d(df_train.columns, df_test.columns)) + [TARGET_NAME]
+keep_cols = list(
+    set(list(np.intersect1d(df_train.columns, df_test.columns)) + [TARGET_NAME])
+)
 
 df_train = df_train[keep_cols]
 df_test = df_test[[i for i in keep_cols if i != TARGET_NAME]]
@@ -35,7 +50,6 @@ df = pd.concat([df_train, df_test])
 
 del df_train, df_test
 gc.collect()
-
 
 ### train a model ###
 
@@ -99,9 +113,8 @@ df_xgb = mlf.df_out[mlf.df_out["dataset_split"] == "submission"][
     columns={"passenger_id": "PassengerId", "XGBClassifier_pred_class": "Survived"}
 )
 
-
-df_catboost.to_csv(TRAIN_LOC.replace("train.csv", "df_catboost.csv"), index=False)
-df_xgb.to_csv(TRAIN_LOC.replace("train.csv", "df_xgb.csv"), index=False)
+# df_catboost.to_csv(TRAIN_LOC.replace("train.csv", "df_catboost.csv"), index=False)
+# df_xgb.to_csv(TRAIN_LOC.replace("train.csv", "df_xgb.csv"), index=False)
 
 ### run the workflow while using the validation set to reduce overfitting ###
 
@@ -139,6 +152,7 @@ mlf = SklearnMLFlow(
             subsample=0.8,
             l2_leaf_reg=9,
             colsample_bytree=0.8,
+            early_stopping_rounds=5,
             n_jobs=-1,
         ),
     ],
@@ -163,7 +177,7 @@ eval_set = [
     ),
 ]
 
-mlf.train(early_stopping_rounds=5, eval_set=eval_set)
+mlf.train(eval_set=eval_set)
 mlf.predict()
 mlf.assign_threshold_opt_rows(pct_train_for_opt=0.90, pct_val_for_opt=1)
 mlf.optimize("maximize")
@@ -185,7 +199,7 @@ mlf.get_feature_importances()
 print(mlf.feature_importances)
 print(mlf.evaluator.evaluation_output)
 
-df_catboost.to_csv(TRAIN_LOC.replace("train.csv", "df_catboost2.csv"), index=False)
-df_xgb.to_csv(TRAIN_LOC.replace("train.csv", "df_xgb2.csv"), index=False)
+# df_catboost.to_csv(TRAIN_LOC.replace("train.csv", "df_catboost2.csv"), index=False)
+# df_xgb.to_csv(TRAIN_LOC.replace("train.csv", "df_xgb2.csv"), index=False)
 
 # subprocess.run('kaggle competitions submit -c titanic -f ~/.kaggle/titanic/df_catboost2.csv -m "mlf"')

@@ -2,7 +2,6 @@ from ds_core.ds_imports import *
 
 
 class MetaclassMethodEnforcer:
-
     """
     Description
     -----------
@@ -216,8 +215,9 @@ def get_contents_timestamps_from_dir(
             )
             df_contents = pd.concat([df_contents, df_tmp], axis=0)
 
-        df_contents.drop_duplicates(inplace=True)
+        df_contents = df_contents.drop_duplicates()
         df_contents["last_modified"] = pd.to_datetime(df_contents["last_modified"])
+
     return df_contents
 
 
@@ -250,3 +250,21 @@ def remove_old_contents(
         ### delete the files ###
         subprocess.run(f"rm -rf {' '.join(contents_to_delete)}", shell=True)
     return
+
+
+def clean_strings(lst):
+    cleaned_list = [
+        re.sub(r"[^a-zA-Z0-9_]", "_", s) for s in lst
+    ]  # remove special characters
+    cleaned_list = [
+        re.sub(r"(?<!^)(?=[A-Z])", "_", s).lower() for s in cleaned_list
+    ]  # camel case -> snake case
+    cleaned_list = [
+        re.sub(r"_+", "_", s).strip("_").lower() for s in cleaned_list
+    ]  # clean leading and trailing underscores
+    return cleaned_list
+
+
+def clean_columns(df):
+    df.columns = clean_strings(df.columns)
+    return df

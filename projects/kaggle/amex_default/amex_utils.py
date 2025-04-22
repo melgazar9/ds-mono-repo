@@ -39,7 +39,6 @@ class AmexFeatureCreator:
         return self
 
     def fit_transform_customer_history(self, df):
-
         """
         NOTE
         ----
@@ -112,7 +111,6 @@ class AmexFeatureCreator:
         return df
 
     def fit_transform(self, df):
-
         """For this project, I reduced the complexity to only support fit_transform for feature creation"""
 
         ### datetime_features creator ###
@@ -193,7 +191,6 @@ def create_customer_history(
     generate_lagging_mean_cols=None,
     n_jobs_lag=mp.cpu_count(),
 ):
-
     """
     Description
     -----------
@@ -254,7 +251,7 @@ def create_customer_history(
                 list_of_dfs,
             )
 
-    df.drop("n", axis=1, inplace=True)
+    df = df.drop("n", axis=1)
     return df
 
 
@@ -293,7 +290,6 @@ class CalcAmexMetrics:
 
     @staticmethod
     def amex_metric(y_true: pd.Series, y_pred: pd.Series) -> float:
-
         """
         Description
         -----------
@@ -340,7 +336,6 @@ class CalcAmexMetrics:
 
     @staticmethod
     def create_metric_dict(y_true, y_pred, threshold=0.5):
-
         """
         Parameters
         ----------
@@ -366,7 +361,6 @@ class CalcAmexMetrics:
     def calc_amex_metrics(
         self, groupby_split=True, melt_id_vars=None, dataset_order=None, drop_nas=True
     ):
-
         """
         Description
         -----------
@@ -571,7 +565,6 @@ def focal_loss(alpha=0.25, gamma=1):
 
 def amex_loss():
     def amex_metric(y_true: pd.Series, y_pred: pd.Series) -> float:
-
         """
         Description
         -----------
@@ -641,12 +634,12 @@ class AmexSplitter(AbstractSplitter):
         self.val_pct = val_pct
 
     def split(self, df, train_pct=0.70, val_pct=0.15, target_name="target"):
-        df.reset_index(drop=True, inplace=True)
+        df = df.reset_index(drop=True)
         non_submission_shape = df[df[target_name].notnull()].shape[0]
 
-        df.loc[
-            0 : int(non_submission_shape * self.train_pct), self.split_colname
-        ] = "train"
+        df.loc[0 : int(non_submission_shape * self.train_pct), self.split_colname] = (
+            "train"
+        )
 
         df.loc[
             int(non_submission_shape * self.train_pct)
@@ -655,6 +648,6 @@ class AmexSplitter(AbstractSplitter):
             self.split_colname,
         ] = "val"
 
-        df[self.split_colname].fillna("test", inplace=True)
+        df[self.split_colname] = df[self.split_colname].fillna("test")
         df.loc[df[target_name].isnull(), self.split_colname] = "submission"
         return df
