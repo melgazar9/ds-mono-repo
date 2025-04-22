@@ -139,13 +139,13 @@ def setup_logging():
     return
 
 
-def shutdown_handler(signum, frame):
-    logging.info(f"Received signal {signum}. Shutting down...")
+def critical_shutdown_handler(signum, frame):
+    logging.warning(f"Received signal {signum}. Shutting down...")
     logging_agent = os.getenv("TAP_YFINANCE_LOGGING_AGENT")
     if logging_agent == "google" and logging_client:
         logging.info("Closing Google Cloud Logging client.")
         logging_client.close()
-    exit(0)
+    sys.exit(1)  # Non-zero exit code indicates abnormal shutdown
 
 
 def get_run_commands(base_run_command, task_chunks, target):
@@ -186,14 +186,20 @@ def execute_command(run_command, cwd, concurrency_semaphore=None):
 def execute_command_stg(run_command, cwd):
     """Executes a given command and handles errors."""
     logging.info(f"Running command: {run_command}")
+    start = time.monotonic()
     try:
         result = subprocess.run(run_command, cwd=cwd, check=True)
+        seconds_taken = time.monotonic() - start
         logging.info(
-            f"Command {run_command} completed successfully with return code {result.returncode}"
+            f"Command {run_command} completed successfully with return code {result.returncode}. \n"
+            f"Subprocess took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes, {round(seconds_taken / 3600, 2)} hours)"
         )
         return result
     except subprocess.CalledProcessError as e:
-        logging.error(f"Command {run_command} failed with return code {e.returncode}")
+        logging.error(
+            f"Command {run_command} failed with return code {e.returncode}. \n "
+            f"Took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes, {round(seconds_taken / 3600, 2)} hours)"
+        )
         logging.error(f"Error output: {e.stderr}")
         return e
 
