@@ -8,8 +8,8 @@ import json
 
 ENVIRONMENT = os.getenv("ENVIRONMENT")
 
-signal.signal(signal.SIGINT, shutdown_handler)
-signal.signal(signal.SIGTERM, shutdown_handler)
+signal.signal(signal.SIGINT, critical_shutdown_handler)
+signal.signal(signal.SIGTERM, critical_shutdown_handler)
 
 
 if __name__ == "__main__":

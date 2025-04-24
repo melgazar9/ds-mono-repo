@@ -8,9 +8,9 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_compl
 import yaml
 import multiprocessing as mp
 from functools import partial
+import sys
 
 ENVIRONMENT = os.getenv("ENVIRONMENT")
-
 
 def cur_timestamp(utc=True):
     if utc:
@@ -192,13 +192,14 @@ def execute_command_stg(run_command, cwd):
         seconds_taken = time.monotonic() - start
         logging.info(
             f"Command {run_command} completed successfully with return code {result.returncode}. \n"
-            f"Subprocess took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes, {round(seconds_taken / 3600, 2)} hours)"
+            f"Subprocess took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes, {round(seconds_taken / 3600, 2)} hours) to succeed."
         )
         return result
     except subprocess.CalledProcessError as e:
+        seconds_taken = time.monotonic() - start
         logging.error(
             f"Command {run_command} failed with return code {e.returncode}. \n "
-            f"Took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes, {round(seconds_taken / 3600, 2)} hours)"
+            f"Took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes, {round(seconds_taken / 3600, 2)} hours) to fail."
         )
         logging.error(f"Error output: {e.stderr}")
         return e

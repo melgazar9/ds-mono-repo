@@ -111,49 +111,49 @@ def financial_elt():
         - TAP_YFINANCE_PARALLELISM_METHOD=threadpool
         - TAP_YFINANCE_MP_SEMAPHORE => IRRELEVANT
         - Outcome:
-            - Total time taken:
+            - Total time taken: 85.25 minutes
     - Test 12
         - NUM_WORKERS = 16
         - TAP_YFINANCE_PARALLELISM_METHOD=processpool
         - TAP_YFINANCE_MP_SEMAPHORE => IRRELEVANT
         - Outcome:
-            - Total time taken:
+            - Total time taken: 83.27 minutes
     - Test 13
         - NUM_WORKERS = 32
         - TAP_YFINANCE_PARALLELISM_METHOD=threadpool
         - TAP_YFINANCE_MP_SEMAPHORE => IRRELEVANT
         - Outcome:
-            - Total time taken:
+            - Total time taken: 49.77 minutes
     - Test 14
         - NUM_WORKERS = 32
         - TAP_YFINANCE_PARALLELISM_METHOD=processpool
         - TAP_YFINANCE_MP_SEMAPHORE => IRRELEVANT
         - Outcome:
-            - Total time taken:
+            - Total time taken: 46.38 minutes
     - Test 15
         - NUM_WORKERS = 32
         - TAP_YFINANCE_PARALLELISM_METHOD=process
         - TAP_YFINANCE_MP_SEMAPHORE => 32
         - Outcome:
-            - Total time taken:
+            - Total time taken: 46.33 minutes
     - Test 16
         - NUM_WORKERS = 67
         - TAP_YFINANCE_PARALLELISM_METHOD=threadpool
         - TAP_YFINANCE_MP_SEMAPHORE => IRRELEVANT
         - Outcome:
-            - Total time taken:
+            - Total time taken: 56.87 minutes
     - Test 17
         - NUM_WORKERS = 67
         - TAP_YFINANCE_PARALLELISM_METHOD=processpool
         - TAP_YFINANCE_MP_SEMAPHORE => IRRELEVANT
         - Outcome:
-            - Total time taken:
+            - Total time taken: 51.37 minutes
     - Test 18
         - NUM_WORKERS = 67
         - TAP_YFINANCE_PARALLELISM_METHOD=process
         - TAP_YFINANCE_MP_SEMAPHORE => 67
         - Outcome:
-            - Total time taken:
+            - Total time taken: 46.48 minutes
 """
 
 
