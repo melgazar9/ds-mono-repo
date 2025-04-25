@@ -1,0 +1,91 @@
+networks:
+  elastic: # shared network for all services
+    driver: bridge # creates a bridge network named 'elastic' if it doesn't exist
+
+volumes:
+  elasticsearch_data:
+  kibana_data:
+  filebeat_data:
+
+services:
+  # --- Logging Infrastructure ---
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false # TODO: secure this for production
+      # - ELASTIC_PASSWORD=<password>
+    networks:
+      - elastic
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+        # TODO: add resource limits
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.4
+    container_name: kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=["http://elasticsearch:9200"]
+      # - ELASTICSEARCH_PASSWORD=<pwd>
+    networks:
+      - elastic
+    ports:
+      - "5601:5601"
+    volumes:
+      - kibana_data:/usr/share/kibana/data
+    depends_on:
+      - elasticsearch
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.13.4
+    container_name: filebeat
+    user: root # needed for reading host Docker logs directory
+    networks:
+      - elastic
+    volumes:
+      # Bind mount the Filebeat config file from the host into the container
+      # This assumes filebeat.yml is at ./filebeat/filebeat.yml relative to docker-compose.yml
+      - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+
+      # bind mount the host's Docker logs directory so Filebeat can read container logs
+      # this is for the 'docker' input type in filebeat.yml
+      # this host path needs to be changed if it's not correct at /var/lib/docker/containers
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+
+      # volume for the filebeat registry
+      - filebeat_data:/usr/share/filebeat/data
+    command: ["filebeat", "-e", "-c", "/usr/share/filebeat/filebeat.yml"]
+    environment:
+      - ELASTICSEARCH_HOSTS=elasticsearch:9200
+      # - ELASTICSEARCH_PASSWORD=<pwd>
+    depends_on:
+      - elasticsearch
+      # Depend on app services to ensure they exist for logs to be collected
+      # services where logs will be used with filebeat/elasticsearch/kibana
+      - financial_elt_app
+
+
+  # --- Application Services ---
+  financial_elt_app:
+    build:
+      context: ./projects/financial_elt/
+      dockerfile: Dockerfile
+      args:
+        CI: "true"
+    container_name: financial_elt_app
+    networks:
+      - elastic
+    volumes:
+      # Mount project code for dev
+      - ./projects/financial_elt/:/app/
+
+    # configure logging driver - filebeat reads from here on the host
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"

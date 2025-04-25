@@ -1,0 +1,29 @@
+filebeat.inputs:
+- type: docker
+  id: container-logs-input
+  enabled: true
+
+  processors:
+  - add_fields:
+      target: ''
+      fields:
+        app_name: financial_elt 
+        container_name: "{{ container.name }}" 
+
+filebeat.config.modules:
+  path: /nonexistent/modules.d/*.yml
+  reload.enabled: false
+
+
+# =============================== Outputs ===============================
+
+output.elasticsearch:
+  # Connect to the 'elasticsearch' service name within the Docker network
+  hosts: ["elasticsearch:9200"]
+    # TODO: add auth for production
+  # username: "elastic"
+  # password: <"pwd">
+
+  setup.template:
+    enabled: true
+    overwrite: true

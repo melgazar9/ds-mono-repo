@@ -19,8 +19,3 @@ sudo docker run \
   --cpus="16" \
   --network host \
   financial-elt:latest
-
-
-### docker-compose ###
-
-# sudo docker-compose up -d --build
