@@ -1,14 +1,26 @@
 filebeat.inputs:
-- type: docker
-  id: container-logs-input
+- type: filestream
+  id: container-logs-filestream
   enabled: true
+  paths:
+    - /var/lib/docker/containers/*/*.log
+  # ----------------------------------------
+
+  json.enabled: true
+  json.keys_under_root: true
+  json.add_error_key: true
 
   processors:
-  - add_fields:
+  - add_docker_metadata:
+      host: "unix:///var/run/docker.sock"
+
+  - decode_json_fields:
+      when.has_fields: ['log']
+      fields: ['log']
       target: ''
-      fields:
-        app_name: financial_elt 
-        container_name: "{{ container.name }}" 
+      overwrite_keys: true
+      add_error: true
+
 
 filebeat.config.modules:
   path: /nonexistent/modules.d/*.yml
@@ -18,7 +30,7 @@ filebeat.config.modules:
 # =============================== Outputs ===============================
 
 output.elasticsearch:
-  # Connect to the 'elasticsearch' service name within the Docker network
+  # connect to the 'elasticsearch' service name within the Docker network
   hosts: ["elasticsearch:9200"]
     # TODO: add auth for production
   # username: "elastic"
