@@ -12,6 +12,7 @@ import sys
 
 ENVIRONMENT = os.getenv("ENVIRONMENT")
 
+
 def cur_timestamp(utc=True):
     if utc:
         return (
@@ -185,7 +186,9 @@ def execute_command(run_command, cwd, concurrency_semaphore=None):
 
 def execute_command_stg(run_command, cwd):
     """Executes a given command and handles errors."""
+
     logging.info(f"Running command: {run_command}")
+
     start = time.monotonic()
     try:
         result = subprocess.run(run_command, cwd=cwd, check=True)
@@ -212,6 +215,7 @@ def run_meltano_task(
     return_queue=None,
 ):
     """Runs the Meltano task, optionally using concurrency and return_queue if using mp.Process."""
+
     result = execute_command(
         run_command=run_command, cwd=cwd, concurrency_semaphore=concurrency_semaphore
     )

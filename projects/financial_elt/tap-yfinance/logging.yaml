@@ -13,14 +13,6 @@ handlers:
     formatter: json
     stream: "ext://sys.stderr"
 
-  file_json:
-    class: logging.FileHandler
-    level: INFO
-    formatter: json
-    filename: "meltano.log"
-    mode: "a"
-    encoding: "utf-8"
-
 root:
   level: INFO
-  handlers: [console_json, file_json]  # direct output from both files
+  handlers: [console_json]

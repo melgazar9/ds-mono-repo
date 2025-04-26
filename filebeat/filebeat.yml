@@ -4,7 +4,6 @@ filebeat.inputs:
   enabled: true
   paths:
     - /var/lib/docker/containers/*/*.log
-  # ----------------------------------------
 
   json.enabled: true
   json.keys_under_root: true
@@ -15,12 +14,10 @@ filebeat.inputs:
       host: "unix:///var/run/docker.sock"
 
   - decode_json_fields:
-      when.has_fields: ['log']
-      fields: ['log']
-      target: ''
+      when.has_fields: ['message']
+      fields: ['message']
+      target: 'docker'
       overwrite_keys: true
-      add_error: true
-
 
 filebeat.config.modules:
   path: /nonexistent/modules.d/*.yml

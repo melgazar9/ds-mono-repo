@@ -46,12 +46,14 @@ services:
 
 
   filebeat:
-    image: docker.elastic.co/beats/filebeat:8.12.0 # Or 8.13.4
+    image: docker.elastic.co/beats/filebeat:8.12.0
     user: root
+    container_name: filebeat
     volumes:
       - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro # mount the config file
       - /var/lib/docker/containers:/var/lib/docker/containers:ro # mount Docker log directory
       - /var/run/docker.sock:/var/run/docker.sock:ro # mount docker socket for metadata processor
+      - ./projects/financial_elt/:/app_logs:ro
     networks:
       - elastic
     depends_on:
@@ -59,13 +61,13 @@ services:
 
 
   # --- Application Services ---
-  financial_elt_app:
+  financial_elt:
     build:
       context: ./projects/financial_elt/
       dockerfile: Dockerfile
       args:
         CI: "true"
-    container_name: financial_elt_app
+    container_name: financial_elt
     networks:
       - elastic
     volumes:
@@ -74,7 +76,6 @@ services:
     env_file:
       - .env
 
-    # configure logging driver - filebeat reads from here on the host
     logging:
       driver: json-file
       options:
