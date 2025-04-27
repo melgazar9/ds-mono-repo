@@ -12,6 +12,7 @@ services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
     container_name: elasticsearch
+    platform: linux/amd64
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false # TODO: secure this for production
@@ -30,6 +31,7 @@ services:
   kibana:
     image: docker.elastic.co/kibana/kibana:8.13.4
     container_name: kibana
+    platform: linux/amd64
     environment:
       - ELASTICSEARCH_HOSTS=["http://elasticsearch:9200"]
       # - ELASTICSEARCH_PASSWORD=<pwd>
@@ -49,6 +51,7 @@ services:
     image: docker.elastic.co/beats/filebeat:8.12.0
     user: root
     container_name: filebeat
+    platform: linux/amd64
     volumes:
       - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro # mount the config file
       - /var/lib/docker/containers:/var/lib/docker/containers:ro # mount Docker log directory
@@ -68,6 +71,7 @@ services:
       args:
         CI: "true"
     container_name: financial_elt
+    platform: linux/amd64
     networks:
       - elastic
     volumes:
