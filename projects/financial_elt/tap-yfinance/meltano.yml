@@ -1,14 +1,11 @@
 version: 1
 send_anonymous_usage_stats: false
-project_id: ${GCP_PROJECT_ID}
+project_id: tap_yfinance
 
 default_environment: dev
 
 state_backend:
-  type: remote
-  uri: ${GCP_BUCKET_URI}
-  gcs:
-    application_credentials: ${GOOGLE_APPLICATION_CREDENTIALS}
+  uri: file://$MELTANO_PROJECT_ROOT/state.json
 
 environments:
   - name: dev
