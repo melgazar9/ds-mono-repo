@@ -112,8 +112,6 @@ def run_process_task(run_commands, cwd, concurrency_semaphore):
 
 
 def setup_logging():
-    global logging_client
-
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
     )
@@ -136,7 +134,9 @@ def setup_logging():
         except Exception as e:
             logging.error(f"Error setting up Google Cloud Logging: {e}")
     else:
-        logging.info(f"Using default basic logging (LOGGING_AGENT: '{logging_agent}').")
+        logging.info(
+            f"Using default basic logging (TAP_YFINANCE_LOGGING_AGENT: '{logging_agent}')."
+        )
     return
 
 
