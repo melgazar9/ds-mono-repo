@@ -1,13 +1,11 @@
-from ds_core.ds_utils import *
 from sqlalchemy import create_engine, text
-from pymongo import MongoClient
-
-import pandas_gbq as pdg
-from google.cloud import bigquery
-from snowflake.sqlalchemy import URL as sqlalchemy_snowflake_url
 from sqlalchemy.engine import URL
-import snowflake.connector
-from snowflake.connector.pandas_tools import write_pandas, pd_writer
+
+from ds_core.ds_utils import *
+
+# from pymongo import MongoClient  # remove requirement for now
+# import snowflake.connector  # remove requirement for now
+# from snowflake.connector.pandas_tools import write_pandas, pd_writer  # remove requirement for now
 
 
 class RDBMSConnect:
@@ -25,74 +23,6 @@ rdbms_method_enforcer = MetaclassMethodEnforcer(
     required_methods=["connect", "run_sql"], parent_class="RDBMSConnect"
 )
 MetaclassRDBMSEnforcer = rdbms_method_enforcer.enforce()
-
-
-class BigQueryConnect(metaclass=MetaclassRDBMSEnforcer):
-    """
-    Description
-    -----------
-    Connect to Google BigQuery database and run queries.
-    Must have methods named "connect" and "run_sql"
-
-    Example
-    -------
-    db = BigQueryConnect()
-    df = db.run_sql('select * from <my_table> limit 1;')
-
-    Prerequisites
-    -------------
-    Log into Google BigQuery and create a service account for a specific project here:
-        https://console.cloud.google.com/iam-admin/serviceaccounts/
-        Make sure the proper permissions are granted! (e.g. grant both read and write permissions!)
-            roles/storage.objectCreator or storage admin works
-    Once the credentials json file is downloaded, copy it to a safe location (e.g. ~/.credentials/)
-    Open ~/.bashrc (or ~/.zshrc) and add the following line
-        export GOOGLE_APPLICATION_CREDENTIALS=<path to credentials json file>
-    Run source ~/.bashrc (or source ~/.zshrc); source venv/bin/activate;
-    When running pandas gbq it will probably have you log into your Google account via web browser
-    At this point you should be connected to Google BigQuery!
-
-    Parameters
-    ----------
-    google_application_credentials: str of path where json credentials are stored from creating a service account
-    database: str of the database or schema name
-    job_config_params: dict of params passed to bigquery.QueryJobConfig.
-    """
-
-    def __init__(
-        self,
-        google_application_credentials=os.getenv("GOOGLE_APPLICATION_CREDENTIALS"),
-        schema=os.getenv("BIGQUERY_SCHEMA"),
-        job_config_params=None,
-    ):
-        self.google_application_credentials = google_application_credentials
-        self.schema = schema
-        self.job_config_params = {} if job_config_params is None else job_config_params
-
-        self.dwh_name = "bigquery"
-
-    def connect(self):
-        self.client = bigquery.Client()
-        self.job_config = bigquery.QueryJobConfig(**self.job_config_params)
-        return self
-
-    def disconnect(self):
-        self.client.close()
-        return self
-
-    def run_sql(self, query, return_result=True, use_pd_gbq=True):
-        self.connect()
-        if query.strip().lower().startswith("select") and use_pd_gbq:
-            df = pdg.read_gbq(query)
-            self.disconnect()
-            return df
-        else:
-            job = self.client.query(query, job_config=self.job_config)
-            if return_result:
-                result = job.result()
-                self.disconnect()
-                return result
-        return
 
 
 class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
@@ -185,6 +115,150 @@ class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
             if not self.keep_session_alive:
                 self.disconnect()
         return self
+
+
+class PostgresConnect(metaclass=MetaclassRDBMSEnforcer):
+    """
+    Description
+    -----------
+    Connect to PostgreSQL database and run sql queries.
+
+    Example
+    -------
+    db = PostgresConnect()
+    df = db.run_sql('SELECT * FROM my_table LIMIT 10')
+    """
+
+    def __init__(
+        self,
+        user=os.getenv("POSTGRES_USER"),
+        password=os.getenv("POSTGRES_PASSWORD"),
+        host=os.getenv("POSTGRES_HOST"),
+        port=os.getenv("POSTGRES_PORT", 5432),
+        database=os.getenv("POSTGRES_DB"),
+        drivername="postgresql",
+        engine_string=None,
+        keep_session_alive=False,
+    ):
+        self.user = user
+        self.password = password
+        self.host = host
+        self.port = port
+        self.database = database
+        self.drivername = drivername
+        self.engine_string = engine_string
+        self.keep_session_alive = keep_session_alive
+
+        self.dwh_name = "postgres"
+        self.engine = None
+        self.con = None
+
+    def connect(self, **kwargs):
+        if self.engine_string is None:
+            connection_params = {
+                "drivername": self.drivername,
+                "username": self.user,
+                "password": self.password,
+                "host": self.host,
+                "port": self.port,
+                "database": self.database,
+                "query": {},
+            }
+            self.engine_string = URL(**connection_params)
+
+        self.engine = create_engine(self.engine_string, **kwargs)
+        self.con = self.engine.connect()
+        return self
+
+    def disconnect(self):
+        self.con.close()
+        self.engine.dispose()
+        return self
+
+    def run_sql(self, query, **read_sql_kwargs):
+        self.connect()
+        if query.strip().lower().startswith("select"):
+            df = pd.read_sql(query, con=self.con, **read_sql_kwargs)
+            if not self.keep_session_alive:
+                self.disconnect()
+            return df
+        else:
+            query = text(query)
+            self.con.execute(query)
+            if not self.keep_session_alive:
+                self.disconnect()
+        return self
+
+
+### Cloud DWH Connectors ###
+
+
+class BigQueryConnect(metaclass=MetaclassRDBMSEnforcer):
+    """
+    Description
+    -----------
+    Connect to Google BigQuery database and run queries.
+    Must have methods named "connect" and "run_sql"
+
+    Example
+    -------
+    db = BigQueryConnect()
+    df = db.run_sql('select * from <my_table> limit 1;')
+
+    Prerequisites
+    -------------
+    Log into Google BigQuery and create a service account for a specific project here:
+        https://console.cloud.google.com/iam-admin/serviceaccounts/
+        Make sure the proper permissions are granted! (e.g. grant both read and write permissions!)
+            roles/storage.objectCreator or storage admin works
+    Once the credentials json file is downloaded, copy it to a safe location (e.g. ~/.credentials/)
+    Open ~/.bashrc (or ~/.zshrc) and add the following line
+        export GOOGLE_APPLICATION_CREDENTIALS=<path to credentials json file>
+    Run source ~/.bashrc (or source ~/.zshrc); source venv/bin/activate;
+    When running pandas gbq it will probably have you log into your Google account via web browser
+    At this point you should be connected to Google BigQuery!
+
+    Parameters
+    ----------
+    google_application_credentials: str of path where json credentials are stored from creating a service account
+    database: str of the database or schema name
+    job_config_params: dict of params passed to bigquery.QueryJobConfig.
+    """
+
+    def __init__(
+        self,
+        google_application_credentials=os.getenv("GOOGLE_APPLICATION_CREDENTIALS"),
+        schema=os.getenv("BIGQUERY_SCHEMA"),
+        job_config_params=None,
+    ):
+        self.google_application_credentials = google_application_credentials
+        self.schema = schema
+        self.job_config_params = {} if job_config_params is None else job_config_params
+
+        self.dwh_name = "bigquery"
+
+    def connect(self):
+        self.client = bigquery.Client()
+        self.job_config = bigquery.QueryJobConfig(**self.job_config_params)
+        return self
+
+    def disconnect(self):
+        self.client.close()
+        return self
+
+    def run_sql(self, query, return_result=True, use_pd_gbq=True):
+        self.connect()
+        if query.strip().lower().startswith("select") and use_pd_gbq:
+            df = pdg.read_gbq(query)
+            self.disconnect()
+            return df
+        else:
+            job = self.client.query(query, job_config=self.job_config)
+            if return_result:
+                result = job.result()
+                self.disconnect()
+                return result
+        return
 
 
 class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
@@ -387,77 +461,4 @@ class MongoDBConnect(metaclass=MetaclassNoSQLEnforcer):
         if not self.keep_session_alive:
             self.disconnect()
 
-        return self
-
-
-class PostgresConnect(metaclass=MetaclassRDBMSEnforcer):
-    """
-    Description
-    -----------
-    Connect to PostgreSQL database and run sql queries.
-
-    Example
-    -------
-    db = PostgresConnect()
-    df = db.run_sql('SELECT * FROM my_table LIMIT 10')
-    """
-
-    def __init__(
-        self,
-        user=os.getenv("POSTGRES_USER"),
-        password=os.getenv("POSTGRES_PASSWORD"),
-        host=os.getenv("POSTGRES_HOST"),
-        port=os.getenv("POSTGRES_PORT", 5432),
-        database=os.getenv("POSTGRES_DB"),
-        drivername="postgresql",
-        engine_string=None,
-        keep_session_alive=False,
-    ):
-        self.user = user
-        self.password = password
-        self.host = host
-        self.port = port
-        self.database = database
-        self.drivername = drivername
-        self.engine_string = engine_string
-        self.keep_session_alive = keep_session_alive
-
-        self.dwh_name = "postgres"
-        self.engine = None
-        self.con = None
-
-    def connect(self, **kwargs):
-        if self.engine_string is None:
-            connection_params = {
-                "drivername": self.drivername,
-                "username": self.user,
-                "password": self.password,
-                "host": self.host,
-                "port": self.port,
-                "database": self.database,
-                "query": {},
-            }
-            self.engine_string = URL(**connection_params)
-
-        self.engine = create_engine(self.engine_string, **kwargs)
-        self.con = self.engine.connect()
-        return self
-
-    def disconnect(self):
-        self.con.close()
-        self.engine.dispose()
-        return self
-
-    def run_sql(self, query, **read_sql_kwargs):
-        self.connect()
-        if query.strip().lower().startswith("select"):
-            df = pd.read_sql(query, con=self.con, **read_sql_kwargs)
-            if not self.keep_session_alive:
-                self.disconnect()
-            return df
-        else:
-            query = text(query)
-            self.con.execute(query)
-            if not self.keep_session_alive:
-                self.disconnect()
         return self
