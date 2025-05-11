@@ -1,4 +1,4 @@
-from ds_core.ds_imports import *
+from ds_core.ds_imports import *  # noqa: F403
 
 
 class MetaclassMethodEnforcer:
@@ -130,24 +130,24 @@ def send_email(
 def json_string_to_dict(json_string):
     try:
         string_as_dict = json.loads(json_string)
-    except:
+    except Exception:
         try:
             string_as_dict = json.loads(json_string.replace("'", '"'))
-        except:
+        except Exception:
             try:
                 string_as_dict = ast.literal_eval(json_string)
-            except:
+            except Exception:
                 raise AssertionError("Could not parse input json_string!")
     if isinstance(string_as_dict, str):
         try:
             string_as_dict = json.loads(string_as_dict)
-        except:
+        except Exception:
             try:
                 string_as_dict = json.loads(string_as_dict.replace("'", '"'))
-            except:
+            except Exception:
                 try:
                     string_as_dict = ast.literal_eval(string_as_dict)
-                except:
+                except Exception:
                     raise AssertionError("String parsing failed!")
 
     return string_as_dict

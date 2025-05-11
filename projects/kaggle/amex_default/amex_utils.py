@@ -1,5 +1,5 @@
-from ds_core.sklearn_workflow.ml_utils import *
 from ds_core.ds_utils import *
+from ds_core.sklearn_workflow.ml_utils import *
 
 
 class AmexFeatureCreator:
@@ -98,9 +98,9 @@ class AmexFeatureCreator:
 
         self._customer_history_cols = list(
             set(
-                self.customer_history_cat_cols
-                + self.customer_history_cols
-                + [self.id_col]
+                self.customer_history_cat_cols +
+                self.customer_history_cols +
+                [self.id_col]
             )
         )
 
@@ -555,7 +555,10 @@ def focal_loss(alpha=0.25, gamma=1):
                 * (t * np.log(p) + (1 - t) * np.log(1 - p))
             )
 
-        partial_fl = lambda x: fl(x, y_true)
+        # partial_fl = lambda x: fl(x, y_true)  # I believe this was written by amex themselves, but it fails flake8 check E722
+        def partial_fl(x):
+            return fl(x, y_true)
+
         grad = derivative(partial_fl, y_pred, n=1, dx=1e-6)
         hess = derivative(partial_fl, y_pred, n=2, dx=1e-6)
         return grad, hess
@@ -642,9 +645,9 @@ class AmexSplitter(AbstractSplitter):
         )
 
         df.loc[
-            int(non_submission_shape * self.train_pct)
-            + 1 : np.ceil(non_submission_shape * self.train_pct)
-            + np.floor(non_submission_shape * self.val_pct),
+            int(non_submission_shape * self.train_pct) +
+            1 : np.ceil(non_submission_shape * self.train_pct) +
+            np.floor(non_submission_shape * self.val_pct),
             self.split_colname,
         ] = "val"
 

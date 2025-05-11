@@ -1,7 +1,7 @@
 # import polars as pl
 import pandas as pd
 
-from ds_core.db_connectors import *
+# from ds_core.db_connectors import *
 
 # db = PostgresConnect()
 #

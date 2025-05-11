@@ -1,7 +1,9 @@
+# flake8: noqa
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
 
-from ds_core.ds_utils import *
+from ds_core.ds_utils import *  # noqa: F403
 
 # from pymongo import MongoClient  # remove requirement for now
 # import snowflake.connector  # remove requirement for now

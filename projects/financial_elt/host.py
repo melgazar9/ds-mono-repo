@@ -1,9 +1,10 @@
+import json
+import signal
+
+from apscheduler.schedulers.background import BackgroundScheduler
 from routes import *
 from utils import *
-from apscheduler.schedulers.background import BackgroundScheduler
-import signal
 from waitress import serve
-import json
 
 ENVIRONMENT = os.getenv("ENVIRONMENT")
 

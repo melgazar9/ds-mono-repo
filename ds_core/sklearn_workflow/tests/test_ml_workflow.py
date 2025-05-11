@@ -1,6 +1,7 @@
+from sklearn.datasets import load_iris
+
 from ds_core.ds_imports import *
 from ds_core.sklearn_workflow.ml_utils import *
-from sklearn.datasets import load_iris
 
 data = load_iris()
 

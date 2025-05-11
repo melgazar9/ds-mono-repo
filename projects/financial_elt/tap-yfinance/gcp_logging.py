@@ -1,6 +1,6 @@
-import sys
-
+import os
 import logging
+import sys
 
 
 def get_handler(*, project=os.getenv("GCP_PROJECT_ID"), logger_name=None):

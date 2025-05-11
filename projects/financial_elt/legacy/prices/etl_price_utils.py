@@ -1,11 +1,13 @@
-import pandas as pd
-from ds_core.ds_utils import *
-from ds_core.db_connectors import *
-from numerapi import SignalsAPI
-import yfinance as yf
-from pytickersymbols import PyTickerSymbols
-import pandas_market_calendars as pmc
 import traceback
+
+import pandas as pd
+import pandas_market_calendars as pmc
+import yfinance as yf
+from numerapi import SignalsAPI
+from pytickersymbols import PyTickerSymbols
+
+from ds_core.db_connectors import *
+from ds_core.ds_utils import *
 
 
 class YFPriceGetter:
@@ -183,7 +185,7 @@ class YFPriceGetter:
             df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
             return df
 
-        except:
+        except Exception:
             self.failed_ticker_downloads[yf_history_params["interval"]].append(ticker)
             return
 
@@ -443,7 +445,7 @@ class YFPriceETL(YFPriceGetter):
                 self.mysql_client = MySQLConnect(**mysql_connect_params)
                 self.mysql_client.run_sql(f"CREATE SCHEMA IF NOT EXISTS {self.schema};")
                 self.mysql_client.schema = self.schema
-            except:
+            except Exception:
                 try:
                     warnings.warn(
                         """\n
@@ -461,7 +463,7 @@ class YFPriceETL(YFPriceGetter):
                     mysql_connect_params["schema"] = self.schema
                     self.mysql_client = MySQLConnect(**mysql_connect_params)
                     self.mysql_client.connect()
-                except:
+                except Exception:
                     raise ValueError("Could not connect to MySQL")
 
         return self
@@ -855,7 +857,7 @@ class YFPriceETL(YFPriceGetter):
                     for k, v in self.df_dtype_mappings.items():
                         try:
                             df[v] = df[v].astype(k)
-                        except:
+                        except Exception:
                             for numeric_col in df.select_dtypes(np.number).columns:
                                 df[numeric_col] = (
                                     df[numeric_col].bfill().ffill().fillna(0)
@@ -1853,62 +1855,62 @@ class YFPriceETL(YFPriceGetter):
 
         if asset_class == "stocks":
             query_dtype_fix = f"""
-                DROP TABLE IF EXISTS {self.schema}.tmp_table; 
-                CREATE TABLE {self.schema}.tmp_table AS 
-                  SELECT 
-                    timestamp, 
-                    CAST(timestamp_tz_aware AS CHAR(32)) AS timestamp_tz_aware, 
-                    timezone, 
-                    yahoo_ticker, 
-                    bloomberg_ticker,  
-                    numerai_ticker, 
-                    open, 
-                    high, 
-                    low, 
-                    close, 
-                    volume, 
-                    dividends, 
-                    stock_splits, 
-                    batch_timestamp 
-                  FROM 
+                DROP TABLE IF EXISTS {self.schema}.tmp_table;
+                CREATE TABLE {self.schema}.tmp_table AS
+                  SELECT
+                    timestamp,
+                    CAST(timestamp_tz_aware AS CHAR(32)) AS timestamp_tz_aware,
+                    timezone,
+                    yahoo_ticker,
+                    bloomberg_ticker,
+                    numerai_ticker,
+                    open,
+                    high,
+                    low,
+                    close,
+                    volume,
+                    dividends,
+                    stock_splits,
+                    batch_timestamp
+                  FROM
                     {self.schema}.{table_name};
                 """
         elif asset_class == "forex":
             query_dtype_fix = f"""
-                DROP TABLE IF EXISTS {self.schema}.tmp_table; 
-                CREATE TABLE {self.schema}.tmp_table AS 
-                  SELECT 
-                    timestamp, 
-                    CAST(timestamp_tz_aware AS CHAR(32)) AS timestamp_tz_aware, 
-                    timezone, 
-                    yahoo_ticker, 
-                    bloomberg_ticker,  
-                    open, 
-                    high, 
-                    low, 
-                    close, 
-                    volume, 
-                    batch_timestamp 
-                  FROM 
+                DROP TABLE IF EXISTS {self.schema}.tmp_table;
+                CREATE TABLE {self.schema}.tmp_table AS
+                  SELECT
+                    timestamp,
+                    CAST(timestamp_tz_aware AS CHAR(32)) AS timestamp_tz_aware,
+                    timezone,
+                    yahoo_ticker,
+                    bloomberg_ticker,
+                    open,
+                    high,
+                    low,
+                    close,
+                    volume,
+                    batch_timestamp
+                  FROM
                     {self.schema}.{table_name};
                 """
         elif asset_class == "crypto":
             query_dtype_fix = f"""
-                DROP TABLE IF EXISTS {self.schema}.tmp_table; 
-                CREATE TABLE {self.schema}.tmp_table AS 
-                  SELECT 
-                    timestamp, 
-                    CAST(timestamp_tz_aware AS CHAR(32)) AS timestamp_tz_aware, 
-                    timezone, 
-                    yahoo_ticker, 
-                    yahoo_name, 
-                    open, 
-                    high, 
-                    low, 
-                    close, 
-                    volume, 
-                    batch_timestamp 
-                  FROM 
+                DROP TABLE IF EXISTS {self.schema}.tmp_table;
+                CREATE TABLE {self.schema}.tmp_table AS
+                  SELECT
+                    timestamp,
+                    CAST(timestamp_tz_aware AS CHAR(32)) AS timestamp_tz_aware,
+                    timezone,
+                    yahoo_ticker,
+                    yahoo_name,
+                    open,
+                    high,
+                    low,
+                    close,
+                    volume,
+                    batch_timestamp
+                  FROM
                     {self.schema}.{table_name};
                 """
         else:
@@ -1930,7 +1932,7 @@ class YFPriceETL(YFPriceGetter):
             table_name: str of the interval that was pulled from yfinance (e.g. '1m')
         """
 
-        print(f"\nWriting to database MySQL...\n") if self.verbose else None
+        print("\nWriting to database MySQL...\n") if self.verbose else None
         self._drop_mysql_index_constraint(table_name=table_name)
         method = "multi" if self.write_method == "write_pandas" else self.write_method
         try:
@@ -1945,7 +1947,7 @@ class YFPriceETL(YFPriceGetter):
                 method=method,
                 chunksize=self.to_sql_chunksize,
             )
-        except:
+        except Exception:
             warnings.warn(
                 """
                         Could not directly populate database with df.
@@ -1990,7 +1992,7 @@ class YFPriceETL(YFPriceGetter):
 
         query_statements = f"""
             ALTER TABLE {self.schema}.{table_name} ADD COLUMN to_keep BOOLEAN;
-            ALTER TABLE {self.schema}.{table_name} 
+            ALTER TABLE {self.schema}.{table_name}
             ADD CONSTRAINT dedupe UNIQUE (timestamp, yahoo_ticker, to_keep);
             UPDATE IGNORE {self.schema}.{table_name} SET to_keep = true;
             DELETE FROM {self.schema}.{table_name} WHERE to_keep IS NULL;
@@ -2032,7 +2034,7 @@ class YFPriceETL(YFPriceGetter):
             asset_class: str of the asset class (e.g. 'stocks')
         """
 
-        print(f"\nWriting to Snowflake...\n") if self.verbose else None
+        print("\nWriting to Snowflake...\n") if self.verbose else None
 
         try:
             if self.write_method in [pd_writer, "write_pandas"]:
@@ -2071,7 +2073,7 @@ class YFPriceETL(YFPriceGetter):
                     method=self.write_method,
                     chunksize=self.to_sql_chunksize,
                 )
-        except:
+        except Exception:
             warnings.warn(
                 """
                         Could not directly populate database with df.
@@ -2139,37 +2141,37 @@ class YFPriceETL(YFPriceGetter):
 
         if asset_class == "stocks":
             columns = """
-              timestamp, 
-              timestamp_tz_aware, 
-              timezone, 
-              yahoo_ticker, 
-              bloomberg_ticker, 
-              numerai_ticker, 
-              open, 
-              high, 
-              low, 
-              close, 
-              volume, 
-              dividends, 
-              stock_splits, 
-              batch_timestamp 
+              timestamp,
+              timestamp_tz_aware,
+              timezone,
+              yahoo_ticker,
+              bloomberg_ticker,
+              numerai_ticker,
+              open,
+              high,
+              low,
+              close,
+              volume,
+              dividends,
+              stock_splits,
+              batch_timestamp
             """
 
             order_by_columns = "timestamp, yahoo_ticker, bloomberg_ticker, numerai_ticker, batch_timestamp desc"
 
         elif asset_class == "forex":
             columns = """
-              timestamp, 
-              timestamp_tz_aware, 
-              timezone, 
-              yahoo_ticker, 
-              bloomberg_ticker, 
-              open, 
-              high, 
-              low, 
-              close, 
-              volume, 
-              batch_timestamp 
+              timestamp,
+              timestamp_tz_aware,
+              timezone,
+              yahoo_ticker,
+              bloomberg_ticker,
+              open,
+              high,
+              low,
+              close,
+              volume,
+              batch_timestamp
             """
 
             order_by_columns = (
@@ -2178,17 +2180,17 @@ class YFPriceETL(YFPriceGetter):
 
         elif asset_class == "crypto":
             columns = """
-              timestamp, 
-              timestamp_tz_aware, 
-              timezone, 
-              yahoo_ticker, 
-              yahoo_name, 
-              open, 
-              high, 
-              low, 
-              close, 
-              volume, 
-              batch_timestamp 
+              timestamp,
+              timestamp_tz_aware,
+              timezone,
+              yahoo_ticker,
+              yahoo_name,
+              open,
+              high,
+              low,
+              close,
+              volume,
+              batch_timestamp
             """
 
             order_by_columns = (
@@ -2203,12 +2205,12 @@ class YFPriceETL(YFPriceGetter):
         initial_syntax = f"INSERT OVERWRITE INTO {self.schema}.{table_name} "
         query_statements = f"""
                     {initial_syntax}
-                    SELECT 
+                    SELECT
                       {columns}
-                    FROM 
-                      {self.schema}.{table_name} 
-                    QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC, batch_timestamp DESC) = 1 
-                    ORDER BY 
+                    FROM
+                      {self.schema}.{table_name}
+                    QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC, batch_timestamp DESC) = 1
+                    ORDER BY
                       {order_by_columns};
                 """
 
@@ -2241,11 +2243,11 @@ class YFPriceETL(YFPriceGetter):
             table_name: str of the table name to write to BigQuery.
         """
 
-        print(f"\nWriting to BigQuery...\n") if self.verbose else None
+        print("\nWriting to BigQuery...\n") if self.verbose else None
 
         try:
             df.to_gbq(f"{self.schema}.{table_name}", if_exists="append")
-        except:
+        except Exception:
             (
                 print(
                     "\nCould not directly upload df to bigquery! "
@@ -2287,25 +2289,25 @@ class YFPriceETL(YFPriceGetter):
         if asset_class == "stocks":
             query = f"""
                 {initial_syntax}
-                SELECT 
-                  timestamp, 
-                  timestamp_tz_aware, 
-                  timezone, 
-                  yahoo_ticker, 
-                  bloomberg_ticker, 
-                  numerai_ticker, 
-                  open, 
-                  high, 
-                  low, 
-                  close, 
-                  volume, 
-                  dividends, 
-                  stock_splits, 
-                  batch_timestamp 
-                FROM 
-                  {self.schema}.{table_name} 
-                QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC, batch_timestamp DESC) = 1 
-                ORDER BY 
+                SELECT
+                  timestamp,
+                  timestamp_tz_aware,
+                  timezone,
+                  yahoo_ticker,
+                  bloomberg_ticker,
+                  numerai_ticker,
+                  open,
+                  high,
+                  low,
+                  close,
+                  volume,
+                  dividends,
+                  stock_splits,
+                  batch_timestamp
+                FROM
+                  {self.schema}.{table_name}
+                QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC, batch_timestamp DESC) = 1
+                ORDER BY
                   timestamp, yahoo_ticker, bloomberg_ticker, numerai_ticker
                 );
             """
@@ -2313,22 +2315,22 @@ class YFPriceETL(YFPriceGetter):
         elif asset_class == "forex":
             query = f"""
                 {initial_syntax}
-                SELECT 
-                  timestamp, 
-                  timestamp_tz_aware, 
-                  timezone, 
-                  yahoo_ticker, 
-                  bloomberg_ticker, 
-                  open, 
-                  high, 
-                  low, 
-                  close, 
+                SELECT
+                  timestamp,
+                  timestamp_tz_aware,
+                  timezone,
+                  yahoo_ticker,
+                  bloomberg_ticker,
+                  open,
+                  high,
+                  low,
+                  close,
                   volume,
-                  batch_timestamp 
-                FROM 
-                  {self.schema}.{table_name} 
-                QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC, batch_timestamp DESC) = 1 
-                ORDER BY 
+                  batch_timestamp
+                FROM
+                  {self.schema}.{table_name}
+                QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC, batch_timestamp DESC) = 1
+                ORDER BY
                   timestamp, yahoo_ticker
                 );
             """
@@ -2336,22 +2338,22 @@ class YFPriceETL(YFPriceGetter):
         elif asset_class == "crypto":
             query = f"""
                 {initial_syntax}
-                SELECT 
-                  timestamp, 
-                  timestamp_tz_aware, 
-                  timezone, 
-                  yahoo_ticker, 
-                  yahoo_name,  
-                  open, 
-                  high, 
-                  low, 
-                  close, 
-                  volume, 
+                SELECT
+                  timestamp,
+                  timestamp_tz_aware,
+                  timezone,
+                  yahoo_ticker,
+                  yahoo_name,
+                  open,
+                  high,
+                  low,
+                  close,
+                  volume,
                   batch_timestamp
-                FROM 
-                  {self.schema}.{table_name} 
-                QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC, batch_timestamp DESC) = 1 
-                ORDER BY 
+                FROM
+                  {self.schema}.{table_name}
+                QUALIFY row_number() over (PARTITION BY timestamp, yahoo_ticker ORDER BY timestamp DESC, batch_timestamp DESC) = 1
+                ORDER BY
                   timestamp, yahoo_ticker, yahoo_name
                 );
             """

@@ -1,6 +1,7 @@
+import os
+
 import pandas as pd
 import requests
-import os
 
 API_KEY = os.environ.get("ALPHA_VANTAGE_API_KEY")
 

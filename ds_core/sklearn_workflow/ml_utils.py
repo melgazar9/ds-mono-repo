@@ -225,7 +225,7 @@ class SklearnMLFlow(MLFlowLogger):
                         self.target_name
                     ],
                 )
-            except:
+            except Exception:
                 try:
                     self.df_train_resampled = self.resampler.fit_transform(
                         self.df_out[self.df_out[self.split_colname] == "train"],
@@ -233,7 +233,7 @@ class SklearnMLFlow(MLFlowLogger):
                             self.target_name
                         ],
                     )
-                except:
+                except Exception:
                     raise ValueError("Could not fit the resampler.")
 
             return self
@@ -265,7 +265,7 @@ class SklearnMLFlow(MLFlowLogger):
         return self
 
     def predict(self):
-        self.logger.info(f"Predicting models...")
+        self.logger.info("Predicting models...")
 
         if not isinstance(self.algorithms, (tuple, list)) and hasattr(
             self.algorithms, "predict_proba"
@@ -574,7 +574,7 @@ def get_column_names_from_column_transformer(
     try:
         new_column_names = column_transformer.get_feature_names_out()
 
-    except:
+    except Exception:
 
         new_column_names, transformer_list = [], []
 
@@ -601,12 +601,12 @@ def get_column_names_from_column_transformer(
             try:
                 names = transformer.get_feature_names_out()
 
-            except:
+            except Exception:
 
                 try:
                     names = transformer[:-1].get_feature_names_out()
 
-                except:
+                except Exception:
 
                     if isinstance(transformer, Pipeline):
 
@@ -615,21 +615,21 @@ def get_column_names_from_column_transformer(
                         for t in transformer:
                             try:
                                 transformer_feature_names = t.get_feature_names_out()
-                            except:
+                            except Exception:
                                 try:
                                     transformer_feature_names = t.get_feature_names_out(
                                         orig_feature_names
                                     )
-                                except:
+                                except Exception:
                                     try:
                                         transformer_feature_names = t[
                                             :-1
                                         ].get_feature_names_out()
-                                    except:
+                                    except Exception:
                                         transformer = transformer.steps[-1][1]
                                         try:
                                             transformer_feature_names = transformer.cols
-                                        except:
+                                        except Exception:
                                             raise ValueError(
                                                 f"Could not get column names for transformer {t}"
                                             )
@@ -1253,7 +1253,7 @@ class FeatureImportance(MLFlowLogger):
                     .reset_index()
                     .drop("coefs", axis=1)
                 )
-            except:
+            except Exception:
                 raise ValueError("Cannot get feature importance for this model")
 
         assert len(self.input_features) == len(
@@ -1320,7 +1320,7 @@ class FeatureImportance(MLFlowLogger):
             n_all_importances = feature_importances.shape[0]
 
             title_text = (
-                f"All Feature Importances"
+                "All Feature Importances"
                 if top_n_features > n_all_importances or top_n_features is None
                 else f"Top {top_n_features} (of {n_all_importances}) Feature Importances"
             )

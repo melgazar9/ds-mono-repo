@@ -1,15 +1,14 @@
 from ds_core.db_connectors import *
-import yfinance as yf
-import pandas as pd
-
+from tap_yfinance.price_utils import clean_strings
 import sys
+import pandas as pd
+import yfinance as yf
 
 home_path = os.path.expanduser("~")
 
 sys.path.append(
     f"{home_path}/scripts/github/personal/ds-mono-repo/projects/financial_elt/tap-yfinance/.meltano/extractors/tap-yfinance/venv/lib/python3.9/site-packages"
 )
-from tap_yfinance.price_utils import clean_strings
 
 db = PostgresConnect()
 db.connect()
@@ -64,7 +63,7 @@ for table in tables:
 
             df_yfinance = getattr(t, f"{table}")
 
-    except:
+    except Exception:
         raise ValueError(
             f"Attribute {table} does not exist in the yfinance library anymore!"
         )
@@ -85,7 +84,7 @@ for table in tables:
         df_postgres = df_postgres[
             [i for i in df_postgres.columns if i not in ignore_cols]
         ]
-    except:
+    except Exception:
         raise ValueError(
             f"Attribute tap_yfinance_dev.{table} does not exist in the postgres db!"
         )
@@ -115,7 +114,7 @@ for table in tables:
         )
         df_missing_db_i["table"] = table
         df_missing_db_i = df_missing_db_i[["table", "column"]]
-    except:
+    except Exception:
         try:
             # if table is long
             df_missing_yf_i = pd.DataFrame(
@@ -141,7 +140,7 @@ for table in tables:
             )
             df_missing_db_i["table"] = table
             df_missing_db_i = df_missing_db_i[["table", "column"]]
-        except:
+        except Exception:
             raise ValueError(f"table {table} failed")
 
     df_missing_yf = pd.concat([df_missing_yf, df_missing_yf_i])

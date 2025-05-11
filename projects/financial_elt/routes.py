@@ -1,4 +1,5 @@
 from utils import *
+from flask import Flask, make_response
 
 app = Flask(__name__)
 
@@ -10,7 +11,6 @@ ENVIRONMENT = os.getenv("ENVIRONMENT")
 TAP_YFINANCE_TARGET = os.getenv("TAP_YFINANCE_TARGET")
 
 assert isinstance(TAP_YFINANCE_TARGET, str), "could not determine yfinance target"
-
 
 ### GENERAL ROUTES ###
 
@@ -41,7 +41,7 @@ def financial_elt():
         - Time taken: 15.96 minutes
     - Test 1
         - NUM_WORKERS = 1 (same as above, except use hosting and gcp storage (other parallelization params are irrelevant)
-        - Outcome: 
+        - Outcome:
             - Total time taken: 32.81 minutes
     - Test 2
         - NUM_WORKERS = 67
@@ -99,13 +99,12 @@ def financial_elt():
         - TAP_YFINANCE_MP_SEMAPHORE => IRRELEVANT
         - Outcome:
             - Total time taken: 9.82 minutes
-    
-    
-    
+
+
     ------------------------------
     ------ TEST 200 TICKERS ------
     ------------------------------
-    
+
     - Test 11
         - NUM_WORKERS = 16
         - TAP_YFINANCE_PARALLELISM_METHOD=threadpool
@@ -214,6 +213,7 @@ def tap_yfinance():
                 )
 
         total_seconds = time.monotonic() - start
+
         logging.info(
             f"*** ELT Process took {round(total_seconds, 2)} seconds ({round(total_seconds / 60, 2)} minutes, {round(total_seconds / 3600, 2)} hours) ***"
         )

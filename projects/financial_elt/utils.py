@@ -1,14 +1,13 @@
-from flask import Flask, make_response, request, redirect, Blueprint, render_template
+import logging
+import multiprocessing as mp
 import os
 import subprocess
-from datetime import datetime
-import logging
+import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+from datetime import datetime
 import yaml
-import multiprocessing as mp
-from functools import partial
-import sys
+
 
 ENVIRONMENT = os.getenv("ENVIRONMENT")
 
@@ -118,35 +117,29 @@ def setup_logging():
 
     logging.info(f"\n*** Running environment {ENVIRONMENT}. ***\n")
 
-    logging_agent = os.getenv("TAP_YFINANCE_LOGGING_AGENT")
-
-    if logging_agent.lower() == "google":
-        try:
-            from google.cloud import logging as gcp_logging
-
-            logging_client = gcp_logging.Client()
-            logging_client.setup_logging()
-            logging.info("Configured Google Cloud Logging.")
-        except ImportError:
-            logging.warning(
-                "Google Cloud Logging library not found. Using basic logging."
-            )
-        except Exception as e:
-            logging.error(f"Error setting up Google Cloud Logging: {e}")
-    else:
-        logging.info(
-            f"Using default basic logging (TAP_YFINANCE_LOGGING_AGENT: '{logging_agent}')."
-        )
+    # logging_agent = os.getenv("TAP_YFINANCE_LOGGING_AGENT")
+    # if logging_agent.lower() == "google":
+    #     try:
+    #         from google.cloud import logging as gcp_logging
+    #         logging_client = gcp_logging.Client()
+    #         logging_client.setup_logging()
+    #         logging.info("Configured Google Cloud Logging.")
+    #     except Exception as e:
+    #         logging.error(f"Error setting up Google Cloud Logging: {e}")
+    # else:
+    #     logging.info(
+    #         f"Using default basic logging (TAP_YFINANCE_LOGGING_AGENT: '{logging_agent}')."
+    #     )
     return
 
 
 def critical_shutdown_handler(signum, frame):
     logging.warning(f"Received signal {signum}. Shutting down...")
-    logging_agent = os.getenv("TAP_YFINANCE_LOGGING_AGENT")
-    if logging_agent == "google" and logging_client:
-        logging.info("Closing Google Cloud Logging client.")
-        logging_client.close()
-    sys.exit(1)  # Non-zero exit code indicates abnormal shutdown
+    # logging_agent = os.getenv("TAP_YFINANCE_LOGGING_AGENT")
+    # if logging_agent == "google" and 'logging_client' in globals():
+    #     logging.info("Closing Google Cloud Logging client.")
+    #     logging_client.close()
+    sys.exit(1)
 
 
 def get_run_commands(base_run_command, task_chunks, target):

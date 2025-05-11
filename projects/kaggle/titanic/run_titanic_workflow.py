@@ -1,11 +1,11 @@
 ### imports ###
 
+import kagglehub
+from titanic_utils import *
+
 from ds_core.ds_imports import *
 from ds_core.ds_utils import *
 from ds_core.sklearn_workflow.ml_utils import *
-from titanic_utils import *
-import kagglehub
-
 
 ### global variables ###
 
