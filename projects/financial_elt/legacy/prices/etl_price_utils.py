@@ -173,9 +173,7 @@ class YFPriceGetter:
             self.n_requests += 1
 
             if df is not None and not df.shape[0]:
-                self.failed_ticker_downloads[yf_history_params["interval"]].append(
-                    ticker
-                )
+                self.failed_ticker_downloads[yf_history_params["interval"]].append(ticker)
                 return pd.DataFrame(columns=self.column_order)
 
             df.loc[:, self.yahoo_ticker_colname] = ticker
@@ -510,9 +508,7 @@ class YFPriceETL(YFPriceGetter):
 
         if self.populate_mysql:
             print("\nOverwriting stock_tickers to MySQL...\n") if self.verbose else None
-            method = (
-                "multi" if self.write_method == "write_pandas" else self.write_method
-            )
+            method = "multi" if self.write_method == "write_pandas" else self.write_method
             self.mysql_client.connect()
             df_tickers.to_sql(
                 table_name,
@@ -685,9 +681,7 @@ class YFPriceETL(YFPriceGetter):
                 f"select yahoo_ticker, yahoo_name FROM {self.schema}.crypto_pairs_top_250 order by 1;"
             )
         else:
-            raise ValueError(
-                "Non-deterministic value set for df_tickers or asset_class."
-            )
+            raise ValueError("Non-deterministic value set for df_tickers or asset_class.")
 
         self._etl_prices(
             asset_class=asset_class,
@@ -1013,9 +1007,9 @@ class YFPriceETL(YFPriceGetter):
             if pd.to_datetime(next_open_date) > pd.to_datetime(close_date):
                 market_closed_dates_i = [
                     d.strftime("%Y-%m-%d")
-                    for d in pd.date_range(
-                        close_date, next_open_date, freq="d"
-                    ).tolist()[1:-1]
+                    for d in pd.date_range(close_date, next_open_date, freq="d").tolist()[
+                        1:-1
+                    ]
                 ]
 
                 self.market_closed_dates.append(market_closed_dates_i)
@@ -1063,9 +1057,7 @@ class YFPriceETL(YFPriceGetter):
                 if self.verbose
                 else None
             )
-            method = (
-                "multi" if self.write_method == "write_pandas" else self.write_method
-            )
+            method = "multi" if self.write_method == "write_pandas" else self.write_method
 
             tables = self.mysql_client.run_sql(
                 f"""
@@ -1294,9 +1286,7 @@ class YFPriceETL(YFPriceGetter):
 
         if self.populate_mysql:
             print("\nOverwriting forex_pairs to MySQL...\n") if self.verbose else None
-            method = (
-                "multi" if self.write_method == "write_pandas" else self.write_method
-            )
+            method = "multi" if self.write_method == "write_pandas" else self.write_method
 
             tables = self.mysql_client.run_sql(
                 f"""
@@ -1591,9 +1581,7 @@ class YFPriceETL(YFPriceGetter):
                             bigquery.SchemaField(name="low", field_type="NUMERIC"),
                             bigquery.SchemaField(name="close", field_type="NUMERIC"),
                             bigquery.SchemaField(name="volume", field_type="INTEGER"),
-                            bigquery.SchemaField(
-                                name="dividends", field_type="NUMERIC"
-                            ),
+                            bigquery.SchemaField(name="dividends", field_type="NUMERIC"),
                             bigquery.SchemaField(
                                 name="stock_splits", field_type="NUMERIC"
                             ),
@@ -1643,9 +1631,7 @@ class YFPriceETL(YFPriceGetter):
                             bigquery.SchemaField(
                                 name="yahoo_ticker", field_type="STRING"
                             ),
-                            bigquery.SchemaField(
-                                name="yahoo_name", field_type="STRING"
-                            ),
+                            bigquery.SchemaField(name="yahoo_name", field_type="STRING"),
                             bigquery.SchemaField(name="open", field_type="NUMERIC"),
                             bigquery.SchemaField(name="high", field_type="NUMERIC"),
                             bigquery.SchemaField(name="low", field_type="NUMERIC"),
@@ -1836,9 +1822,7 @@ class YFPriceETL(YFPriceGetter):
         except Exception as e:
             print(traceback.format_exc())
             print(f"\n{e}\n")
-            pd.options.display.max_columns = (
-                20  # so the full df is printed in the error
-            )
+            pd.options.display.max_columns = 20  # so the full df is printed in the error
             print(f"\n{df}\n")
             print(f"\n{df.dtypes}\n")
         return self
@@ -2193,9 +2177,7 @@ class YFPriceETL(YFPriceGetter):
               batch_timestamp
             """
 
-            order_by_columns = (
-                "timestamp, yahoo_ticker, yahoo_name, batch_timestamp desc"
-            )
+            order_by_columns = "timestamp, yahoo_ticker, yahoo_name, batch_timestamp desc"
 
         else:
             raise RuntimeError("Columns not successfully parsed.")
@@ -2261,9 +2243,7 @@ class YFPriceETL(YFPriceGetter):
             df.to_csv(f"{retry_cache_dir}/tmp.csv", index=False)
             df = pd.read_csv(f"{retry_cache_dir}/tmp.csv")
             job_config = bigquery.LoadJobConfig(autodetect=True)
-            table_id = (
-                f"{self.bigquery_client.client.project}.{self.schema}.{table_name}"
-            )
+            table_id = f"{self.bigquery_client.client.project}.{self.schema}.{table_name}"
             self.bigquery_client.client.load_table_from_dataframe(
                 df, table_id, job_config=job_config
             ).result()
@@ -2365,9 +2345,7 @@ class YFPriceETL(YFPriceGetter):
         self.bigquery_client.run_sql(query)
 
         if "bigquery" in self.create_timestamp_index_dbs:
-            raise NotImplementedError(
-                "No need to create timestamp indices on bigquery."
-            )
+            raise NotImplementedError("No need to create timestamp indices on bigquery.")
         return self
 
     def _drop_mysql_index_constraint(self, table_name):
@@ -2418,9 +2396,7 @@ class TickerDownloader:
         pts = PyTickerSymbols()
         all_getters = list(
             filter(
-                lambda x: (
-                    x.endswith("_yahoo_tickers") or x.endswith("_google_tickers")
-                ),
+                lambda x: (x.endswith("_yahoo_tickers") or x.endswith("_google_tickers")),
                 dir(pts),
             )
         )

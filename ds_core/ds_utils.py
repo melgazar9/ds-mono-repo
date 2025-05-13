@@ -1,4 +1,4 @@
-from ds_core.ds_imports import *  # noqa: F403
+from ds_core.ds_imports import *  # noqa: F403, F405
 
 
 class MetaclassMethodEnforcer:
@@ -101,9 +101,7 @@ def zip_dir(directory, output_loc, exclude_suffix=".dill"):
     return
 
 
-def send_email(
-    to_addrs, from_addr=None, subject="", body="", files=None, password=None
-):
+def send_email(to_addrs, from_addr=None, subject="", body="", files=None, password=None):
     if password is None or from_addr is None:
         email_credentials = os.environ.get("EMAIL_CREDENTIALS")
 

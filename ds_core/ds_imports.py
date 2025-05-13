@@ -29,6 +29,7 @@ import numpy as np
 import pandas as pd
 import plotly
 import plotly.express as px
+import polars as pl
 import seaborn as sns
 import yagmail
 from flatten_json import flatten as flatten_json

@@ -1,13 +1,16 @@
-from ds_core.db_connectors import *
-from tap_yfinance.price_utils import clean_strings
 import sys
+
 import pandas as pd
 import yfinance as yf
+from tap_yfinance.price_utils import clean_strings
+
+from ds_core.db_connectors import *
 
 home_path = os.path.expanduser("~")
 
 sys.path.append(
-    f"{home_path}/scripts/github/personal/ds-mono-repo/projects/financial_elt/tap-yfinance/.meltano/extractors/tap-yfinance/venv/lib/python3.9/site-packages"
+    f"{home_path}/scripts/github/personal/ds-mono-repo/projects/financial_elt/tap-yfinance/.meltano/"
+    f"extractors/tap-yfinance/venv/lib/python3.9/site-packages"
 )
 
 db = PostgresConnect()

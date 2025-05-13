@@ -42,9 +42,9 @@ class AmexFeatureCreator:
         """
         NOTE
         ----
-        This method is not yet designed for production use. FunctionTransformer does not store the information passed to it.
-        To make this code work on new Amex predictions, concatenate the full df (train/val/test/unseen)
-        and then apply the fit_transform method to the full dataset.
+        This method is not yet designed for production use. FunctionTransformer does not store the
+        information passed to it. To make this code work on new Amex predictions, concatenate the
+        full df (train/val/test/unseen) and then apply the fit_transform method to the full dataset.
         """
 
         ### attempt colmapping fix ###
@@ -73,9 +73,7 @@ class AmexFeatureCreator:
                             )
                         )
                     else:
-                        raise ValueError(
-                            f"Could not find column {col} or {cleaned_col}"
-                        )
+                        raise ValueError(f"Could not find column {col} or {cleaned_col}")
 
         self.id_col = input_mapping.get("id_col")[0]
         self.datetime_cols = input_mapping["datetime_cols"]
@@ -83,7 +81,7 @@ class AmexFeatureCreator:
         self.customer_history_cat_cols = input_mapping["customer_history_cat_cols"]
         self.target = input_mapping.get("target")[0]
 
-        ### fit_transform df
+        # fit_transform df
 
         if len(self.customer_history_cat_cols):
             self.ordinal_encoder = OrdinalEncoder(
@@ -98,9 +96,9 @@ class AmexFeatureCreator:
 
         self._customer_history_cols = list(
             set(
-                self.customer_history_cat_cols +
-                self.customer_history_cols +
-                [self.id_col]
+                self.customer_history_cat_cols
+                + self.customer_history_cols
+                + [self.id_col]
             )
         )
 
@@ -180,9 +178,7 @@ def find_abnormal_features(df, pct_na_thres=0.85, copy=True):
         if pct_nas >= pct_na_thres:
             excessive_na_cols[col] = pct_nas
 
-    return dict(
-        single_value_cols=single_value_cols, excessive_na_cols=excessive_na_cols
-    )
+    return dict(single_value_cols=single_value_cols, excessive_na_cols=excessive_na_cols)
 
 
 def create_customer_history(
@@ -322,9 +318,7 @@ class CalcAmexMetrics:
             df["gini"] = (df["lorentz"] - df["random"]) * df["weight"]
             return df["gini"].sum()
 
-        def normalized_weighted_gini(
-            y_true: pd.DataFrame, y_pred: pd.DataFrame
-        ) -> float:
+        def normalized_weighted_gini(y_true: pd.DataFrame, y_pred: pd.DataFrame) -> float:
             y_true_pred = y_true.copy()
             y_true_pred.name = "prediction"
             return weighted_gini(y_true, y_pred) / weighted_gini(y_true, y_true_pred)
@@ -379,7 +373,8 @@ class CalcAmexMetrics:
         ----------
         groupby_split: Bool whether to groupby.apply self.split_colname
         melt_id_vars: list of cols to melt when creating the ML metric summary
-        dataset_order: dict to reorganize the output summary table for easier reading (e.g. {'train': 0, 'val': 1, 'test': 2})
+        dataset_order: dict to reorganize the output summary table for easier reading
+            (e.g. {'train': 0, 'val': 1, 'test': 2})
         drop_nas: Bool to drop NA values before evaluation
         Returns: dict of ML metrics
         """
@@ -555,7 +550,8 @@ def focal_loss(alpha=0.25, gamma=1):
                 * (t * np.log(p) + (1 - t) * np.log(1 - p))
             )
 
-        # partial_fl = lambda x: fl(x, y_true)  # I believe this was written by amex themselves, but it fails flake8 check E722
+        # partial_fl = lambda x: fl(x, y_true)  # I believe this was written by
+        # amex themselves, but it fails flake8 check E722
         def partial_fl(x):
             return fl(x, y_true)
 
@@ -593,9 +589,7 @@ def amex_loss():
             four_pct_cutoff = int(0.04 * df["weight"].sum())
             df["weight_cumsum"] = df["weight"].cumsum()
             df_cutoff = df.loc[df["weight_cumsum"] <= four_pct_cutoff]
-            return (df_cutoff[y_true_s.name] == 1).sum() / (
-                df[y_true_s.name] == 1
-            ).sum()
+            return (df_cutoff[y_true_s.name] == 1).sum() / (df[y_true_s.name] == 1).sum()
 
         def weighted_gini(y_true: pd.DataFrame, y_pred: pd.DataFrame) -> float:
 
@@ -615,9 +609,7 @@ def amex_loss():
             df["gini"] = (df["lorentz"] - df["random"]) * df["weight"]
             return df["gini"].sum()
 
-        def normalized_weighted_gini(
-            y_true: pd.DataFrame, y_pred: pd.DataFrame
-        ) -> float:
+        def normalized_weighted_gini(y_true: pd.DataFrame, y_pred: pd.DataFrame) -> float:
             # y_true_pred = y_true.copy()
             # y_true_pred.name = 'prediction'
             return weighted_gini(y_true, y_pred) / weighted_gini(y_true, y_true)
@@ -645,9 +637,9 @@ class AmexSplitter(AbstractSplitter):
         )
 
         df.loc[
-            int(non_submission_shape * self.train_pct) +
-            1 : np.ceil(non_submission_shape * self.train_pct) +
-            np.floor(non_submission_shape * self.val_pct),
+            int(non_submission_shape * self.train_pct)
+            + 1 : np.ceil(non_submission_shape * self.train_pct)
+            + np.floor(non_submission_shape * self.val_pct),
             self.split_colname,
         ] = "val"
 

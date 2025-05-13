@@ -1,4 +1,4 @@
-FROM amd64/python:3.10.12-slim-buster
+FROM amd64/python:3.12-slim-bookworm
 
 ### Copy files ###
 
@@ -20,13 +20,13 @@ RUN apt-get update && \
     pip install -U pip && \
     pip install -U pipx && \
     pipx ensurepath && \
-    pipx install poetry==1.8.2 && \
-    pipx install "meltano==3.6.0" && \
-    poetry install
+    pipx install poetry==2.1.3
 
 RUN ulimit -c unlimited
 
 WORKDIR tap-yfinance
+RUN pipx install "meltano==3.7.3" && \
+    poetry install
 
 ENV PYTHONPATH=.
 RUN meltano install

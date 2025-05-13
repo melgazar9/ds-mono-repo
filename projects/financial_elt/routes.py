@@ -1,5 +1,5 @@
-from utils import *
 from flask import Flask, make_response
+from utils import *
 
 app = Flask(__name__)
 
@@ -40,7 +40,7 @@ def financial_elt():
         - Test a direct single meltano el run —> meltano el tap-yfinance target-jsonl
         - Time taken: 15.96 minutes
     - Test 1
-        - NUM_WORKERS = 1 (same as above, except use hosting and gcp storage (other parallelization params are irrelevant)
+        - NUM_WORKERS = 1 (same test, except use hosting and gcp storage (other parallelization params are irrelevant)
         - Outcome:
             - Total time taken: 32.81 minutes
     - Test 2
@@ -215,10 +215,14 @@ def tap_yfinance():
         total_seconds = time.monotonic() - start
 
         logging.info(
-            f"*** ELT Process took {round(total_seconds, 2)} seconds ({round(total_seconds / 60, 2)} minutes, {round(total_seconds / 3600, 2)} hours) ***"
+            f"*** ELT Process took {
+                round(total_seconds, 2)} seconds ({
+                round(total_seconds / 60, 2)} minutes, {
+                round(total_seconds / 3600, 2)} hours) ***"
         )
 
         return make_response(
-            f"Last ran project tap-yfinance-{ENVIRONMENT} target {TAP_YFINANCE_TARGET} at {cur_timestamp()}.",
+            f"Last ran project tap-yfinance-{ENVIRONMENT} target {TAP_YFINANCE_TARGET} at {
+                cur_timestamp()}.",
             200,
         )

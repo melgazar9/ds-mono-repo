@@ -1,5 +1,6 @@
 # flake8: noqa
 
+
 def parallize_pandas_func(
     df, df_attribute, parallelize_by_col=True, num_workers=mp.cpu_count(), **kwargs
 ):

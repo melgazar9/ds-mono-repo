@@ -622,35 +622,6 @@ plugins:
           replication-key: grade_date
 
   loaders:
-    - name: target-jsonl
-      variant: andyh1203
-      pip_url: target-jsonl
-
-    - name: target-bigquery
-      variant: z3z1ma
-      pip_url: git+https://github.com/z3z1ma/target-bigquery.git@9d1d0b08606a716a5a36f53b3388cbd6055535a8
-      config:
-        method: ${TARGET_BIGQUERY_METHOD}
-        project: ${GCP_PROJECT_ID}
-        credentials_path: ${GOOGLE_APPLICATION_CREDENTIALS}
-        dataset: ${GCP_DATASET}
-        batch_size: ${TARGET_BIGQUERY_BATCH_SIZE}
-        denormalized: true
-        bucket: ${GCP_BUCKET_NAME}
-
-    - name: target-snowflake
-      variant: meltanolabs
-      pip_url: git+https://github.com/MeltanoLabs/target-snowflake.git
-      config:
-        account: ${SNOWFLAKE_ACCOUNT}
-        user: MELTANO
-        password: ${SNOWFLAKE_PASSWORD}
-        warehouse: ${SNOWFLAKE_WAREHOUSE}
-        database: MELTANO
-        role: MELTANO
-        file_format: CSV_FORMAT
-        batch_size_rows: ${SNOWFLAKE_BATCH_SIZE_ROWS}
-
     - name: target-postgres
       variant: meltanolabs
       pip_url: git+https://github.com/MeltanoLabs/target-postgres
@@ -663,3 +634,32 @@ plugins:
         database: financial_elt
         use_copy: true    # Faster bulk loading
         add_record_metadata: true
+
+    - name: target-jsonl
+      variant: andyh1203
+      pip_url: target-jsonl
+
+    #- name: target-bigquery
+    #  variant: z3z1ma
+    #  pip_url: git+https://github.com/z3z1ma/target-bigquery.git@9d1d0b08606a716a5a36f53b3388cbd6055535a8
+    #  config:
+    #    method: ${TARGET_BIGQUERY_METHOD}
+    #    project: ${GCP_PROJECT_ID}
+    #    credentials_path: ${GOOGLE_APPLICATION_CREDENTIALS}
+    #    dataset: ${GCP_DATASET}
+    #    batch_size: ${TARGET_BIGQUERY_BATCH_SIZE}
+    #    denormalized: true
+    #    bucket: ${GCP_BUCKET_NAME}
+
+    #    - name: target-snowflake
+    #      variant: meltanolabs
+    #      pip_url: git+https://github.com/MeltanoLabs/target-snowflake.git
+    #      config:
+    #        account: ${SNOWFLAKE_ACCOUNT}
+    #        user: MELTANO
+    #        password: ${SNOWFLAKE_PASSWORD}
+    #        warehouse: ${SNOWFLAKE_WAREHOUSE}
+    #        database: MELTANO
+    #        role: MELTANO
+    #        file_format: CSV_FORMAT
+    #        batch_size_rows: ${SNOWFLAKE_BATCH_SIZE_ROWS}

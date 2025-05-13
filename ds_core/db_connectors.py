@@ -2,6 +2,7 @@
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
+from sqlalchemy.exc import SQLAlchemyError
 
 from ds_core.ds_utils import *  # noqa: F403
 
@@ -104,10 +105,18 @@ class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
         self.engine.dispose()
         return self
 
-    def run_sql(self, query, **read_sql_kwargs):
+    def run_sql(self, query, df_type="pandas", **read_sql_kwargs):
         self.connect()
-        if query.strip().lower().startswith("select"):
-            df = pd.read_sql(query, con=self.con, **read_sql_kwargs)
+        if df_type == "pandas":
+            if query.strip().lower().startswith("select"):
+                df = pd.read_sql(query, con=self.con, **read_sql_kwargs)
+            elif df_type == "polars":
+                df = pl.read_database(query=query, connection=self.con, **read_sql_kwargs)
+            else:
+                raise ValueError(
+                    f"df_type is set to {df_type} but only pandas and polars are supported."
+                )
+
             if not self.keep_session_alive:
                 self.disconnect()
             return df
@@ -125,6 +134,14 @@ class PostgresConnect(metaclass=MetaclassRDBMSEnforcer):
     -----------
     Connect to PostgreSQL database and run sql queries.
 
+    NOTE - When you use an object in a with statement, Python looks for these two methods:
+        __enter__: called when the with block is entered. When running "with PostgresConnect(...) as db:" the "db" value refers to the connected PostgresConnect instance.
+        __exit__: called when the with block is exited.
+
+    USAGE
+    -----
+    This class must be called within a "with" clause to prevent open connection db leakage.
+
     Example
     -------
     db = PostgresConnect()
@@ -140,7 +157,7 @@ class PostgresConnect(metaclass=MetaclassRDBMSEnforcer):
         database=os.getenv("POSTGRES_DB"),
         drivername="postgresql",
         engine_string=None,
-        keep_session_alive=False,
+        keep_session_alive=False,  # less relevant with context manager, but kept for compatibility with non-context usage.
     ):
         self.user = user
         self.password = password
@@ -151,11 +168,15 @@ class PostgresConnect(metaclass=MetaclassRDBMSEnforcer):
         self.engine_string = engine_string
         self.keep_session_alive = keep_session_alive
 
-        self.dwh_name = "postgres"
+        self.db_name = "postgres"
         self.engine = None
         self.con = None
 
     def connect(self, **kwargs):
+        """Establishes a connection, re-using if active."""
+        if self.con is not None and not self.con.closed:
+            return self  # Connection is already open and usable
+
         if self.engine_string is None:
             connection_params = {
                 "drivername": self.drivername,
@@ -168,28 +189,105 @@ class PostgresConnect(metaclass=MetaclassRDBMSEnforcer):
             }
             self.engine_string = URL(**connection_params)
 
-        self.engine = create_engine(self.engine_string, **kwargs)
-        self.con = self.engine.connect()
+        if self.engine is None or not self.engine.pool.initialized():
+            self.engine = create_engine(self.engine_string, **kwargs)
+
+        try:
+            self.con = self.engine.connect()
+        except SQLAlchemyError as e:
+            print(f"Database connection failed: {e}")
+            self.engine = None
+            raise
+
         return self
 
     def disconnect(self):
-        self.con.close()
-        self.engine.dispose()
+        """Closes the connection and disposes the engine."""
+        if self.con is not None and not self.con.closed:
+            try:
+                self.con.close()
+            except SQLAlchemyError as e:
+                print(f"Error closing connection: {e}")
+            finally:
+                self.con = None
+
+        if self.engine is not None:
+            try:
+                self.engine.dispose()
+            except SQLAlchemyError as e:
+                print(f"Error disposing engine: {e}")
+            finally:
+                self.engine = None
+
         return self
 
-    def run_sql(self, query, **read_sql_kwargs):
-        self.connect()
-        if query.strip().lower().startswith("select"):
-            df = pd.read_sql(query, con=self.con, **read_sql_kwargs)
-            if not self.keep_session_alive:
-                self.disconnect()
-            return df
+    def run_sql(self, query, df_type="pandas", **read_sql_kwargs):
+        """
+        Runs a SQL query. Use as a context manager for batched reads.
+        Params
+        ------
+        query: str of postgres sql query
+        df_type: if returning a df then it will return a df of type df_type (currently only supports pandas and polars).
+        **read_sql_kwargs: kwargs passed to pd.read_sql or pl.read_database.
+        """
+        is_batched_read = df_type == "polars" and read_sql_kwargs.get(
+            "iter_batches", False
+        )
+
+        if is_batched_read and (self.con is None or self.con.closed):
+            # For batched reads, connection MUST be managed by context manager
+            # or manually kept alive. Raise error if connection is not active.
+            raise RuntimeError(
+                "For batched reads (iter_batches=True), the PostgresConnect instance must be used within a 'with' statement or connect() must be called and managed manually."
+            )
+
+        if not is_batched_read:
+            self.connect()
+
+        if df_type in ["pandas", "polars"]:
+            if df_type == "pandas":
+                try:
+                    df = pd.read_sql(query, con=self.con, **read_sql_kwargs)
+                finally:
+                    if not self.keep_session_alive and not is_batched_read:
+                        self.disconnect()
+                return df
+            elif df_type == "polars":
+                try:
+                    df = pl.read_database(
+                        query=query, connection=self.con, **read_sql_kwargs
+                    )
+                finally:
+                    if not self.keep_session_alive and not is_batched_read:
+                        self.disconnect()
+                return df
+            else:
+                if not self.keep_session_alive and not is_batched_read:
+                    self.disconnect()
+                raise ValueError(
+                    f"df_type is set to {df_type} but only pandas and polars are supported."
+                )
         else:
-            query = text(query)
-            self.con.execute(query)
-            if not self.keep_session_alive:
-                self.disconnect()
+            try:
+                query_obj = text(query)
+                self.con.execute(query_obj)
+            except SQLAlchemyError as e:
+                print(f"Error executing query: {e}")
+                raise
+            finally:
+                if not self.keep_session_alive and not is_batched_read:
+                    self.disconnect()
+            return self
+
+    def __enter__(self):
+        """Enter the context, ensuring a connection is open."""
+        self.connect()
         return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit the context, ensuring the connection is closed."""
+        self.disconnect()
+        return False
 
 
 ### Cloud DWH Connectors ###
@@ -291,9 +389,7 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
     ):
 
         self.user = os.getenv("SNOWFLAKE_USER") if user is None else user
-        self.password = (
-            os.getenv("SNOWFLAKE_PASSWORD") if password is None else password
-        )
+        self.password = os.getenv("SNOWFLAKE_PASSWORD") if password is None else password
         self.account = os.getenv("SNOWFLAKE_ACCOUNT") if account is None else account
         self.database = database
         self.schema = schema
@@ -349,13 +445,22 @@ class SnowflakeConnect(metaclass=MetaclassRDBMSEnforcer):
         self.engine.dispose()
         return self
 
-    def run_sql(self, query, **read_sql_kwargs):
+    def run_sql(self, query, df_type="pandas", **read_sql_kwargs):
         self.connect()
         if self.backend_engine == "sqlalchemy":
             if query.strip().lower().startswith(
                 "select"
             ) or query.strip().lower().startswith("with"):
-                df = pd.read_sql(query, con=self.con, **read_sql_kwargs)
+                if df_type == "pandas":
+                    df = pd.read_sql(query, con=self.con, **read_sql_kwargs)
+                elif df_type == "polars":
+                    df = pl.read_database(
+                        query=query, connection=self.con, **read_sql_kwargs
+                    )
+                else:
+                    raise ValueError(
+                        f"df_type is set to {df_type} but only pandas and polars are supported."
+                    )
                 self.disconnect()
                 return df
             else:

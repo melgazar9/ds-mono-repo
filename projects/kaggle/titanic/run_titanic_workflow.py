@@ -1,13 +1,13 @@
-### imports ###
+## imports ##
 
 import kagglehub
-from titanic_utils import *
+from titanic_utils import *  # noqa: F403, F405
 
-from ds_core.ds_imports import *
-from ds_core.ds_utils import *
-from ds_core.sklearn_workflow.ml_utils import *
+from ds_core.ds_imports import *  # noqa: F403, F405
+from ds_core.ds_utils import *  # noqa: F403, F405
+from ds_core.sklearn_workflow.ml_utils import *  # noqa: F403, F405
 
-### global variables ###
+## global variables ##
 
 # TRAIN_LOC = "/Volumes/Inland NVME 4TB/Datasets/kaggle/titanic/titanic/train.csv"
 # TEST_LOC = "/Volumes/Inland NVME 4TB/Datasets/kaggle/titanic/titanic/test.csv"
@@ -24,7 +24,7 @@ TARGET_NAME = "Survived"
 PRESERVE_VARS = ["PassengerId", "Name", "name_survived", "dataset_split"]
 pd.options.display.max_columns = 10
 
-### load dfs ###
+## load dfs ##
 
 # df_train = pd.read_csv(TRAIN_LOC)
 # df_test = pd.read_csv(TEST_LOC)
@@ -34,7 +34,7 @@ df_train = df.iloc[0 : int(len(df) * 0.66)]
 df_test = df.iloc[int(len(df) * 0.66) :]
 
 
-### intersection of features between train / test datasets ###
+## intersection of features between train / test datasets ##
 
 keep_cols = list(
     set(list(np.intersect1d(df_train.columns, df_test.columns)) + [TARGET_NAME])
@@ -43,7 +43,7 @@ keep_cols = list(
 df_train = df_train[keep_cols]
 df_test = df_test[[i for i in keep_cols if i != TARGET_NAME]]
 
-### set up the df for mlflow ###
+## set up the df for mlflow ##
 
 df_test.loc[:, TARGET_NAME] = np.nan
 df = pd.concat([df_train, df_test])
@@ -51,7 +51,7 @@ df = pd.concat([df_train, df_test])
 del df_train, df_test
 gc.collect()
 
-### train a model ###
+## train a model ##
 
 mlf = SklearnMLFlow(
     df=df,
@@ -99,7 +99,7 @@ for pred in [i for i in mlf.df_out.columns if i.endswith("_pred_class")]:
 mlf.evaluate()
 print(mlf.evaluator.evaluation_output)
 
-### save output ###
+## save output ##
 
 df_catboost = mlf.df_out[mlf.df_out["dataset_split"] == "submission"][
     ["passenger_id", "CatBoostClassifier_pred_class"]
@@ -109,14 +109,12 @@ df_catboost = mlf.df_out[mlf.df_out["dataset_split"] == "submission"][
 
 df_xgb = mlf.df_out[mlf.df_out["dataset_split"] == "submission"][
     ["passenger_id", "XGBClassifier_pred_class"]
-].rename(
-    columns={"passenger_id": "PassengerId", "XGBClassifier_pred_class": "Survived"}
-)
+].rename(columns={"passenger_id": "PassengerId", "XGBClassifier_pred_class": "Survived"})
 
 # df_catboost.to_csv(TRAIN_LOC.replace("train.csv", "df_catboost.csv"), index=False)
 # df_xgb.to_csv(TRAIN_LOC.replace("train.csv", "df_xgb.csv"), index=False)
 
-### run the workflow while using the validation set to reduce overfitting ###
+## run the workflow while using the validation set to reduce overfitting ##
 
 mlf = SklearnMLFlow(
     df=df,

@@ -39,3 +39,26 @@ kagglehub = "^0.3.11"
 sqlalchemy = "^2.0.40"
 polars = "^1.29.0"
 setuptools = "^80.4.0"
+autopep8 = "^2.3.2"
+
+[tool.black]
+line-length = 90
+exclude = '''
+(^|/)(
+    \.meltano
+  | .*venv
+  | build
+  | dist
+  | site-packages
+)
+'''
+
+[tool.pylint]
+disable = "C0111"
+max-line-length = 90
+ignore = ".meltano,*/.meltano,.venv,*/venv,build,dist,site-packages,*/site-packages"
+
+[tool.isort]
+profile = "black"
+known_third_party = ["meltano"]
+skip = [".meltano", ".venv", "build", "dist", "site-packages"]

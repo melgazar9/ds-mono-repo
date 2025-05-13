@@ -1,4 +1,4 @@
-from ds_core.sklearn_workflow.ml_utils import *
+from ds_core.sklearn_workflow.ml_utils import *  # noqa: F403, F405
 
 
 class TitanicFeatureCreator:
@@ -6,9 +6,7 @@ class TitanicFeatureCreator:
 
         features = [features] if isinstance(features, str) else features
         features = (
-            [i for i in df.columns if i != target_name]
-            if features is None
-            else features
+            [i for i in df.columns if i != target_name] if features is None else features
         )
 
         self.survival_categories = {}

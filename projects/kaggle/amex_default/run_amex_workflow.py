@@ -1,9 +1,9 @@
 # from kaggle.amex_default.amex_utils import *
-from amex_utils import *
+from amex_utils import *  # noqa: F403, F405
 
-from ds_core.ds_imports import *
-from ds_core.ds_utils import *
-from ds_core.sklearn_workflow.ml_utils import *
+from ds_core.ds_imports import *  # noqa: F403, F405
+from ds_core.ds_utils import *  # noqa: F403, F405
+from ds_core.sklearn_workflow.ml_utils import *  # noqa: F403, F405
 
 np.random.seed(9)
 
@@ -75,4 +75,5 @@ df_catboost = (
     .rename({"customer_id": "customer_ID", "CatBoostClassifier_pred": "prediction"})
 )
 
-# subprocess.run('kaggle competitions submit -c amex-default-prediction -f ~/.kaggle/amex-default-prediction/df_catboost.csv -m "mlf"')
+# subprocess.run('kaggle competitions submit -c amex-default-prediction -f
+#      ~/.kaggle/amex-default-prediction/df_catboost.csv -m "mlf"')
