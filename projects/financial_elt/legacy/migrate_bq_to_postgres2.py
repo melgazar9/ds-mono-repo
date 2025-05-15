@@ -1,15 +1,15 @@
 import os
-from io import StringIO
-import polars as pl
-import psycopg2
-from psycopg2 import sql
-from google.cloud import bigquery
-from google.cloud import storage
-from time import time
-from tqdm import tqdm
+import shutil
 import sys
 import tempfile
-import shutil
+from io import StringIO
+from time import time
+
+import polars as pl
+import psycopg2
+from google.cloud import bigquery, storage
+from psycopg2 import sql
+from tqdm import tqdm
 
 GCP_CREDENTIALS_PATH = os.getenv("GCP_CREDENTIALS_PATH")
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID")

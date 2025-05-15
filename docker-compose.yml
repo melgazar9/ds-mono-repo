@@ -74,9 +74,8 @@ services:
     platform: linux/amd64
     networks:
       - elastic
-    volumes:
-      # mount project code for dev
-      - ./projects/financial_elt/:/app/
+      #volumes:
+      #- ./projects/financial_elt/:/app/
     env_file:
       - .env
 
