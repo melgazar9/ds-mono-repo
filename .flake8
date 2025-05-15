@@ -11,4 +11,6 @@ exclude =
     */site-packages/*,
     **/site-packages/*
     **/legacy/*
+    projects/financial_elt/dbt_financial/
+
 ignore = F405, F403, W503, E203, E266
