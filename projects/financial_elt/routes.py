@@ -215,14 +215,11 @@ def tap_yfinance():
         total_seconds = time.monotonic() - start
 
         logging.info(
-            f"*** ELT Process took {
-                round(total_seconds, 2)} seconds ({
-                round(total_seconds / 60, 2)} minutes, {
-                round(total_seconds / 3600, 2)} hours) ***"
+            f"*** ELT Process took {round(total_seconds, 2)} seconds ({round(total_seconds / 60, 2)} minutes,"
+            f"{round(total_seconds / 3600, 2)} hours) ***"
         )
 
         return make_response(
-            f"Last ran project tap-yfinance-{ENVIRONMENT} target {TAP_YFINANCE_TARGET} at {
-                cur_timestamp()}.",
+            f"Last ran project tap-yfinance-{ENVIRONMENT} target {TAP_YFINANCE_TARGET} at {cur_timestamp()}.",
             200,
         )
