@@ -5,10 +5,14 @@
 
 ### Setup
 - `git clone https://github.com/melgazar9/ds-mono-repo.git && cd ds-mono-repo`
-- If running inside a docker container:
-  - `cd projects/myproject`
-  - set up `.env` and `config` files in each project
-  - `sudo docker-compose up --build` after setting credentials / configurations.
+- Projects can run individually or be orchestrated from the root directory using docker compose. 
+- If using docker compose from the root directory to run all projects, call `./run.sh`
+  - Need to set up `.env` and `config` files in each project
+  - Poetry is used for package management
+  - Dockerfile lives in the project directory but docker-compose.yml lives in the root directory
+  - When setting up for the first time, need to go to Kibana and set up filebeat logs. Create data view --> name: filebeat logs and index pattern: filebeat-*
+    - From here Kibana can be searched: set message as the column and search (for example) container.name: financial_elt
+
 - If running natively:
   - It's recommended to manage different python versions using `pyenv`
   - `poetry install`
