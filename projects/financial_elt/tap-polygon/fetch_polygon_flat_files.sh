@@ -1,17 +1,17 @@
 #!/bin/bash
 
-# Example run: ./fetch_polygon_flat_files.sh --days --start-date "2025-05-09" --end-date "2025-05-12"
+# Example usage:
+# ./fetch_polygon_flat_files.sh --days --start-date "2025-05-12" --end-date "2025-05-13" --asset-class us_stocks_sip
 
 if [[ -z "$POLYGON_FLAT_FILE_AWS_KEY" || -z "$POLYGON_FLAT_FILE_AWS_SECRET_KEY" ]]; then
   echo "Error: POLYGON_FLAT_FILE_AWS_KEY and POLYGON_FLAT_FILE_AWS_SECRET_KEY must be set"
   exit 1
 fi
 
-BASE_PATH="s3://flatfiles/us_stocks_sip"
 ENDPOINT="--endpoint-url https://files.polygon.io"
 
 usage() {
-  echo "Usage: $0 --trades|--bars-1m|--days --start-date YYYY-MM-DD --end-date YYYY-MM-DD"
+  echo "Usage: $0 --trades|--bars-1m|--days --start-date YYYY-MM-DD --end-date YYYY-MM-DD [--asset-class ASSET_CLASS]"
   exit 1
 }
 
@@ -19,6 +19,7 @@ DATA_TYPE=""
 START_DATE=""
 END_DATE=""
 PREFIX=""
+ASSET_CLASS="us_stocks_sip"  # default asset class
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -45,6 +46,10 @@ while [[ $# -gt 0 ]]; do
       END_DATE="$2"
       shift 2
       ;;
+    --asset-class)
+      ASSET_CLASS="$2"
+      shift 2
+      ;;
     *)
       usage
       ;;
@@ -55,7 +60,8 @@ if [[ -z "$DATA_TYPE" || -z "$START_DATE" || -z "$END_DATE" ]]; then
   usage
 fi
 
-OUTPUT_DIR="./outputs/$PREFIX"
+BASE_PATH="s3://flatfiles/${ASSET_CLASS}"
+OUTPUT_DIR="./outputs/${ASSET_CLASS}/${PREFIX}"
 mkdir -p "$OUTPUT_DIR"
 
 start_sec=$(date -d "$START_DATE" +%s)
