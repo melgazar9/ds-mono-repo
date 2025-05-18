@@ -18,6 +18,8 @@ werkzeug = "^3.0.1"
 yagmail = "^0.15.293"
 pipx = "^1.3.3"
 psycopg2-binary = "^2.9.10"
+pandas = "^2.2.3"
+holidays = "^0.72"
 
 
 [build-system]
