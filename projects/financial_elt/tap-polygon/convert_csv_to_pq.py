@@ -1,12 +1,14 @@
-import pandas as pd
-from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor
+from pathlib import Path
+
+import pandas as pd
 
 INPUT_DIRS = [
     Path("outputs/us_stocks_sip/bars_1m"),
     Path("outputs/us_stocks_sip/eod"),
     Path("outputs/us_stocks_sip/trades"),
 ]
+
 
 def convert_csv_gz_to_parquet(csv_gz_path_str):
     csv_gz_path = Path(csv_gz_path_str)
@@ -23,6 +25,7 @@ def convert_csv_gz_to_parquet(csv_gz_path_str):
     except Exception as e:
         return f"❌ Failed on {csv_gz_path}: {e}"
 
+
 def batch_convert_parallel():
     all_files = []
     for dir_path in INPUT_DIRS:
@@ -34,6 +37,6 @@ def batch_convert_parallel():
         for result in executor.map(convert_csv_gz_to_parquet, all_files):
             print(result)
 
+
 if __name__ == "__main__":
     batch_convert_parallel()
-

@@ -1,8 +1,9 @@
 import os
 from datetime import date, timedelta
-import holidays
-from holidays.countries.united_states import UnitedStates
+
 from dateutil.easter import easter
+from holidays.countries.united_states import UnitedStates
+
 
 class USStockMarketHolidays(UnitedStates):
     def _populate(self, year):
@@ -11,6 +12,7 @@ class USStockMarketHolidays(UnitedStates):
         easter_sunday = easter(year)
         good_friday = easter_sunday - timedelta(days=2)
         self[good_friday] = "Good Friday"
+
 
 base_dir = "outputs"
 start_date = date(2015, 5, 17)
@@ -44,4 +46,3 @@ for root, dirs, files in os.walk(base_dir):
             print(f"  - {f}")
     else:
         print(f"\n✅ All files present in {root}")
-
