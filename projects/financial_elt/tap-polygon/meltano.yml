@@ -1,0 +1,213 @@
+version: 1
+send_anonymous_usage_stats: true
+project_id: "tap-polygon"
+default_environment: test
+venv:
+  backend: uv
+environments:
+- name: test
+plugins:
+  extractors:
+  - name: "tap-polygon"
+    namespace: "tap_polygon"
+    pip_url: git+https://github.com/melgazar9/tap-polygon.git
+
+    capabilities:
+    - state
+    - catalog
+    - discover
+    - about
+    - stream-maps
+
+    settings:
+    - name: api_key
+      kind: password
+      label: Polygon API Key
+      description: Polygon.io API Key
+      sensitive: true
+
+    - name: start_date
+      kind: date_iso8601
+      label: Start Date
+      description: Initial date to start extracting data from
+
+    select:
+      - stock_tickers.*
+      - ticker_details.*
+      - ticker_types.*
+      - related_companies.*
+      - custom_bars.*
+      - daily_market_summary.*
+      - daily_ticker_summary.*
+      - top_market_movers.*
+      - trades.*
+      - quotes.*
+      - sma.*
+      - ema.*
+      - macd.*
+      - rsi.*
+      - exchanges.*
+      - market_holidays.*
+      - market_status.*
+      - condition_codes.*
+      - ipos.*
+      - splits.*
+      - dividends.*
+      - ticker_events.*
+      - financials.*
+      - short_interest.*
+      - short_volume.*
+      - news.*
+
+    config:
+      start_date: '2020-01-01T00:00:00Z'
+      api_key: ${POLYGON_API_KEY}
+      base_url: https://api.polygon.io
+
+      # The tickers that are set here persist across all streams that require a single stock ticker as input.
+      # To run different tickers across different streams you need to call the tap N times,
+      # where N is the number of distinct groups of ticker.
+      stock_tickers:
+        query_params:
+          sort: ticker
+        tickers:
+          - AAPL
+      ticker_details:
+        query_params:
+          date: "2025-01-07"
+      custom_bars:
+        - path_params:
+            multiplier: 1
+            timespan: "second"
+            from: "2023-01-05"
+            to: "2023-01-09"
+        - query_params:
+            adjusted: true
+            sort: "asc"
+            limit: 50000
+      daily_market_summary:
+        - path_params:
+            date: "2025-01-06"  # leave blank or set to "" to get current day
+        - query_params:
+            adjusted: true
+            include_otc: true
+      daily_ticker_summary:
+        - path_params:
+            date: "2025-05-01"
+        - query_params:
+            adjusted: true
+      top_market_movers:
+        - query_params:
+            direction: "gainers"  # set to "" or "both" to get both directions
+            include_otc: false
+      trades:
+        - query_params:
+            sort: timestamp
+            order: asc
+            timestamp.gte: "2025-05-21T19:59:00Z"
+      quotes:
+        - query_params:
+            timestamp.gte: "2025-05-21T12:59:00Z"
+            sort: timestamp
+            order: asc
+            tickers:
+              - AAPL
+              - META
+      sma:
+        - query_params:
+            timestamp.gte: "2025-05-20T00:00:00.999Z"
+            order: asc
+            timespan: hour
+            window: 10
+            series_type: close
+            expand_underlying: true
+      ema:
+        - query_params:
+            timestamp.gte: "2025-05-20T00:00:00.999Z"
+            order: asc
+            timespan: hour
+            window: 10
+            series_type: close
+            expand_underlying: true
+      macd:
+        - query_params:
+            timestamp.gte: "2025-05-20T00:00:00.999Z"
+            order: asc
+            timespan: hour
+            short_window: 12
+            long_window: 26
+            signal_window: 10
+            series_type: close
+            expand_underlying: true
+      rsi:
+        - query_params:
+            timestamp.gte: "2025-05-20T00:00:00.999Z"
+            order: asc
+            timespan: hour
+            window: 18
+            series_type: close
+            expand_underlying: true
+      ipos:
+        - query_params:
+            listing_date.gte: "2025-05-15"
+      splits:
+        - query_params:
+            execution_date.gte: "2025-03-01"
+            order: asc
+      dividends:
+        - query_params:
+            ex_dividend_date.gte: "2025-05-01"
+            order: asc
+      financials:
+        - query_params:
+            filing_date.gte: "2025-05-01"
+            order: asc
+      short_interest:
+        - query_params:
+            settlement_date.gte: "2025-03-01"
+            settlement_date.lt: "2025-03-15"
+      short_volume:
+        - query_params:
+            date.gte: "2025-05-20"
+            order: asc
+      news:
+        - query_params:
+            published_utc.gte: "2025-05-21"
+            order: asc
+
+    metadata:
+      trades:
+        replication-method: INCREMENTAL
+        replication-key: replication_key
+      quotes:
+        replication-method: INCREMENTAL
+        replication-key: replication_key
+
+
+  loaders:
+  - name: target-jsonl
+    variant: andyh1203
+    pip_url: target-jsonl
+
+  - name: target-postgres
+      variant: meltanolabs
+      pip_url: git+https://github.com/MeltanoLabs/target-postgres
+      config:
+        host: ${POSTGRES_HOST}
+        port: ${POSTGRES_PORT}
+        user: ${POSTGRES_USER}
+        password: ${POSTGRES_PASSWORD}
+        dialect: ${POSTGRES_DIALECT}
+        database: financial_elt
+        schema: tap_polygon
+        use_copy: true    # Faster bulk loading
+        add_record_metadata: true
+  
+  - name: target-parquet
+      variant: jghiloni
+      pip_url: git+https://github.com/Automattic/target-parquet.git
+      config:
+        destination_path: output/parquets
+        compression_method: zstd
+        max_pyarrow_table_size: 5500
+        max_batch_size: 100000

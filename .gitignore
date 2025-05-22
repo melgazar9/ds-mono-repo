@@ -1,36 +1,48 @@
-**/*.git_credentials
-**/*.DS_store
-**/*build/
-**/*.egg-info/
-**/*dist/
-**/*zip
-**/*venv
-**credentials
-**__pycache__
-**.ipynb_checkpoints
-**/*.csv
-**/*.csv.gz
-**/*.feather
-**/*.pq
-**/*.parquet
-**/*.zip
-**/*.html
-**/*.dill
-**/*.pickle
-**/*.pkl
-**/*.csv
-**/*.feather
-**/*.pq
-**/*.parquet
-**/*.png
-**/*.jpeg
-**/*.jpg
-**/*.idea
-**/*.gzip
-**/*catboost_info/
-**/*.env
-**/*config.yml
-**/*config.yaml
-**/*config.ini
+# Credentials and environment
+*.git_credentials
+*.env
+credentials
 
-!**config_example.ini
+# Python build and metadata
+*.egg-info/
+build/
+dist/
+__pycache__/
+*.pkl
+*.pickle
+*.dill
+
+# Notebooks and checkpoints
+.ipynb_checkpoints/
+
+# Common data formats
+*.csv
+*.csv.gz
+*.feather
+*.pq
+*.parquet
+*.gzip
+
+# Images
+*.png
+*.jpeg
+*.jpg
+
+# HTML and zip archives
+*.html
+*.zip
+
+# IDE and system files
+*.DS_Store
+.idea/
+
+# Virtual environments
+venv/
+.env/
+
+# CatBoost
+catboost_info/
+
+# Override ignore rule for example config
+!**/config_example.ini
+
