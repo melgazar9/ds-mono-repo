@@ -9,18 +9,13 @@ import polars as pl
 
 # --- Global Configuration ---
 PCT_CHANGE_TRIGGER = 0.33
-STARTING_BANKROLL = (
-    100000
-)
+STARTING_BANKROLL = 100000
 BET_AMOUNT = 2000
 STOP_LOSS_AMOUNT = 4000
 END_OF_DAY_TIME = dtime(14, 55)
-    100000
-)
 BET_AMOUNT = 2000
 STOP_LOSS_AMOUNT = 4000
 END_OF_DAY_TIME = dtime(14, 55)
->>>>>>> 4f752da (add meltano tap-polygon)
 
 DATA_DIR = os.path.expanduser(
     "/home/melgazar9/scripts/dev/ds-mono-repo/projects/financial_strategies/htb_equities/data/"
