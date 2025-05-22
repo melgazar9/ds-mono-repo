@@ -1,15 +1,19 @@
 import psycopg2
+
 from ds_core.db_connectors import *
 
-POSTGRES_HOST=os.getenv("POSTGRES_HOST")
-POSTGRES_PORT=os.getenv("POSTGRES_PORT")
-POSTGRES_USER=os.getenv("POSTGRES_USER")
-POSTGRES_PASSWORD=os.getenv("POSTGRES_PASSWORD")
-POSTGRES_DIALECT=os.getenv("POSTGRES_DIALECT")
+POSTGRES_HOST = os.getenv("POSTGRES_HOST")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT")
+POSTGRES_USER = os.getenv("POSTGRES_USER")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
+POSTGRES_DIALECT = os.getenv("POSTGRES_DIALECT")
 
 conn = PostgresConnect()
 
-def insert_from_source_to_target(db_params, source_schema, source_table, target_schema, target_table):
+
+def insert_from_source_to_target(
+    db_params, source_schema, source_table, target_schema, target_table
+):
     conn = PostgresConnect()
     cur = conn.cursor()
 
@@ -28,5 +32,6 @@ def insert_from_source_to_target(db_params, source_schema, source_table, target_
     cur.close()
     conn.close()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     insert_from_source_to_target()
