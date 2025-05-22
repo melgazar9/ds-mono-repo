@@ -204,7 +204,7 @@ plugins:
       add_record_metadata: true
 
   - name: target-parquet
-    variant: jghiloni
+    variant: automattic
     pip_url: git+https://github.com/Automattic/target-parquet.git
     config:
       destination_path: output/parquets
