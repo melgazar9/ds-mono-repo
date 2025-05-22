@@ -20,6 +20,8 @@ pipx = "^1.3.3"
 psycopg2-binary = "^2.9.10"
 pandas = "^2.2.3"
 holidays = "^0.72"
+pyarrow = "^20.0.0"
+duckdb = "^1.2.2"
 
 
 [build-system]
