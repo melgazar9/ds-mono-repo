@@ -190,24 +190,24 @@ plugins:
     pip_url: target-jsonl
 
   - name: target-postgres
-      variant: meltanolabs
-      pip_url: git+https://github.com/MeltanoLabs/target-postgres
-      config:
-        host: ${POSTGRES_HOST}
-        port: ${POSTGRES_PORT}
-        user: ${POSTGRES_USER}
-        password: ${POSTGRES_PASSWORD}
-        dialect: ${POSTGRES_DIALECT}
-        database: financial_elt
-        schema: tap_polygon
-        use_copy: true    # Faster bulk loading
-        add_record_metadata: true
-  
+    variant: meltanolabs
+    pip_url: git+https://github.com/MeltanoLabs/target-postgres
+    config:
+      host: ${POSTGRES_HOST}
+      port: ${POSTGRES_PORT}
+      user: ${POSTGRES_USER}
+      password: ${POSTGRES_PASSWORD}
+      dialect: ${POSTGRES_DIALECT}
+      database: financial_elt
+      schema: tap_polygon
+      use_copy: true    # Faster bulk loading
+      add_record_metadata: true
+
   - name: target-parquet
-      variant: jghiloni
-      pip_url: git+https://github.com/Automattic/target-parquet.git
-      config:
-        destination_path: output/parquets
-        compression_method: zstd
-        max_pyarrow_table_size: 5500
-        max_batch_size: 100000
+    variant: jghiloni
+    pip_url: git+https://github.com/Automattic/target-parquet.git
+    config:
+      destination_path: output/parquets
+      compression_method: zstd
+      max_pyarrow_table_size: 5500
+      max_batch_size: 100000
