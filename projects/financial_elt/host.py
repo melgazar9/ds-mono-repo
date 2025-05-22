@@ -19,13 +19,16 @@ if __name__ == "__main__":
 
     ###### tap-yfinance ######
 
-    tap_yfinance_cron = json.loads(os.getenv("TAP_YFINANCE_CRON"))
-    scheduler.add_job(tap_yfinance, trigger="cron", **tap_yfinance_cron, jitter=120)
+    # tap_yfinance_cron = json.loads(os.getenv("TAP_YFINANCE_CRON"))
+    # scheduler.add_job(tap_yfinance, trigger="cron", **tap_yfinance_cron, jitter=120)
+
+    tap_polygon_cron = json.loads(os.getenv("TAP_POLYGON_CRON"))
+    scheduler.add_job(tap_polygon, trigger="cron", **tap_polygon_cron, jitter=120)
 
     ###### host ######
 
     HOST = "0.0.0.0"
-    PORT = 5000
+    PORT = 8888
     logging.info(f"Server is listening on port {PORT}")
     logging.info(f"Hosting environment {ENVIRONMENT}")
 

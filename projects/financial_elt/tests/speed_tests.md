@@ -1,0 +1,123 @@
+  
+
+------------------------------
+------ TEST 10 TICKERS ------
+------------------------------
+
+- Test 0 — BENCHMARK
+    - Test a direct single meltano el run —> meltano el tap-yfinance target-jsonl
+    - Time taken: 15.96 minutes
+- Test 1
+    - NUM_WORKERS = 1 (same test, except use hosting and gcp storage (other parallelization params are irrelevant)
+    - Outcome:
+        - Total time taken: 32.81 minutes
+- Test 2
+    - NUM_WORKERS = 67
+    - TAP_YFINANCE_PARALLELISM_METHOD=process
+    - TAP_YFINANCE_MP_SEMAPHORE=67
+    - Outcome:
+        - Total time taken: 18.63 minutes
+        - Took 16 minutes to initialize —> read from cloud storage step (first ticker read)
+        - => time taken after initialization was less than 3 minutes
+- Test 3
+    - NUM_WORKERS = 67
+    - TAP_YFINANCE_PARALLELISM_METHOD=process
+    - TAP_YFINANCE_MP_SEMAPHORE=20
+    - Outcome:
+        - Total time taken: 18.38 minutes
+- Test 4
+    - NUM_WORKERS = 67
+    - TAP_YFINANCE_PARALLELISM_METHOD=processpool
+    - TAP_YFINANCE_MP_SEMAPHORE => IRRELEVANT
+    - Outcome:
+        - Total time taken: 18.49 minutes
+- Test 5
+    - NUM_WORKERS = 32
+    - TAP_YFINANCE_PARALLELISM_METHOD=processpool
+    - TAP_YFINANCE_MP_SEMAPHORE => IRRELEVANT
+    - Outcome:
+        - Total time taken: 10.95 minutes
+- Test 6
+    - NUM_WORKERS = 67
+    - TAP_YFINANCE_PARALLELISM_METHOD=threadpool
+    - TAP_YFINANCE_MP_SEMAPHORE => IRRELEVANT
+    - Outcome:
+        - Total time taken: 18.92 minutes
+- Test 7
+    - NUM_WORKERS = 32
+    - TAP_YFINANCE_PARALLELISM_METHOD=threadpool
+    - TAP_YFINANCE_MP_SEMAPHORE => IRRELEVANT
+    - Outcome:
+        - Total time taken: 10.86 minutes
+- Test 8
+    - NUM_WORKERS = 200
+    - TAP_YFINANCE_PARALLELISM_METHOD=threadpool
+    - TAP_YFINANCE_MP_SEMAPHORE => IRRELEVANT
+    - Outcome:
+        - Total time taken: 18.5 minutes
+- Test 9
+    - NUM_WORKERS = 16
+    - TAP_YFINANCE_PARALLELISM_METHOD=threadpool
+    - TAP_YFINANCE_MP_SEMAPHORE => IRRELEVANT
+    - Outcome:
+        - Total time taken: 9.56 minutes
+- Test 10
+    - NUM_WORKERS = 16
+    - TAP_YFINANCE_PARALLELISM_METHOD=processpool
+    - TAP_YFINANCE_MP_SEMAPHORE => IRRELEVANT
+    - Outcome:
+        - Total time taken: 9.82 minutes
+
+
+------------------------------
+------ TEST 200 TICKERS ------
+------------------------------
+
+- Test 11
+    - NUM_WORKERS = 16
+    - TAP_YFINANCE_PARALLELISM_METHOD=threadpool
+    - TAP_YFINANCE_MP_SEMAPHORE => IRRELEVANT
+    - Outcome:
+        - Total time taken: 85.25 minutes
+- Test 12
+    - NUM_WORKERS = 16
+    - TAP_YFINANCE_PARALLELISM_METHOD=processpool
+    - TAP_YFINANCE_MP_SEMAPHORE => IRRELEVANT
+    - Outcome:
+        - Total time taken: 83.27 minutes
+- Test 13
+    - NUM_WORKERS = 32
+    - TAP_YFINANCE_PARALLELISM_METHOD=threadpool
+    - TAP_YFINANCE_MP_SEMAPHORE => IRRELEVANT
+    - Outcome:
+        - Total time taken: 49.77 minutes
+- Test 14
+    - NUM_WORKERS = 32
+    - TAP_YFINANCE_PARALLELISM_METHOD=processpool
+    - TAP_YFINANCE_MP_SEMAPHORE => IRRELEVANT
+    - Outcome:
+        - Total time taken: 46.38 minutes
+- Test 15
+    - NUM_WORKERS = 32
+    - TAP_YFINANCE_PARALLELISM_METHOD=process
+    - TAP_YFINANCE_MP_SEMAPHORE => 32
+    - Outcome:
+        - Total time taken: 46.33 minutes
+- Test 16
+    - NUM_WORKERS = 67
+    - TAP_YFINANCE_PARALLELISM_METHOD=threadpool
+    - TAP_YFINANCE_MP_SEMAPHORE => IRRELEVANT
+    - Outcome:
+        - Total time taken: 56.87 minutes
+- Test 17
+    - NUM_WORKERS = 67
+    - TAP_YFINANCE_PARALLELISM_METHOD=processpool
+    - TAP_YFINANCE_MP_SEMAPHORE => IRRELEVANT
+    - Outcome:
+        - Total time taken: 51.37 minutes
+- Test 18
+    - NUM_WORKERS = 67
+    - TAP_YFINANCE_PARALLELISM_METHOD=process
+    - TAP_YFINANCE_MP_SEMAPHORE => 67
+    - Outcome:
+        - Total time taken: 46.48 minutes

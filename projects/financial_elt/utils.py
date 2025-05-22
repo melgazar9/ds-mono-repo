@@ -25,8 +25,8 @@ def cur_timestamp(utc=True):
         )
 
 
-def get_task_chunks(num_tasks: int):
-    with open("tap-yfinance/meltano.yml", "r") as meltano_cfg:
+def get_task_chunks(num_tasks: int, tap_name):
+    with open(f"{tap_name}/meltano.yml", "r") as meltano_cfg:
         cfg = yaml.safe_load(meltano_cfg)
 
     tasks = cfg.get("plugins").get("extractors")[0].get("select")
@@ -140,7 +140,7 @@ def critical_shutdown_handler(signum, frame):
     sys.exit(1)
 
 
-def get_run_commands(base_run_command, task_chunks, target):
+def get_run_commands(base_run_command, task_chunks, tap_name, target_name):
     run_commands = []
     for chunk in task_chunks:
         assert isinstance(
@@ -155,9 +155,10 @@ def get_run_commands(base_run_command, task_chunks, target):
 
         run_command = (
             f"{base_run_command} "
-            f"--state-id tap_yfinance_target_{target}_{ENVIRONMENT}_{state_id} {select_param}".split(
-                " "
-            )
+            f"--state-id {tap_name.replace('tap-', 'tap_')}_"
+            f"target_{target_name.replace('target-', 'target_')}_"
+            f"{ENVIRONMENT}_{state_id} "
+            f"{select_param}".split(" ")
         )
 
         run_commands.append(run_command)
