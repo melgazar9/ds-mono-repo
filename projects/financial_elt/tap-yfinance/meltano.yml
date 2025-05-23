@@ -632,7 +632,6 @@ plugins:
         password: ${POSTGRES_PASSWORD}
         dialect: ${POSTGRES_DIALECT}
         database: financial_elt
-        database: tap_yfinance
         use_copy: true    # Faster bulk loading
         add_record_metadata: true
 

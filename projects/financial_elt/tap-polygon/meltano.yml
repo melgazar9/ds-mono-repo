@@ -1,11 +1,27 @@
 version: 1
 send_anonymous_usage_stats: true
 project_id: "tap-polygon"
-default_environment: test
-venv:
-  backend: uv
+
+default_environment: dev
+
+state_backend:
+  uri: file://$MELTANO_PROJECT_ROOT/state.json
+
 environments:
-- name: test
+  - name: dev
+    config:
+      plugins:
+        loaders:
+          - name: target-postgres
+            config:
+              schema: tap_polygon_dev
+  - name: production
+    config:
+      plugins:
+        loaders:
+          - name: target-postgres
+            config:
+              default_target_schema: tap_polygon_production
 plugins:
   extractors:
   - name: "tap-polygon"

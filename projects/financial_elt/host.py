@@ -34,4 +34,13 @@ if __name__ == "__main__":
 
     scheduler.start()
 
+    if DEBUG:
+        tap = MeltanoTap(
+            project_dir="tap-polygon",
+            num_workers=10,
+            tap_name="tap-polygon",
+            target_name="jsonl",
+        )
+        tap.run_tap()
+
     serve(app, host=HOST, port=PORT, threads=2)  # waitress wsgi production server

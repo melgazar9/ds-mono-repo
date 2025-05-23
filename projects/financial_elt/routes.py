@@ -5,7 +5,10 @@ app = Flask(__name__)
 
 app.url_map.strict_slashes = False
 
+
 ### GLOBALS ###
+
+DEBUG = False
 
 ENVIRONMENT = os.getenv("ENVIRONMENT")
 
@@ -14,6 +17,7 @@ TAP_POLYGON_TARGET = os.getenv("TAP_POLYGON_TARGET")
 
 assert isinstance(TAP_YFINANCE_TARGET, str), "could not determine tap-yfinance target"
 assert isinstance(TAP_POLYGON_TARGET, str), "could not determine tap-polygon target"
+
 
 ### GENERAL ROUTES ###
 
@@ -45,28 +49,37 @@ class MeltanoTap:
             if target_name is not None
             else os.getenv(f"{tap_name.replace('-', '_').upper()}_TARGET")
         )
+
         assert (
             self.target_name is not None
         ), "Must supply target name for meltano destination."
+
         self.base_run_command = f"meltano --environment={ENVIRONMENT} el {self.tap_name} target-{self.target_name}"
         self.cwd = os.path.join(app.root_path, project_dir)
+
         self.task_chunks = (
             get_task_chunks(num_workers, self.tap_name) if num_workers > 1 else None
         )
 
+        if DEBUG:
+            self.task_chunks = self.task_chunks[-1:]
+
     def run_tap_single_threaded(self):
         logging.info("Running meltano ELT without multiprocessing.")
+
         run_command = (
             f"{base_run_command} "
             f"--state-id {self.tap_name.replace('-', '_')}_{ENVIRONMENT}_{self.target_name}".split(
                 " "
             )
         )
+
         run_meltano_task(run_command=run_command, cwd=cwd)
-        logging.info(f"Running command {run_command}")
-        subprocess.run(run_command, cwd=cwd, check=True)
 
     def run_tap_in_parallel(self):
+        if DEBUG:
+            logging.debug("DEBUG")
+
         run_commands = get_run_commands(
             base_run_command=self.base_run_command,
             task_chunks=self.task_chunks,
@@ -77,6 +90,7 @@ class MeltanoTap:
         parallelism_env_var = (
             f"{self.tap_name.replace('-', '_').upper()}_PARALLELISM_METHOD"
         )
+
         parallelism_method = os.getenv(parallelism_env_var)
 
         assert isinstance(
@@ -84,21 +98,21 @@ class MeltanoTap:
         ), f"Must provide parallelism_method {parallelism_env_var} in .env."
 
         logging.info(
-            f"Running meltano ELT using approach {parallelism_method}. Number of workers set to {num_workers}."
+            f"Running meltano ELT using approach {parallelism_method}. Number of workers set to {self.num_workers}."
         )
 
         if parallelism_method.lower() in ["threadpool", "processpool"]:
             run_pool_task(
                 run_commands=run_commands,
-                cwd=cwd,
-                num_workers=num_workers,
+                cwd=self.cwd,
+                num_workers=self.num_workers,
                 pool_task=parallelism_method.lower(),
             )
 
         elif parallelism_method.lower() == "process":
             run_process_task(
                 run_commands=run_commands,
-                cwd=cwd,
+                cwd=self.cwd,
                 concurrency_semaphore=mp.Semaphore(
                     int(
                         os.getenv(
