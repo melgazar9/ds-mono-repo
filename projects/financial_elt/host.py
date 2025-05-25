@@ -28,7 +28,7 @@ if __name__ == "__main__":
     ###### host ######
 
     HOST = "0.0.0.0"
-    PORT = 8888
+    PORT = 5000
     logging.info(f"Server is listening on port {PORT}")
     logging.info(f"Hosting environment {ENVIRONMENT}")
 
