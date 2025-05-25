@@ -4,9 +4,9 @@ from pathlib import Path
 import pandas as pd
 
 INPUT_DIRS = [
-    Path("outputs/us_stocks_sip/bars_1m"),
-    Path("outputs/us_stocks_sip/eod"),
-    Path("outputs/us_stocks_sip/trades"),
+    Path("~/polygon_data/us_stocks_sip/bars_1m"),
+    Path("~/polygon_data/us_stocks_sip/eod"),
+    Path("~/polygon_data/us_stocks_sip/trades"),
 ]
 
 

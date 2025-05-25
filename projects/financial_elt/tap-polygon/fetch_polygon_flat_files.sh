@@ -61,7 +61,7 @@ if [[ -z "$DATA_TYPE" || -z "$START_DATE" || -z "$END_DATE" ]]; then
 fi
 
 BASE_PATH="s3://flatfiles/${ASSET_CLASS}"
-OUTPUT_DIR="./outputs/${ASSET_CLASS}/${PREFIX}"
+OUTPUT_DIR="~/polygon_data/${ASSET_CLASS}/${PREFIX}"
 mkdir -p "$OUTPUT_DIR"
 
 start_sec=$(date -d "$START_DATE" +%s)

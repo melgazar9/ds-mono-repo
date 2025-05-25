@@ -26,7 +26,7 @@ plugins:
   extractors:
   - name: "tap-polygon"
     namespace: "tap_polygon"
-    pip_url: git+https://github.com/melgazar9/tap-polygon.git@f9bb885ab1902f8caf3c0feddb6ae98e9e81a44e
+    pip_url: git+https://github.com/melgazar9/tap-polygon.git
 
     capabilities:
     - state

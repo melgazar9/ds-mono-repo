@@ -148,7 +148,7 @@ def tap_yfinance():
 
         tap = MeltanoTap(
             project_dir="tap-yfinance",
-            num_workers=os.getenv("TAP_YFINANCE_NUM_WORKERS"),
+            num_workers=int(os.getenv("TAP_YFINANCE_NUM_WORKERS")),
             tap_name="tap-yfinance",
             target_name=os.getenv("TAP_YFINANCE_TARGET"),
         )
@@ -175,7 +175,7 @@ def tap_polygon():
 
         tap = MeltanoTap(
             project_dir="tap-polygon",
-            num_workers=os.getenv("TAP_POLYGON_NUM_WORKERS"),
+            num_workers=int(os.getenv("TAP_POLYGON_NUM_WORKERS")),
             tap_name="tap-polygon",
             target_name=os.getenv("TAP_POLYGON_TARGET"),
         )
