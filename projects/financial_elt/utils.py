@@ -174,28 +174,40 @@ def execute_command(run_command, cwd, concurrency_semaphore=None):
 
 
 def execute_command_stg(run_command, cwd):
-    """Executes a given command and handles errors."""
-
     logging.info(f"Running command: {run_command}")
-
     start = time.monotonic()
     try:
-        result = subprocess.run(run_command, cwd=cwd, check=True)
+        result = subprocess.run(
+            run_command,
+            cwd=cwd,
+            check=True,
+            timeout=1800,  # 30 minutes (change as needed)
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
         seconds_taken = time.monotonic() - start
         logging.info(
             f"Command {run_command} completed successfully with return code {result.returncode}. \n"
             f"Subprocess took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes,"
-            f"{round(seconds_taken / 3600, 2)} hours) to succeed."
+            f"{round(seconds_taken / 3600, 2)} hours) to succeed.\n"
+            f"STDOUT: {result.stdout.decode('utf-8')[:4096]}\n"
+            f"STDERR: {result.stderr.decode('utf-8')[:4096]}"
         )
         return result
+    except subprocess.TimeoutExpired as e:
+        seconds_taken = time.monotonic() - start
+        logging.error(
+            f"Command {run_command} timed out after {round(seconds_taken, 2)} seconds."
+        )
+        return e
     except subprocess.CalledProcessError as e:
         seconds_taken = time.monotonic() - start
         logging.error(
             f"Command {run_command} failed with return code {e.returncode}. \n "
             f"Took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes,"
-            f"{round(seconds_taken / 3600, 2)} hours) to fail."
+            f"{round(seconds_taken / 3600, 2)} hours) to fail.\n"
+            f"STDERR: {e.stderr.decode('utf-8') if e.stderr else ''}"
         )
-        logging.error(f"Error output: {e.stderr}")
         return e
 
 

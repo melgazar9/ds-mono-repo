@@ -10,26 +10,46 @@ filebeat.inputs:
   json.add_error_key: true
 
   processors:
-  - add_docker_metadata:
-      host: "unix:///var/run/docker.sock"
+    # Remove ANSI color codes and trailing newlines from the 'log' field
+    - script:
+        lang: javascript
+        id: strip-ansi
+        source: >
+          function process(event) {
+            var log = event.Get("log");
+            if (log) {
+              // Strip ANSI color codes
+              log = log.replace(/\u001b\[[0-9;]*m/g, "");
+              // Remove trailing newlines and carriage returns
+              log = log.replace(/[\r\n]+$/, "");
+              event.Put("log", log);
+            }
+          }
+    # Rename 'log' to 'message' for better visibility in Kibana
+    - rename:
+        fields:
+          - from: "log"
+            to: "message"
+        ignore_missing: true
 
-  - decode_json_fields:
-      when.has_fields: ['message']
-      fields: ['message']
-      target: 'docker'
-      overwrite_keys: true
+    # Add Docker metadata for container context
+    - add_docker_metadata:
+        host: "unix:///var/run/docker.sock"
+
+    - decode_json_fields:
+        when.has_fields: [ 'message' ]
+        fields: [ 'message' ]
+        target: 'docker'
+        overwrite_keys: true
 
 filebeat.config.modules:
   path: /nonexistent/modules.d/*.yml
   reload.enabled: false
 
-
-# =============================== Outputs ===============================
-
 output.elasticsearch:
-  # connect to the 'elasticsearch' service name within the Docker network
-  hosts: ["elasticsearch:9200"]
-    # TODO: add auth for production
+  hosts: ["http://elasticsearch:9200"]
+
+  # TODO: add auth for production
   # username: "elastic"
   # password: <"pwd">
 
