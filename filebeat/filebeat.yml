@@ -17,7 +17,6 @@ filebeat.inputs:
   processors:
     - add_docker_metadata:
         host: "unix:///var/run/docker.sock"
-
     # Remove ANSI color codes and trailing newlines
     - script:
         lang: javascript
@@ -31,7 +30,6 @@ filebeat.inputs:
               event.Put("log", log);
             }
           }
-
     # Rename 'log' to 'message'
     - rename:
         fields:
@@ -76,6 +74,11 @@ output.elasticsearch:
   setup.template:
     enabled: true
     overwrite: true
+
+setup.ilm.enabled: true
+setup.ilm.policy_name: "filebeat-5d-policy"
+setup.ilm.overwrite: true
+setup.ilm.policy_file: "/usr/share/filebeat/filebeat-5d-policy.json"
 
 setup.kibana:
   host: "http://kibana:5601"
