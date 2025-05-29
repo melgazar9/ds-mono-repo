@@ -397,4 +397,3 @@ def run_meltano_task(run_command, cwd, concurrency_semaphore=None, return_queue=
             )
 
     return run_command, return_code
-
