@@ -31,4 +31,5 @@ WORKDIR $APP_HOME
 
 EXPOSE 5000
 
-CMD ["poetry", "run", "python", "host.py"]
+#CMD ["poetry", "run", "python", "host.py"]
+CMD ["bash", "-c", "poetry run python host.py"]
