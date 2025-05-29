@@ -14,14 +14,15 @@ environments:
         loaders:
           - name: target-postgres
             config:
-              schema: tap_polygon_dev
+              default_target_schema: tap_polygon_dev
+
   - name: production
     config:
       plugins:
         loaders:
           - name: target-postgres
             config:
-              schema: tap_polygon_production
+              default_target_schema: tap_polygon_production
 
 plugins:
   extractors:
