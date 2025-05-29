@@ -13,6 +13,11 @@ signal.signal(signal.SIGTERM, critical_shutdown_handler)
 
 
 if __name__ == "__main__":
+    # Note: Setting mp.set_start_method("spawn") tells multiprocessing to create new Python interpreter processes from
+    # scratch, rather than duplicating the current process's memory. This prevents child processes from inheriting the
+    # Flask application's state, open file descriptors, or locks, which are common causes of deadlocks.
+
+    mp.set_start_method("spawn", force=True)
     setup_logging()
 
     scheduler = BackgroundScheduler(job_defaults={"max_instances": 3})

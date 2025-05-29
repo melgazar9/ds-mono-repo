@@ -6,6 +6,8 @@ import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from datetime import datetime
+from glob import glob
+from queue import Empty
 
 import yaml
 
@@ -25,12 +27,23 @@ def cur_timestamp(utc=True):
         )
 
 
+class SimpleCompletedProcess:
+    def __init__(self, returncode):
+        self.returncode = returncode
+
+
 def get_task_chunks(num_tasks: int, tap_name):
     with open(f"{tap_name}/meltano.yml", "r") as meltano_cfg:
         cfg = yaml.safe_load(meltano_cfg)
 
-    tasks = cfg.get("plugins").get("extractors")[0].get("select")
+    tasks = cfg.get("plugins", {}).get("extractors", [{}])[0].get("select", [])
     tasks = [f"--select {i}" for i in tasks]
+    if not tasks:
+        logging.error(
+            f"No tasks found in {tap_name}/meltano.yml under plugins.extractors[0].select"
+        )
+        raise ValueError(f"No tasks to process found in {tap_name}/meltano.yml")
+
     tasks_per_chunk = len(tasks) // num_tasks
     remainder = len(tasks) % num_tasks
 
@@ -40,7 +53,7 @@ def get_task_chunks(num_tasks: int, tap_name):
         chunk_size = tasks_per_chunk + (1 if i < remainder else 0)
         chunks.append(tasks[start_index : start_index + chunk_size])
         start_index += chunk_size
-    chunks = [i for i in chunks if i != []]
+    chunks = [i for i in chunks if i]  # Filter out empty chunks
     return chunks
 
 
@@ -54,9 +67,9 @@ def run_pool_task(run_commands, cwd, num_workers, pool_task):
             "Invalid value for pool_task. Must be 'processpool' or 'threadpool'."
         )
 
+    cmd_return_codes = {}
     with ExecutorClass(max_workers=num_workers) as executor:
         futures = []
-        cmd_return_codes = {}
         for run_command in run_commands:
             futures.append(
                 executor.submit(
@@ -66,17 +79,26 @@ def run_pool_task(run_commands, cwd, num_workers, pool_task):
                 )
             )
 
-        for future in as_completed(futures):
-            command, return_code = future.result()
-            logging.info(
-                f"""
-                command: {command} ---> return_code: {return_code}
-                """
+        try:
+            for future in as_completed(futures, timeout=28800):
+                try:
+                    command, return_code = future.result()
+                    logging.info(f"command: {command} ---> return_code: {return_code}")
+                    cmd_return_codes[str(command)] = return_code
+                except Exception as e:
+                    logging.error(f"A task in the pool failed: {e}")
+        except TimeoutError:
+            logging.error(
+                "Overall pool execution timed out after 8 hours. Attempting to terminate remaining processes."
             )
-            cmd_return_codes[str(command)] = return_code
+            if isinstance(executor, ProcessPoolExecutor):
+                executor.shutdown(wait=False, cancel_futures=True)
+            elif isinstance(executor, ThreadPoolExecutor):
+                executor.shutdown(wait=False, cancel_futures=True)
+            raise
 
     logging.info("\n".join([f"{k} ---> {v}" for k, v in cmd_return_codes.items()]))
-    return
+    return cmd_return_codes
 
 
 def run_process_task(run_commands, cwd, concurrency_semaphore):
@@ -94,65 +116,101 @@ def run_process_task(run_commands, cwd, concurrency_semaphore):
             },
         )
         logging.info(f"Running command {run_command}")
-        process.start()
-        processes.append(process)
+        try:
+            process.start()
+            processes.append(process)
+        except Exception as e:
+            logging.error(f"Failed to start process for {run_command}: {e}")
+            continue
 
     for process in processes:
-        process.join()
+        try:
+            process.join(timeout=28800)
+            if process.exitcode is None:
+                logging.error(
+                    f"Process {process.pid} for command {process._kwargs.get('run_command')}"
+                    f"timed out during join. Terminating."
+                )
+                process.terminate()
+                process.join(timeout=5)
+        except Exception as e:
+            logging.error(
+                f"Error joining process {process.pid} -- command {process._kwargs.get('run_command')}: {e}. Terminating."
+            )
+            process.terminate()
+            process.join(timeout=5)
 
-    for _ in run_commands:
-        command, return_code = return_queue.get()
-        cmd_return_codes[str(command)] = return_code
+    # Collect results with timeout to avoid queue deadlock if a process failed to put its result
+    try:
+        for _ in range(len(run_commands)):
+            try:
+                command, return_code = return_queue.get(
+                    timeout=60
+                )  # 60-second timeout for getting from queue
+                cmd_return_codes[str(command)] = return_code
+            except Empty:
+                logging.error(
+                    "Queue timed out -- not all results collected."
+                    "Possible process failure or unhandled exception in child."
+                )
+                break  # Stop trying to get from queue if it's empty
+    finally:
+        return_queue.close()
+        return_queue.join_thread()
 
     logging.info("\n".join([f"{k} ---> {v}" for k, v in cmd_return_codes.items()]))
-    return
+    return cmd_return_codes
 
 
 def setup_logging():
     logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+            # logging.FileHandler(f"financial_elt_{ENVIRONMENT}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+        ],
+    )
+    logging.info(f"\n*** Running environment {ENVIRONMENT}. ***\n")
+    return
+
+
+def clean_old_logs(log_dir, max_files=7):
+    if not os.path.exists(log_dir):
+        return
+
+    log_files = sorted(
+        glob(os.path.join(log_dir, "*.log")), key=os.path.getmtime, reverse=True
     )
 
-    logging.info(f"\n*** Running environment {ENVIRONMENT}. ***\n")
-
-    # logging_agent = os.getenv("TAP_YFINANCE_LOGGING_AGENT")
-    # if logging_agent.lower() == "google":
-    #     try:
-    #         from google.cloud import logging as gcp_logging
-    #         logging_client = gcp_logging.Client()
-    #         logging_client.setup_logging()
-    #         logging.info("Configured Google Cloud Logging.")
-    #     except Exception as e:
-    #         logging.error(f"Error setting up Google Cloud Logging: {e}")
-    # else:
-    #     logging.info(
-    #         f"Using default basic logging (TAP_YFINANCE_LOGGING_AGENT: '{logging_agent}')."
-    #     )
-    return
+    for old_log in log_files[max_files:]:
+        try:
+            os.remove(old_log)
+        except Exception as e:
+            logging.warning(f"Failed to remove old log file {old_log}: {e}")
 
 
 def critical_shutdown_handler(signum, frame):
     logging.warning(f"Received signal {signum}. Shutting down...")
-    # logging_agent = os.getenv("TAP_YFINANCE_LOGGING_AGENT")
-    # if logging_agent == "google" and 'logging_client' in globals():
-    #     logging.info("Closing Google Cloud Logging client.")
-    #     logging_client.close()
+
+    # Terminate all active child processes managed by multiprocessing
+    for process in mp.active_children():
+        logging.info(
+            f"Terminating child process {process.pid} (command: {process._kwargs.get('run_command')})"
+        )
+        process.terminate()
+        process.join(timeout=5)
     sys.exit(1)
 
 
 def get_run_commands(base_run_command, task_chunks, tap_name, target_name):
     run_commands = []
     for chunk in task_chunks:
-        assert isinstance(
-            chunk, list
-        ), "Invalid datatype task_chunks. Must be list when running multiprocessing."
-
+        assert isinstance(chunk, list), "Invalid datatype task_chunks. Must be list."
         state_id = (
             " ".join(chunk).replace("--select ", "").replace(" ", "__").replace(".*", "")
         )
-
         select_param = " ".join(chunk).replace(".*", "")
-
         run_command = (
             f"{base_run_command} "
             f"--state-id {tap_name.replace('tap-', 'tap_')}_"
@@ -160,7 +218,6 @@ def get_run_commands(base_run_command, task_chunks, tap_name, target_name):
             f"{ENVIRONMENT}_{state_id} "
             f"{select_param}".split(" ")
         )
-
         run_commands.append(run_command)
     return run_commands
 
@@ -174,56 +231,151 @@ def execute_command(run_command, cwd, concurrency_semaphore=None):
 
 
 def execute_command_stg(run_command, cwd):
-    logging.info(f"Running command: {run_command}")
-    start = time.monotonic()
-    try:
-        result = subprocess.run(
-            run_command,
-            cwd=cwd,
-            check=True,
-            timeout=1800,  # 30 minutes (change as needed)
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        seconds_taken = time.monotonic() - start
-        logging.info(
-            f"Command {run_command} completed successfully with return code {result.returncode}. \n"
-            f"Subprocess took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes,"
-            f"{round(seconds_taken / 3600, 2)} hours) to succeed.\n"
-            f"STDOUT: {result.stdout.decode('utf-8')[:4096]}\n"
-            f"STDERR: {result.stderr.decode('utf-8')[:4096]}"
-        )
-        return result
-    except subprocess.TimeoutExpired as e:
-        seconds_taken = time.monotonic() - start
-        logging.error(
-            f"Command {run_command} timed out after {round(seconds_taken, 2)} seconds."
-        )
-        return e
-    except subprocess.CalledProcessError as e:
-        seconds_taken = time.monotonic() - start
-        logging.error(
-            f"Command {run_command} failed with return code {e.returncode}. \n "
-            f"Took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes,"
-            f"{round(seconds_taken / 3600, 2)} hours) to fail.\n"
-            f"STDERR: {e.stderr.decode('utf-8') if e.stderr else ''}"
-        )
-        return e
+    """
+    Executes a shell command, redirecting stdout/stderr to files to prevent deadlocks
+    with large outputs. Raises exceptions for timeouts or non-zero exit codes.
+    """
+    subprocess_log_dir = os.path.join(cwd, "subprocess_logs")
+    os.makedirs(subprocess_log_dir, exist_ok=True)
+    clean_old_logs(subprocess_log_dir)
 
-
-def run_meltano_task(
-    run_command,
-    cwd,
-    concurrency_semaphore=None,
-    return_queue=None,
-):
-    """Runs the Meltano task, optionally using concurrency and return_queue if using mp.Process."""
-
-    result = execute_command(
-        run_command=run_command, cwd=cwd, concurrency_semaphore=concurrency_semaphore
+    command_identifier = (
+        "_".join(run_command[: min(4, len(run_command))])
+        .replace(" ", "_")
+        .replace("-", "_")
+        .replace("=", "_")
+    )
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    stdout_log_path = os.path.join(
+        subprocess_log_dir, f"{command_identifier}_{timestamp}_stdout.log"
+    )
+    stderr_log_path = os.path.join(
+        subprocess_log_dir, f"{command_identifier}_{timestamp}_stderr.log"
     )
 
-    if return_queue:
-        return_queue.put((run_command, result.returncode))
+    logging.info(f"Executing command: {' '.join(run_command)}")
+    logging.info(f"Stdout redirected to: {stdout_log_path}")
+    logging.info(f"Stderr redirected to: {stderr_log_path}")
 
-    return run_command, result.returncode
+    start_time = time.monotonic()
+    process = None
+
+    try:
+        # Open log files for writing. Any errors here (e.g., permissions, disk full)
+        # will propagate as standard Python I/O exceptions.
+        with open(stdout_log_path, "w", encoding="utf-8") as stdout_file, open(
+            stderr_log_path, "w", encoding="utf-8"
+        ) as stderr_file:
+
+            process = subprocess.Popen(
+                run_command,
+                cwd=cwd,
+                stdout=stdout_file,
+                stderr=stderr_file,
+                shell=False,
+            )
+
+            # Wait for the process to complete with a timeout.
+            # This will raise subprocess.TimeoutExpired if the process doesn't finish in time.
+            return_code = process.wait(timeout=43200)  # 12 hours
+
+            seconds_taken = time.monotonic() - start_time
+
+            # Check the return code. If non-zero, raise CalledProcessError.
+            # This replicates the `check=True` behavior of subprocess.run.
+            if return_code != 0:
+                logging.error(
+                    f"Command {' '.join(run_command)} failed with return code {return_code}. \n "
+                    f"Subprocess took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes, "
+                    f"{round(seconds_taken / 3600, 2)} hours) to fail.\n"
+                    f"Full STDOUT in: {stdout_log_path}\n"
+                    f"Full STDERR in: {stderr_log_path}"
+                )
+
+                raise subprocess.CalledProcessError(
+                    return_code,
+                    run_command,
+                    output=f"Output in {stdout_log_path}",
+                    stderr=f"Errors in {stderr_log_path}",
+                )
+
+            logging.info(
+                f"Command {' '.join(run_command)} completed successfully with return code {return_code}. \n"
+                f"Subprocess took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes,"
+                f"{round(seconds_taken / 3600, 2)} hours) to succeed.\n"
+                f"Full STDOUT in: {stdout_log_path}\n"
+                f"Full STDERR in: {stderr_log_path}"
+            )
+            return SimpleCompletedProcess(return_code)
+
+    except subprocess.TimeoutExpired as e:
+        seconds_taken = time.monotonic() - start_time
+        logging.error(
+            f"Command {' '.join(run_command)} timed out after {round(seconds_taken, 2)} seconds. "
+            f"Full logs in: {stdout_log_path} and {stderr_log_path}"
+        )
+        if process and process.poll() is None:  # Check if process is still running
+            process.kill()
+            process.wait(timeout=5)
+        raise e
+
+    except FileNotFoundError as e:
+        logging.error(
+            f"Command not found: '{run_command[0]}'. Please ensure it's in your system's PATH. Error: {e}"
+        )
+        raise e
+
+    except Exception as e:
+        seconds_taken = time.monotonic() - start_time
+        logging.error(
+            f"An unexpected error occurred while executing command {' '.join(run_command)}: {e}. "
+            f"Time elapsed: {round(seconds_taken, 2)} seconds."
+        )
+        if process and process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+        raise e
+
+
+def run_meltano_task(run_command, cwd, concurrency_semaphore=None, return_queue=None):
+    """
+    Runs the Meltano task, handling exceptions from execute_command_stg and
+    putting the result (or error code) into the queue.
+    """
+    return_code = 1  # Default to a generic error code
+
+    try:
+        result = execute_command(
+            run_command=run_command, cwd=cwd, concurrency_semaphore=concurrency_semaphore
+        )
+        return_code = result.returncode
+    except subprocess.TimeoutExpired:
+        logging.error(f"Meltano task {' '.join(run_command)} timed out.")
+        return_code = 124
+    except subprocess.CalledProcessError as e:
+        logging.error(
+            f"Meltano task {' '.join(run_command)} failed with exit code {e.returncode}."
+        )
+        return_code = e.returncode
+    except FileNotFoundError:
+        logging.error(
+            f"Meltano executable not found for task {' '.join(run_command)}. Please check system PATH."
+        )
+        return_code = 127  # Standard exit code for command not found
+    except Exception as e:
+        logging.error(
+            f"An unexpected error occurred during Meltano task {' '.join(run_command)}: {e}"
+        )
+        return_code = 1
+
+    if return_queue:
+        try:
+            return_queue.put(
+                (run_command, return_code), timeout=5
+            )  # Add timeout to put as well
+        except Exception as e:
+            logging.error(
+                f"Failed to put result in queue for {' '.join(run_command)}: {e}"
+            )
+
+    return run_command, return_code

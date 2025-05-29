@@ -4,7 +4,7 @@ project_id: "tap-polygon"
 
 state_backend:
   uri: file://$MELTANO_PROJECT_ROOT/state.json
-  
+
 default_environment: dev
 
 environments:
@@ -49,11 +49,19 @@ plugins:
         description: Initial date to start extracting data from
 
     select:
-      - stock_tickers.*
+      - tickers.*
       - ticker_details.*
       - ticker_types.*
       - related_companies.*
-      - custom_bars.*
+      - bars_1_second.*
+      - bars_30_second.*
+      - bars_1_minute.*
+      - bars_5_minute.*
+      - bars_30_minute.*
+      - bars_1_hour.*
+      - bars_1_day.*
+      - bars_1_week.*
+      - bars_1_month.*
       - daily_market_summary.*
       - daily_ticker_summary.*
       - previous_day_bar.*
@@ -79,127 +87,220 @@ plugins:
       - treasury_yields.*
 
     config:
-      start_date: '2020-01-01T00:00:00Z'
-      rest_api_key: ${POLYGON_REST_API_KEY}
+      # set this for a global start date for all streams -- will be overridden by the streams incremental state if that's more recent.
+      start_date: '2000-01-01T00:00:00Z'
+      api_key: ${POLYGON_API_KEY}
       base_url: https://api.polygon.io
 
       # The tickers that are set here persist across all streams that require a single stock ticker as input.
       # To run different tickers across different streams you need to call the tap N times,
       # where N is the number of distinct groups of ticker.
-      stock_tickers:
+      tickers:
         query_params:
           sort: ticker
-        tickers:
+        select_tickers:
           - AAPL
           - META
+
       ticker_details:
         query_params:
-          date: "2025-05-20"
+          date: "2000-01-01"
         other_params:
           loop_over_dates_gte_date: true
-      custom_bars:
-        - path_params:
-            multiplier: 1
-            timespan: "second"
-            from: "2015-05-30"
-        - query_params:
-            adjusted: true
-            sort: "asc"
-            limit: 5000
+
+      bars_1_second:
+        path_params:
+          multiplier: 1
+          timespan: "second"
+          from: "2015-06-01"
+        query_params:
+          adjusted: false
+          sort: "asc"
+          limit: 50000
+
+      bars_30_second:
+        path_params:
+          multiplier: 30
+          timespan: "second"
+          from: "2015-06-01"
+        query_params:
+          adjusted: false
+          sort: "asc"
+          limit: 50000
+
+      bars_1_minute:
+        path_params:
+          multiplier: 1
+          timespan: "minute"
+          from: "2015-06-01"
+        query_params:
+          adjusted: false
+          sort: "asc"
+          limit: 50000
+
+      bars_5_minute:
+        path_params:
+          multiplier: 5
+          timespan: "minute"
+          from: "2015-06-01"
+        query_params:
+          adjusted: false
+          sort: "asc"
+          limit: 50000
+
+      bars_30_minute:
+        path_params:
+          multiplier: 30
+          timespan: "minute"
+          from: "2025-01-06"
+        query_params:
+          adjusted: false
+          sort: "asc"
+          limit: 50000
+
+      bars_1_hour:
+        path_params:
+          multiplier: 1
+          timespan: "hour"
+          from: "2025-01-06"
+        query_params:
+          adjusted: false
+          sort: "asc"
+          limit: 50000
+
+      bars_1_day:
+        path_params:
+          multiplier: 1
+          timespan: "day"
+          from: "2025-01-06"
+        query_params:
+          adjusted: false
+          sort: "asc"
+          limit: 50000
+
+      bars_1_week:
+        path_params:
+          multiplier: 1
+          timespan: "week"
+          from: "2025-01-06"
+        query_params:
+          adjusted: false
+          sort: "asc"
+          limit: 50000
+
+      bars_1_month:
+        path_params:
+          multiplier: 1
+          timespan: "month"
+          from: "2023-01-06"
+        query_params:
+          adjusted: false
+          sort: "asc"
+          limit: 50000
+
       daily_market_summary:
-        - path_params:
-            date: "2015-05-30"
-        - query_params:
-            adjusted: true
-            include_otc: true
-        - other_params:
-            loop_over_dates_gte_date: true
+        path_params:
+          date: "2015-06-01"  # leave blank or set to "" to get current day
+        query_params:
+          adjusted: true
+          include_otc: true
+        other_params:
+          loop_over_dates_gte_date: true
       daily_ticker_summary:
-        - path_params:
-            date: "2015-05-30"
-        - query_params:
-            adjusted: true
-        - other_params:
-            loop_over_dates_gte_date: true
+        path_params:
+          date: "2015-06-01"
+        query_params:
+          adjusted: true
+        other_params:
+          loop_over_dates_gte_date: true
       top_market_movers:
-        - query_params:
-            direction: "both"
-            include_otc: false
+        query_params:
+          direction: "gainers"  # set to "" or "both" to get both directions
+          include_otc: false
       trades:
-        - query_params:
-            sort: timestamp
-            order: asc
-            timestamp.gte: "2015-05-30T00:00:00Z"
+        query_params:
+          sort: timestamp
+          order: "asc"
+          timestamp__gte: "2015-06-01"
+          limit: 50000
       sma:
-        - query_params:
-            timestamp.gte: "2015-05-30T00:00:00.999Z"
-            order: asc
-            timespan: hour
-            window: 10
-            series_type: close
-            expand_underlying: true
+        query_params:
+          timestamp__gte: "2015-06-01"
+          order: "asc"
+          timespan: "minute"
+          window: 20
+          series_type: close
+          expand_underlying: true
+          limit: 5000
       ema:
-        - query_params:
-            timestamp.gte: "2015-05-30T00:00:00.999Z"
-            order: asc
-            timespan: hour
-            window: 10
-            series_type: close
-            expand_underlying: true
+        query_params:
+          timestamp__gte: "2015-06-01"
+          order: "asc"
+          timespan: "minute"
+          window: 10
+          series_type: close
+          expand_underlying: true
+          limit: 5000
       macd:
-        - query_params:
-            timestamp.gte: "2015-05-30T00:00:00.999Z"
-            order: asc
-            timespan: hour
-            short_window: 12
-            long_window: 26
-            signal_window: 10
-            series_type: close
-            expand_underlying: true
+        query_params:
+          timestamp__gte: "2015-06-01"
+          order: "asc"
+          timespan: "minute"
+          short_window: 12
+          long_window: 26
+          signal_window: 9
+          series_type: close
+          expand_underlying: true
+          limit: 5000
       rsi:
-        - query_params:
-            timestamp.gte: "2015-05-30T00:00:00.999Z"
-            order: asc
-            timespan: hour
-            window: 18
-            series_type: close
-            expand_underlying: true
+        query_params:
+          timestamp__gte: "2015-06-01"
+          order: "asc"
+          timespan: "minute"
+          window: 18
+          series_type: close
+          expand_underlying: true
+          limit: 5000
       ipos:
-        - query_params:
-            listing_date.gte: "2005-01-01"
+        query_params:
+          listing_date__gte: "2008-12-10"
+          limit: 1000
       splits:
-        - query_params:
-            execution_date.gte: "1970-01-01"
-            order: asc
-        - other_params:
-            use_cached_tickers: true
+        query_params:
+          execution_date__gte: "2000-08-21"
+          order: "asc"
+          limit: 1000
+        other_params:
+          use_cached_tickers: true
       dividends:
-        - query_params:
-            ex_dividend_date.gte: "2000-01-01"
-            order: asc
-            limit: 1000
+        query_params:
+          ex_dividend_date__gte: "2000-08-12"
+          order: "asc"
+          limit: 1000
       financials:
-        - query_params:
-            filing_date.gte: "2005-05-01"
-            order: asc
-            limit: 100
+        query_params:
+          filing_date__gte: "2000-01-01"
+          order: "asc"
+          include_sources: true
+          limit: 100
       short_interest:
-        - query_params:
-            settlement_date.gte: "2015-01-01"
-            limit: 10000
+        query_params:
+          settlement_date__gte: "2015-06-01"
+          limit: 50000
       short_volume:
-        - query_params:
-            date.gte: "2015-01-01"
-            order: asc
-            limit: 10000
+        query_params:
+          date__gte: "2015-06-01"
+          order: "asc"
+          limit: 50000
       news:
-        - query_params:
-            published_utc.gte: "2015-01-01"
-            order: asc
+        query_params:
+          published_utc__gte: "2015-06-21"
+          order: "asc"
+          limit: 1000
       treasury_yields:
-        - query_params:
-            date.gte: "1962-01-01"
-            limit: 5000
+        query_params:
+          date__gte: "1962-01-01"
+          limit: 50000
 
   loaders:
   - name: target-jsonl
