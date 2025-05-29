@@ -1,19 +1,24 @@
+filebeat.config.modules:
+  path: /nonexistent/modules.d/*.yml
+  reload.enabled: false
+
 filebeat.inputs:
 - type: filestream
-  id: container-logs-filestream
+  id: docker-logs-filestream
   enabled: true
   paths:
     - /var/lib/docker/containers/*/*.log
-    - /app/logs/tap-yfinance/*.log
-    - /app/logs/tap-polygon/*.log
-
-
-  json.enabled: true
-  json.keys_under_root: true
-  json.add_error_key: true
-
+    - /app/logs/*/*.log
+    - /app/logs/*.log
+  parsers:
+    - ndjson:
+        overwrite_keys: true
+        add_error_key: true
   processors:
-    # Remove ANSI color codes and trailing newlines from the 'log' field
+    - add_docker_metadata:
+        host: "unix:///var/run/docker.sock"
+
+    # Remove ANSI color codes and trailing newlines
     - script:
         lang: javascript
         id: strip-ansi
@@ -21,42 +26,58 @@ filebeat.inputs:
           function process(event) {
             var log = event.Get("log");
             if (log) {
-              // Strip ANSI color codes
               log = log.replace(/\u001b\[[0-9;]*m/g, "");
-              // Remove trailing newlines and carriage returns
               log = log.replace(/[\r\n]+$/, "");
               event.Put("log", log);
             }
           }
-    # Rename 'log' to 'message' for better visibility in Kibana
+
+    # Rename 'log' to 'message'
     - rename:
         fields:
           - from: "log"
             to: "message"
         ignore_missing: true
 
-    # Add Docker metadata for container context
-    - add_docker_metadata:
-        host: "unix:///var/run/docker.sock"
-
-    - decode_json_fields:
-        when.has_fields: [ 'message' ]
-        fields: [ 'message' ]
-        target: 'docker'
+- type: filestream
+  id: app-logs-filestream
+  enabled: true
+  paths:
+    - /app/logs/*/*.log
+    - /app/logs/*.log
+  parsers:
+    - ndjson:
         overwrite_keys: true
-
-filebeat.config.modules:
-  path: /nonexistent/modules.d/*.yml
-  reload.enabled: false
+        add_error_key: true
+  fields:
+    container.name: financial_elt
+  fields_under_root: true
+  processors:
+    - script:
+        lang: javascript
+        id: strip-ansi
+        source: >
+          function process(event) {
+            var log = event.Get("log");
+            if (log) {
+              log = log.replace(/\u001b\[[0-9;]*m/g, "");
+              log = log.replace(/[\r\n]+$/, "");
+              event.Put("log", log);
+            }
+          }
+    - rename:
+        fields:
+          - from: "log"
+            to: "message"
+        ignore_missing: true
 
 output.elasticsearch:
   hosts: ["http://elasticsearch:9200"]
-
-  # TODO: add auth for production
-  # username: "elastic"
-  # password: <"pwd">
-
   setup.template:
     enabled: true
     overwrite: true
 
+setup.kibana:
+  host: "http://kibana:5601"
+
+logging.level: info
