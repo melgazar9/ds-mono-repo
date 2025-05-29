@@ -4,8 +4,8 @@ filebeat.inputs:
   enabled: true
   paths:
     - /var/lib/docker/containers/*/*.log
-    - /app_logs/tap-yfinance/subprocess_logs/*.log
-    - /app_logs/tap-polygon/subprocess_logs/*.log
+    - /app/logs/tap-yfinance/*.log
+    - /app/logs/tap-polygon/*.log
 
 
   json.enabled: true

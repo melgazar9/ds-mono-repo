@@ -6,12 +6,19 @@ import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from datetime import datetime
+from functools import lru_cache
 from glob import glob
 from queue import Empty
 
 import yaml
 
 ENVIRONMENT = os.getenv("ENVIRONMENT")
+if ENVIRONMENT is None:
+    raise ValueError(
+        "Environment variable ENVIRONMENT is not set. Please set it to 'dev', 'staging', or 'production'."
+    )
+
+TIMEOUT_SECONDS = 43200  # 12 hours
 
 
 def cur_timestamp(utc=True):
@@ -80,7 +87,7 @@ def run_pool_task(run_commands, cwd, num_workers, pool_task):
             )
 
         try:
-            for future in as_completed(futures, timeout=28800):
+            for future in as_completed(futures, timeout=TIMEOUT_SECONDS):
                 try:
                     command, return_code = future.result()
                     logging.info(f"command: {command} ---> return_code: {return_code}")
@@ -221,6 +228,43 @@ def get_run_commands(base_run_command, task_chunks, tap_name, target_name):
     return run_commands
 
 
+@lru_cache(maxsize=None)
+def find_monorepo_root(start_path=None):
+    # Markers ordered by priority (higher first)
+    markers = [
+        ".git",
+        "docker-compose.yml",
+        "pyproject.toml",
+        "package.json",
+        # Lower priority markers after
+        "state.json",
+        "tap-polygon",
+        "tap-yfinance",
+        "legacy",
+        "tests",
+    ]
+    if start_path is None:
+        start_path = os.getcwd()
+    current_dir = os.path.realpath(start_path)
+    candidates = []
+    while True:
+        for idx, marker in enumerate(markers):
+            if os.path.exists(os.path.join(current_dir, marker)):
+                candidates.append((idx, current_dir))
+                # Don't return immediately, keep searching upward for better priority
+                break
+        parent_dir = os.path.realpath(os.path.join(current_dir, ".."))
+        if parent_dir == current_dir:
+            # reached root filesystem
+            break
+        current_dir = parent_dir
+    if not candidates:
+        return None
+    # Return dir with marker of highest priority (lowest index)
+    best = min(candidates, key=lambda x: x[0])
+    return best[1]
+
+
 def execute_command(run_command, cwd, concurrency_semaphore=None):
     """Runs a command with optional concurrency semaphore."""
     if concurrency_semaphore:
@@ -234,7 +278,8 @@ def execute_command_stg(run_command, cwd):
     Executes a shell command, redirecting stdout/stderr to files to prevent deadlocks
     with large outputs. Raises exceptions for timeouts or non-zero exit codes.
     """
-    subprocess_log_dir = os.path.join(cwd, "subprocess_logs")
+    project_name = run_command[3]
+    subprocess_log_dir = os.path.join(find_monorepo_root(), "logs", f"{project_name}")
     os.makedirs(subprocess_log_dir, exist_ok=True)
 
     identifier_parts = ["meltano"]
@@ -295,7 +340,7 @@ def execute_command_stg(run_command, cwd):
 
             # Wait for the process to complete with a timeout.
             # This will raise subprocess.TimeoutExpired if the process doesn't finish in time.
-            return_code = process.wait(timeout=43200)  # 12 hours
+            return_code = process.wait(timeout=TIMEOUT_SECONDS)
 
             seconds_taken = time.monotonic() - start_time
 
