@@ -168,14 +168,13 @@ def setup_logging():
         format="%(asctime)s - %(levelname)s - %(message)s",
         handlers=[
             logging.StreamHandler(sys.stdout),
-            # logging.FileHandler(f"financial_elt_{ENVIRONMENT}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
         ],
     )
     logging.info(f"\n*** Running environment {ENVIRONMENT}. ***\n")
     return
 
 
-def clean_old_logs(log_dir, max_files=7):
+def clean_old_logs(log_dir, max_files=100):
     if not os.path.exists(log_dir):
         return
 
@@ -237,14 +236,34 @@ def execute_command_stg(run_command, cwd):
     """
     subprocess_log_dir = os.path.join(cwd, "subprocess_logs")
     os.makedirs(subprocess_log_dir, exist_ok=True)
-    clean_old_logs(subprocess_log_dir)
 
-    command_identifier = (
-        "_".join(run_command[: min(4, len(run_command))])
-        .replace(" ", "_")
-        .replace("-", "_")
-        .replace("=", "_")
-    )
+    identifier_parts = ["meltano"]
+    tap_name = None
+    environment = None
+    selected_streams = []
+
+    i = 0
+    while i < len(run_command):
+        arg = run_command[i]
+        if arg.startswith("tap-") and "target-" not in arg and "--state-id" not in arg:
+            tap_name = arg.replace("-", "_")
+        elif arg.startswith("--environment="):
+            environment = arg.split("=")[1]
+        elif arg == "--select":
+            if i + 1 < len(run_command):
+                selected_streams.append(run_command[i + 1])
+                i += 1
+        i += 1
+
+    if tap_name:
+        identifier_parts.append(tap_name)
+    if environment:
+        identifier_parts.append(environment)
+    if selected_streams:
+        identifier_parts.append("__".join(selected_streams))
+
+    command_identifier = "__".join(identifier_parts)
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     stdout_log_path = os.path.join(
         subprocess_log_dir, f"{command_identifier}_{timestamp}_stdout.log"
@@ -252,7 +271,6 @@ def execute_command_stg(run_command, cwd):
     stderr_log_path = os.path.join(
         subprocess_log_dir, f"{command_identifier}_{timestamp}_stderr.log"
     )
-
     logging.info(f"Executing command: {' '.join(run_command)}")
     logging.info(f"Stdout redirected to: {stdout_log_path}")
     logging.info(f"Stderr redirected to: {stderr_log_path}")
@@ -379,3 +397,4 @@ def run_meltano_task(run_command, cwd, concurrency_semaphore=None, return_queue=
             )
 
     return run_command, return_code
+
