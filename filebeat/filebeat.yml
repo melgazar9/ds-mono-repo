@@ -7,6 +7,7 @@ filebeat.inputs:
     - /app_logs/tap-yfinance/subprocess_logs/*.log
     - /app_logs/tap-polygon/subprocess_logs/*.log
 
+
   json.enabled: true
   json.keys_under_root: true
   json.add_error_key: true
