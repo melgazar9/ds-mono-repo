@@ -1,68 +1,25 @@
-filebeat.config.modules:
-  path: /nonexistent/modules.d/*.yml
-  reload.enabled: false
-
 filebeat.inputs:
+# Capture all .log files in /app/logs and subdirectories
 - type: filestream
-  id: docker-logs-filestream
+  id: app-logs
   enabled: true
   paths:
-    - /var/lib/docker/containers/*/*.log
-    - /app/logs/*/*.log
+    - /app/logs/**/*.log
     - /app/logs/*.log
-  parsers:
-    - ndjson:
-        overwrite_keys: true
-        add_error_key: true
   processors:
-    - add_docker_metadata:
-        host: "unix:///var/run/docker.sock"
-    # Remove ANSI color codes and trailing newlines
-    - script:
-        lang: javascript
-        id: strip-ansi
-        source: >
-          function process(event) {
-            var log = event.Get("log");
-            if (log) {
-              log = log.replace(/\u001b\[[0-9;]*m/g, "");
-              log = log.replace(/[\r\n]+$/, "");
-              event.Put("log", log);
-            }
-          }
-    # Rename 'log' to 'message'
     - rename:
         fields:
           - from: "log"
             to: "message"
         ignore_missing: true
 
-- type: filestream
-  id: app-logs-filestream
+# Capture only stdout/stderr from your app container
+- type: container
   enabled: true
   paths:
-    - /app/logs/*/*.log
-    - /app/logs/*.log
-  parsers:
-    - ndjson:
-        overwrite_keys: true
-        add_error_key: true
-  fields:
-    container.name: financial_elt
-  fields_under_root: true
+    - /var/lib/docker/containers/*/*.log
   processors:
-    - script:
-        lang: javascript
-        id: strip-ansi
-        source: >
-          function process(event) {
-            var log = event.Get("log");
-            if (log) {
-              log = log.replace(/\u001b\[[0-9;]*m/g, "");
-              log = log.replace(/[\r\n]+$/, "");
-              event.Put("log", log);
-            }
-          }
+    - add_docker_metadata: ~
     - rename:
         fields:
           - from: "log"
@@ -71,9 +28,6 @@ filebeat.inputs:
 
 output.elasticsearch:
   hosts: ["http://elasticsearch:9200"]
-  setup.template:
-    enabled: true
-    overwrite: true
 
 setup.ilm.enabled: true
 setup.ilm.policy_name: "filebeat-5d-policy"

@@ -309,13 +309,8 @@ def execute_command_stg(run_command, cwd):
 
     command_identifier = "__".join(identifier_parts)
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    stdout_log_path = os.path.join(
-        subprocess_log_dir, f"{command_identifier}_{timestamp}_stdout.log"
-    )
-    stderr_log_path = os.path.join(
-        subprocess_log_dir, f"{command_identifier}_{timestamp}_stderr.log"
-    )
+    stdout_log_path = os.path.join(subprocess_log_dir, f"{command_identifier}_stdout.log")
+    stderr_log_path = os.path.join(subprocess_log_dir, f"{command_identifier}_stderr.log")
     logging.info(f"Executing command: {' '.join(run_command)}")
     logging.info(f"Stdout redirected to: {stdout_log_path}")
     logging.info(f"Stderr redirected to: {stderr_log_path}")

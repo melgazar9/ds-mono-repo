@@ -60,7 +60,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - logs:/app/logs:ro  # Shared log volume for app logs
       - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
-      - ./filebeat-5d-policy.json:/usr/share/filebeat/filebeat-5d-policy.json
+      - ./filebeat/filebeat-5d-policy.json:/usr/share/filebeat/filebeat-5d-policy.json:ro
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
 
