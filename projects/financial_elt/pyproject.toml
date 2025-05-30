@@ -22,6 +22,8 @@ pandas = "^2.2.3"
 holidays = "^0.72"
 pyarrow = "^20.0.0"
 duckdb = "^1.2.2"
+sqlalchemy = "^2.0.41"
+polars = "^1.30.0"
 
 
 [build-system]
