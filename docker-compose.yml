@@ -83,3 +83,8 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
+    # increase ulimits to prevent deadlocks
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536

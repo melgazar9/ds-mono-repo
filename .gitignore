@@ -3,6 +3,8 @@
 *.env
 credentials
 
+*state.json
+
 # Python build and metadata
 *.egg-info/
 build/

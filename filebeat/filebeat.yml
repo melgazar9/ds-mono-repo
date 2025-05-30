@@ -1,40 +1,60 @@
+# =================== Filebeat inputs ======================
+
 filebeat.inputs:
-# Capture all .log files in /app/logs and subdirectories
 - type: filestream
   id: app-logs
   enabled: true
   paths:
     - /app/logs/**/*.log
-    - /app/logs/*.log
+  fields:
+    service: "financial_elt"
+  fields_under_root: true
   processors:
+    - decode_json_fields:
+        fields: ["message", "log"]    # Try both, in case log file is JSON
+        target: ""
+        overwrite_keys: true
     - rename:
         fields:
           - from: "log"
             to: "message"
         ignore_missing: true
 
-# Capture only stdout/stderr from your app container
 - type: container
   enabled: true
   paths:
     - /var/lib/docker/containers/*/*.log
+  fields:
+    log_type: "container"
+  fields_under_root: true
   processors:
     - add_docker_metadata: ~
+    - drop_event:
+        when:
+          not:
+            or:
+              - contains:
+                  container.name: "financial_elt"
     - rename:
         fields:
           - from: "log"
             to: "message"
         ignore_missing: true
 
+# =================== Elasticsearch output ======================
 output.elasticsearch:
   hosts: ["http://elasticsearch:9200"]
+
+# =================== Kibana setup ======================
+setup.kibana:
+  host: "http://kibana:5601"
+
+# =================== ILM setup ======================
 
 setup.ilm.enabled: true
 setup.ilm.policy_name: "filebeat-5d-policy"
 setup.ilm.overwrite: true
 setup.ilm.policy_file: "/usr/share/filebeat/filebeat-5d-policy.json"
 
-setup.kibana:
-  host: "http://kibana:5601"
-
+# =================== Logging ======================
 logging.level: info

@@ -3,7 +3,7 @@ send_anonymous_usage_stats: true
 project_id: "tap-polygon"
 
 state_backend:
-  uri: file://$MELTANO_PROJECT_ROOT/state.json
+  uri: file://$MELTANO_PROJECT_ROOT/state
 
 default_environment: dev
 
@@ -99,9 +99,6 @@ plugins:
       tickers:
         query_params:
           sort: ticker
-        select_tickers:
-          - AAPL
-          - META
 
       ticker_details:
         query_params:

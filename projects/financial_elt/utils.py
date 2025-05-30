@@ -322,8 +322,8 @@ def execute_command_stg(run_command, cwd):
             process = subprocess.Popen(
                 run_command,
                 cwd=cwd,
-                stdout=stdout_file,
-                stderr=stderr_file,
+                stdout=None,
+                stderr=None,
                 shell=False,
             )
 
