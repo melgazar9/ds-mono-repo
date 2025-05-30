@@ -24,11 +24,13 @@ if __name__ == "__main__":
 
     ###### tap-yfinance ######
 
-    # tap_yfinance_cron = json.loads(os.getenv("TAP_YFINANCE_CRON"))
-    # scheduler.add_job(tap_yfinance, trigger="cron", **tap_yfinance_cron, jitter=120)
+    if "tap-yfinance" in os.getenv("FINANCIAL_ELT_TAPS_TO_RUN"):
+        tap_yfinance_cron = json.loads(os.getenv("TAP_YFINANCE_CRON"))
+        scheduler.add_job(tap_yfinance, trigger="cron", **tap_yfinance_cron, jitter=120)
 
-    tap_polygon_cron = json.loads(os.getenv("TAP_POLYGON_CRON"))
-    scheduler.add_job(tap_polygon, trigger="cron", **tap_polygon_cron, jitter=120)
+    if "tap-polygon" in os.getenv("FINANCIAL_ELT_TAPS_TO_RUN"):
+        tap_polygon_cron = json.loads(os.getenv("TAP_POLYGON_CRON"))
+        scheduler.add_job(tap_polygon, trigger="cron", **tap_polygon_cron, jitter=120)
 
     ###### host ######
 

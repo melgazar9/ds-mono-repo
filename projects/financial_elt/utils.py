@@ -43,25 +43,66 @@ def get_task_chunks(num_tasks: int, tap_name):
     with open(f"{tap_name}/meltano.yml", "r") as meltano_cfg:
         cfg = yaml.safe_load(meltano_cfg)
 
-    tasks = cfg.get("plugins", {}).get("extractors", [{}])[0].get("select", [])
-    tasks = [f"--select {i}" for i in tasks]
-    if not tasks:
-        logging.error(
-            f"No tasks found in {tap_name}/meltano.yml under plugins.extractors[0].select"
+    all_tasks = cfg.get("plugins", {}).get("extractors", [{}])[0].get("select", [])
+    all_tasks = [str(i) for i in all_tasks]
+
+    # Gather all allowed tables for both targets for mismatch detection
+    allowed_tables_by_target = {}
+    for target_type in ["file", "db"]:
+        env_var = f"{tap_name.upper().replace('-', '_')}_TARGET_{target_type.upper()}_TABLES"
+        allowed_tables = os.getenv(env_var, "")
+        allowed_tables = [x.strip() for x in allowed_tables.split(",") if x.strip()]
+        allowed_tables_by_target[target_type] = set(allowed_tables)
+
+    tasks_set = set(all_tasks)
+    for target_type, env_tables in allowed_tables_by_target.items():
+        missing_in_meltano = set()
+        for table in env_tables:
+            if not any(select_item == table or select_item.startswith(f"{table}.") for select_item in tasks_set):
+                missing_in_meltano.add(table)
+        if missing_in_meltano:
+            logging.warning(
+                f"[{tap_name}] WARNING: These tables in {target_type} env var NOT found in meltano.yml: {sorted(missing_in_meltano)}"
+            )
+
+    all_env_tables = set().union(*allowed_tables_by_target.values())
+    missing_in_env = set()
+    for select_item in tasks_set:
+        select_prefix = select_item.split(".", 1)[0]
+        if select_prefix not in all_env_tables:
+            missing_in_env.add(select_item)
+    if missing_in_env:
+        logging.warning(
+            f"[{tap_name}] WARNING: These meltano.yml select entries are NOT in any *_TARGET_*_TABLES env var: {sorted(missing_in_env)}"
         )
-        raise ValueError(f"No tasks to process found in {tap_name}/meltano.yml")
 
-    tasks_per_chunk = len(tasks) // num_tasks
-    remainder = len(tasks) % num_tasks
+    chunks_by_target = {}
 
-    chunks = []
-    start_index = 0
-    for i in range(num_tasks):
-        chunk_size = tasks_per_chunk + (1 if i < remainder else 0)
-        chunks.append(tasks[start_index : start_index + chunk_size])
-        start_index += chunk_size
-    chunks = [i for i in chunks if i]  # Filter out empty chunks
-    return chunks
+    for target_type in ["file", "db"]:
+        allowed_tables = allowed_tables_by_target[target_type]
+        if not allowed_tables:
+            continue  # Skip if no tables for this target
+
+        filtered_tasks = [
+            f"--select {i}" for i in all_tasks
+            if any(tbl == i or i.startswith(f"{tbl}.") for tbl in allowed_tables)
+        ]
+        if not filtered_tasks:
+            continue
+
+        tasks_per_chunk = len(filtered_tasks) // num_tasks
+        remainder = len(filtered_tasks) % num_tasks
+
+        chunks = []
+        start_index = 0
+        for j in range(num_tasks):
+            chunk_size = tasks_per_chunk + (1 if j < remainder else 0)
+            chunks.append(filtered_tasks[start_index: start_index + chunk_size])
+            start_index += chunk_size
+        chunks = [i for i in chunks if i]
+        chunks_by_target[target_type] = chunks
+
+    return chunks_by_target
 
 
 def run_pool_task(run_commands, cwd, num_workers, pool_task):
@@ -203,22 +244,47 @@ def critical_shutdown_handler(signum, frame):
     sys.exit(1)
 
 
-def get_run_commands(base_run_command, task_chunks, tap_name, target_name):
-    run_commands = []
-    for chunk in task_chunks:
-        assert isinstance(chunk, list), "Invalid datatype task_chunks. Must be list."
-        state_id = (
-            " ".join(chunk).replace("--select ", "").replace(" ", "__").replace(".*", "")
-        )
-        select_param = " ".join(chunk).replace(".*", "")
-        run_command = (
-            f"{base_run_command} "
-            f"--state-id {tap_name.replace('tap-', 'tap_')}_"
-            f"target_{target_name.replace('target-', 'target_')}_"
-            f"{ENVIRONMENT}_{state_id} "
-            f"{select_param}".split(" ")
-        )
-        run_commands.append(run_command)
+def get_run_commands(base_run_command: str, task_chunks_dict: dict, tap_name: str):
+    run_commands_dict = {}
+    tap_env_prefix = tap_name.upper().replace("-", "_")
+    target_env_vars = {
+        "file": f"{tap_env_prefix}_FILE_TARGET",
+        "db": f"{tap_env_prefix}_DB_TARGET"
+    }
+
+    for target_type, task_chunks in task_chunks_dict.items():
+        target_name = os.getenv(target_env_vars[target_type])
+        if not target_name:
+            raise ValueError(f"Missing environment variable: {target_env_vars[target_type]}")
+
+        if "target-file" in base_run_command:
+            run_command = base_run_command.replace("target-file", f"target-{target_name}")
+        elif "target-db" in base_run_command:
+            run_command = base_run_command.replace("target-db", f"target-{target_name}")
+        else:
+            run_command = f"{base_run_command} target-{target_name}"
+
+        target_cmds = []
+        for chunk in task_chunks:
+            assert isinstance(chunk, list), "Invalid datatype task_chunks. Must be list."
+            state_id = (
+                " ".join(chunk).replace("--select ", "").replace(" ", "__").replace(".*", "")
+            )
+            select_param = " ".join(chunk).replace(".*", "")
+            cmd = (
+                f"{run_command} "
+                f"--state-id {tap_name.replace('tap-', 'tap_')}_"
+                f"target_{target_name}_"
+                f"{ENVIRONMENT}__{state_id} "
+                f"{select_param}".split(" ")
+            )
+            target_cmds.append(cmd)
+        run_commands_dict[target_type] = target_cmds
+
+    # Flatten the dictionary into a list of commands. Parallelism is automatically handled by the MeltanoTap class.
+    # We don't want to mix two different targets in the same run_commands list. This is handled here and get_task_chunks.
+    run_commands = [cmd for cmds in run_commands_dict.values() for cmd in cmds]
+
     return run_commands
 
 

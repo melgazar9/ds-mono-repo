@@ -1,6 +1,11 @@
 from flask import Flask, make_response
 from utils import *
 
+
+DEBUG = True
+
+ENVIRONMENT = os.getenv("ENVIRONMENT")
+
 app = Flask(__name__)
 
 app.url_map.strict_slashes = False
@@ -8,15 +13,31 @@ app.url_map.strict_slashes = False
 
 ### GLOBALS ###
 
-DEBUG = False
+TAP_CONFIGS = {
+    "tap-yfinance": {
+        "file_target": os.getenv("TAP_YFINANCE_FILE_TARGET"),
+        "db_target": os.getenv("TAP_YFINANCE_DB_TARGET"),
+        "num_workers": int(os.getenv("TAP_YFINANCE_NUM_WORKERS")),
+        "parallelism_method": os.getenv("TAP_YFINANCE_PARALLELISM_METHOD"),
+        "semaphore": int(os.getenv("TAP_YFINANCE_MP_SEMAPHORE", "4")),
+    },
+    "tap-polygon": {
+        "file_target": os.getenv("TAP_POLYGON_FILE_TARGET"),
+        "db_target": os.getenv("TAP_POLYGON_DB_TARGET"),
+        "num_workers": int(os.getenv("TAP_POLYGON_NUM_WORKERS")),
+        "parallelism_method": os.getenv("TAP_POLYGON_PARALLELISM_METHOD"),
+        "semaphore": int(os.getenv("TAP_POLYGON_MP_SEMAPHORE", "4")),
+    },
+}
 
-ENVIRONMENT = os.getenv("ENVIRONMENT")
 
-TAP_YFINANCE_TARGET = os.getenv("TAP_YFINANCE_TARGET")
-TAP_POLYGON_TARGET = os.getenv("TAP_POLYGON_TARGET")
-
-assert isinstance(TAP_YFINANCE_TARGET, str), "could not determine tap-yfinance target"
-assert isinstance(TAP_POLYGON_TARGET, str), "could not determine tap-polygon target"
+for tap_cfg in os.getenv("FINANCIAL_ELT_TAPS_TO_RUN").split(","):
+    assert isinstance(
+        TAP_CONFIGS[tap_cfg]["db_target"], str
+    ), f"could not determine {TAP_CONFIGS[tap_cfg]} db target"
+    assert isinstance(
+        TAP_CONFIGS[tap_cfg]["file_target"], str
+    ), f"could not determine {TAP_CONFIGS[tap_cfg]} file target"
 
 
 ### GENERAL ROUTES ###
@@ -54,43 +75,37 @@ class MeltanoTap:
             self.target_name is not None
         ), "Must supply target name for meltano destination."
 
-        self.base_run_command = f"meltano --environment={ENVIRONMENT} el {self.tap_name} target-{self.target_name}"
+        self.base_run_command = f"meltano --environment={ENVIRONMENT} el {self.tap_name}"
         self.cwd = os.path.join(app.root_path, project_dir)
 
         self.task_chunks = (
             get_task_chunks(num_workers, self.tap_name) if num_workers > 1 else None
         )
 
-        if DEBUG:
-            self.task_chunks = self.task_chunks[-1:]
+        # if DEBUG:
+        #     self.task_chunks = self.task_chunks[-1:]
 
     def run_tap_single_threaded(self):
-        logging.info("Running meltano ELT without multiprocessing.")
+        logging.info(f"Running meltano ELT without multiprocessing.")
 
         run_command = (
-            f"{base_run_command} "
+            f"{self.base_run_command} "
             f"--state-id {self.tap_name.replace('-', '_')}_{ENVIRONMENT}_{self.target_name}".split(
                 " "
             )
         )
-
-        run_meltano_task(run_command=run_command, cwd=cwd)
+        run_meltano_task(run_command=run_command, cwd=self.cwd)
 
     def run_tap_in_parallel(self):
-        if DEBUG:
-            logging.debug("DEBUG")
-
         run_commands = get_run_commands(
             base_run_command=self.base_run_command,
-            task_chunks=self.task_chunks,
+            task_chunks_dict=self.task_chunks,
             tap_name=self.tap_name,
-            target_name=self.target_name,
         )
 
         parallelism_env_var = (
             f"{self.tap_name.replace('-', '_').upper()}_PARALLELISM_METHOD"
         )
-
         parallelism_method = os.getenv(parallelism_env_var)
 
         assert isinstance(
@@ -108,7 +123,6 @@ class MeltanoTap:
                 num_workers=self.num_workers,
                 pool_task=parallelism_method.lower(),
             )
-
         elif parallelism_method.lower() == "process":
             run_process_task(
                 run_commands=run_commands,
@@ -137,59 +151,40 @@ class MeltanoTap:
                 f"(e.g. {self.tap_name.replace('-', '_').upper()}_NUM_WORKERS)"
             )
 
+def run_tap_route(tap_name):
+    with app.app_context():
+        start = time.monotonic()
 
-###### tap yfinance route ######
+        num_workers = int(os.getenv(f"{tap_name.upper().replace('-', '_')}_NUM_WORKERS"))
+        target = os.getenv(f"{tap_name.upper().replace('-', '_')}_TARGET")
+
+        tap = MeltanoTap(
+            project_dir=tap_name,
+            num_workers=num_workers,
+            tap_name=tap_name,
+            target_name=target,
+        )
+
+        tap.run_tap()
+
+        total_seconds = time.monotonic() - start
+
+        logging.info(
+            f"*** ELT Process took {round(total_seconds, 2)} seconds "
+            f"({round(total_seconds / 60, 2)} minutes,"
+            f"{round(total_seconds / 3600, 2)} hours) ***"
+        )
+
+        return make_response(
+            f"Last ran project {tap_name}-{ENVIRONMENT} target {target} at {cur_timestamp()}.",
+            200,
+        )
 
 
 @app.route(f"/financial-elt/tap-yfinance-{ENVIRONMENT}", methods=["GET"])
 def tap_yfinance():
-    with app.app_context():
-        start = time.monotonic()
-
-        tap = MeltanoTap(
-            project_dir="tap-yfinance",
-            num_workers=int(os.getenv("TAP_YFINANCE_NUM_WORKERS")),
-            tap_name="tap-yfinance",
-            target_name=os.getenv("TAP_YFINANCE_TARGET"),
-        )
-
-        tap.run_tap()
-
-        total_seconds = time.monotonic() - start
-
-        logging.info(
-            f"*** ELT Process took {round(total_seconds, 2)} seconds ({round(total_seconds / 60, 2)} minutes,"
-            f"{round(total_seconds / 3600, 2)} hours) ***"
-        )
-
-        return make_response(
-            f"Last ran project tap-yfinance-{ENVIRONMENT} target {TAP_YFINANCE_TARGET} at {cur_timestamp()}.",
-            200,
-        )
-
+    return run_tap_route("tap-yfinance")
 
 @app.route(f"/financial-elt/tap-polygon-{ENVIRONMENT}", methods=["GET"])
 def tap_polygon():
-    with app.app_context():
-        start = time.monotonic()
-
-        tap = MeltanoTap(
-            project_dir="tap-polygon",
-            num_workers=int(os.getenv("TAP_POLYGON_NUM_WORKERS")),
-            tap_name="tap-polygon",
-            target_name=os.getenv("TAP_POLYGON_TARGET"),
-        )
-
-        tap.run_tap()
-
-        total_seconds = time.monotonic() - start
-
-        logging.info(
-            f"*** ELT Process took {round(total_seconds, 2)} seconds ({round(total_seconds / 60, 2)} minutes,"
-            f"{round(total_seconds / 3600, 2)} hours) ***"
-        )
-
-        return make_response(
-            f"Last ran project tap-polygon-{ENVIRONMENT} target {TAP_POLYGON_TARGET} at {cur_timestamp()}.",
-            200,
-        )
+    return run_tap_route("tap-polygon")
