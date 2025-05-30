@@ -151,9 +151,8 @@ def run_process_task(run_commands, cwd, concurrency_semaphore):
     try:
         for _ in range(len(run_commands)):
             try:
-                command, return_code = return_queue.get(
-                    timeout=60
-                )  # 60-second timeout for getting from queue
+                command, return_code = return_queue.get(timeout=60)  # 60-second timeout for getting from queue
+                logging.info(f"SUBPROCESS COMMAND: {command} FINISHED WITH RETURN CODE ---> return_code: {return_code}")
                 cmd_return_codes[str(command)] = return_code
             except Empty:
                 logging.error(
