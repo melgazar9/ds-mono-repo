@@ -49,7 +49,9 @@ def get_task_chunks(num_tasks: int, tap_name):
     # Gather all allowed tables for both targets for mismatch detection
     allowed_tables_by_target = {}
     for target_type in ["file", "db"]:
-        env_var = f"{tap_name.upper().replace('-', '_')}_TARGET_{target_type.upper()}_TABLES"
+        env_var = (
+            f"{tap_name.upper().replace('-', '_')}_TARGET_{target_type.upper()}_TABLES"
+        )
         allowed_tables = os.getenv(env_var, "")
         allowed_tables = [x.strip() for x in allowed_tables.split(",") if x.strip()]
         allowed_tables_by_target[target_type] = set(allowed_tables)
@@ -58,11 +60,15 @@ def get_task_chunks(num_tasks: int, tap_name):
     for target_type, env_tables in allowed_tables_by_target.items():
         missing_in_meltano = set()
         for table in env_tables:
-            if not any(select_item == table or select_item.startswith(f"{table}.") for select_item in tasks_set):
+            if not any(
+                select_item == table or select_item.startswith(f"{table}.")
+                for select_item in tasks_set
+            ):
                 missing_in_meltano.add(table)
         if missing_in_meltano:
             logging.warning(
-                f"[{tap_name}] WARNING: These tables in {target_type} env var NOT found in meltano.yml: {sorted(missing_in_meltano)}"
+                f"[{tap_name}] WARNING: These tables in {target_type} env var NOT found in meltano.yml:"
+                f"{sorted(missing_in_meltano)}"
             )
 
     all_env_tables = set().union(*allowed_tables_by_target.values())
@@ -73,7 +79,8 @@ def get_task_chunks(num_tasks: int, tap_name):
             missing_in_env.add(select_item)
     if missing_in_env:
         logging.warning(
-            f"[{tap_name}] WARNING: These meltano.yml select entries are NOT in any *_TARGET_*_TABLES env var: {sorted(missing_in_env)}"
+            f"[{tap_name}] WARNING: These meltano.yml select entries are NOT in any *_TARGET_*_TABLES"
+            f"env var: {sorted(missing_in_env)}"
         )
 
     chunks_by_target = {}
@@ -84,7 +91,8 @@ def get_task_chunks(num_tasks: int, tap_name):
             continue  # Skip if no tables for this target
 
         filtered_tasks = [
-            f"--select {i}" for i in all_tasks
+            f"--select {i}"
+            for i in all_tasks
             if any(tbl == i or i.startswith(f"{tbl}.") for tbl in allowed_tables)
         ]
         if not filtered_tasks:
@@ -97,7 +105,7 @@ def get_task_chunks(num_tasks: int, tap_name):
         start_index = 0
         for j in range(num_tasks):
             chunk_size = tasks_per_chunk + (1 if j < remainder else 0)
-            chunks.append(filtered_tasks[start_index: start_index + chunk_size])
+            chunks.append(filtered_tasks[start_index : start_index + chunk_size])
             start_index += chunk_size
         chunks = [i for i in chunks if i]
         chunks_by_target[target_type] = chunks
@@ -249,13 +257,15 @@ def get_run_commands(base_run_command: str, task_chunks_dict: dict, tap_name: st
     tap_env_prefix = tap_name.upper().replace("-", "_")
     target_env_vars = {
         "file": f"{tap_env_prefix}_FILE_TARGET",
-        "db": f"{tap_env_prefix}_DB_TARGET"
+        "db": f"{tap_env_prefix}_DB_TARGET",
     }
 
     for target_type, task_chunks in task_chunks_dict.items():
         target_name = os.getenv(target_env_vars[target_type])
         if not target_name:
-            raise ValueError(f"Missing environment variable: {target_env_vars[target_type]}")
+            raise ValueError(
+                f"Missing environment variable: {target_env_vars[target_type]}"
+            )
 
         if "target-file" in base_run_command:
             run_command = base_run_command.replace("target-file", f"target-{target_name}")
@@ -268,7 +278,10 @@ def get_run_commands(base_run_command: str, task_chunks_dict: dict, tap_name: st
         for chunk in task_chunks:
             assert isinstance(chunk, list), "Invalid datatype task_chunks. Must be list."
             state_id = (
-                " ".join(chunk).replace("--select ", "").replace(" ", "__").replace(".*", "")
+                " ".join(chunk)
+                .replace("--select ", "")
+                .replace(" ", "__")
+                .replace(".*", "")
             )
             select_param = " ".join(chunk).replace(".*", "")
             cmd = (
@@ -381,50 +394,46 @@ def execute_command_stg(run_command, cwd):
     try:
         # Open log files for writing. Any errors here (e.g., permissions, disk full)
         # will propagate as standard Python I/O exceptions.
-        with open(stdout_log_path, "w", encoding="utf-8") as stdout_file, open(
-            stderr_log_path, "w", encoding="utf-8"
-        ) as stderr_file:
+        process = subprocess.Popen(
+            run_command,
+            cwd=cwd,
+            stdout=None,
+            stderr=None,
+            shell=False,
+        )
 
-            process = subprocess.Popen(
-                run_command,
-                cwd=cwd,
-                stdout=None,
-                stderr=None,
-                shell=False,
-            )
+        # Wait for the process to complete with a timeout.
+        # This will raise subprocess.TimeoutExpired if the process doesn't finish in time.
+        return_code = process.wait(timeout=TIMEOUT_SECONDS)
 
-            # Wait for the process to complete with a timeout.
-            # This will raise subprocess.TimeoutExpired if the process doesn't finish in time.
-            return_code = process.wait(timeout=TIMEOUT_SECONDS)
+        seconds_taken = time.monotonic() - start_time
 
-            seconds_taken = time.monotonic() - start_time
-
-            # Check the return code. If non-zero, raise CalledProcessError.
-            # This replicates the `check=True` behavior of subprocess.run.
-            if return_code != 0:
-                logging.error(
-                    f"Command {' '.join(run_command)} failed with return code {return_code}. \n "
-                    f"Subprocess took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes, "
-                    f"{round(seconds_taken / 3600, 2)} hours) to fail.\n"
-                    f"Full STDOUT in: {stdout_log_path}\n"
-                    f"Full STDERR in: {stderr_log_path}"
-                )
-
-                raise subprocess.CalledProcessError(
-                    return_code,
-                    run_command,
-                    output=f"Output in {stdout_log_path}",
-                    stderr=f"Errors in {stderr_log_path}",
-                )
-
-            logging.info(
-                f"Command {' '.join(run_command)} completed successfully with return code {return_code}. \n"
-                f"Subprocess took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes,"
-                f"{round(seconds_taken / 3600, 2)} hours) to succeed.\n"
+        # Check the return code. If non-zero, raise CalledProcessError.
+        # This replicates the `check=True` behavior of subprocess.run.
+        if return_code != 0:
+            logging.error(
+                f"Command {' '.join(run_command)} failed with return code {return_code}. \n "
+                f"Subprocess took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes, "
+                f"{round(seconds_taken / 3600, 2)} hours) to fail.\n"
                 f"Full STDOUT in: {stdout_log_path}\n"
                 f"Full STDERR in: {stderr_log_path}"
             )
-            return SimpleCompletedProcess(return_code)
+
+            raise subprocess.CalledProcessError(
+                return_code,
+                run_command,
+                output=f"Output in {stdout_log_path}",
+                stderr=f"Errors in {stderr_log_path}",
+            )
+
+        logging.info(
+            f"Command {' '.join(run_command)} completed successfully with return code {return_code}. \n"
+            f"Subprocess took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes,"
+            f"{round(seconds_taken / 3600, 2)} hours) to succeed.\n"
+            f"Full STDOUT in: {stdout_log_path}\n"
+            f"Full STDERR in: {stderr_log_path}"
+        )
+        return SimpleCompletedProcess(return_code)
 
     except subprocess.TimeoutExpired as e:
         seconds_taken = time.monotonic() - start_time

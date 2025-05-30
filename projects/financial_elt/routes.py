@@ -1,8 +1,7 @@
 from flask import Flask, make_response
 from utils import *
 
-
-DEBUG = True
+DEBUG = False
 
 ENVIRONMENT = os.getenv("ENVIRONMENT")
 
@@ -86,7 +85,7 @@ class MeltanoTap:
         #     self.task_chunks = self.task_chunks[-1:]
 
     def run_tap_single_threaded(self):
-        logging.info(f"Running meltano ELT without multiprocessing.")
+        logging.info("Running meltano ELT without multiprocessing.")
 
         run_command = (
             f"{self.base_run_command} "
@@ -151,6 +150,7 @@ class MeltanoTap:
                 f"(e.g. {self.tap_name.replace('-', '_').upper()}_NUM_WORKERS)"
             )
 
+
 def run_tap_route(tap_name):
     with app.app_context():
         start = time.monotonic()
@@ -184,6 +184,7 @@ def run_tap_route(tap_name):
 @app.route(f"/financial-elt/tap-yfinance-{ENVIRONMENT}", methods=["GET"])
 def tap_yfinance():
     return run_tap_route("tap-yfinance")
+
 
 @app.route(f"/financial-elt/tap-polygon-{ENVIRONMENT}", methods=["GET"])
 def tap_polygon():
