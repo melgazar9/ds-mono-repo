@@ -112,6 +112,8 @@ def run_process_task(run_commands, cwd, concurrency_semaphore):
     processes = []
     cmd_return_codes = {}
     return_queue = mp.Queue()
+    process_map = {}
+
     for run_command in run_commands:
         process = mp.Process(
             target=run_meltano_task,
@@ -126,47 +128,36 @@ def run_process_task(run_commands, cwd, concurrency_semaphore):
         try:
             process.start()
             processes.append(process)
+            process_map[process.pid] = process
         except Exception as e:
             logging.error(f"Failed to start process for {run_command}: {e}")
             continue
 
-    for process in processes:
-        try:
-            process.join(timeout=28800)
-            if process.exitcode is None:
-                logging.error(
-                    f"Process {process.pid} for command {process._kwargs.get('run_command')}"
-                    f"timed out during join. Terminating."
-                )
-                process.terminate()
-                process.join(timeout=5)
-        except Exception as e:
-            logging.error(
-                f"Error joining process {process.pid} -- command {process._kwargs.get('run_command')}: {e}. Terminating."
-            )
-            process.terminate()
-            process.join(timeout=5)
+    num_finished = 0
+    total = len(processes)
+    joined_pids = set()
 
-    # Collect results with timeout to avoid queue deadlock if a process failed to put its result
-    try:
-        for _ in range(len(run_commands)):
-            try:
-                command, return_code = return_queue.get(
-                    timeout=60
-                )  # 60-second timeout for getting from queue
-                logging.info(
-                    f"SUBPROCESS COMMAND: {command} FINISHED WITH RETURN CODE ---> return_code: {return_code}"
-                )
-                cmd_return_codes[str(command)] = return_code
-            except Empty:
-                logging.error(
-                    "Queue timed out -- not all results collected."
-                    "Possible process failure or unhandled exception in child."
-                )
-                break  # Stop trying to get from queue if it's empty
-    finally:
-        return_queue.close()
-        return_queue.join_thread()
+    # Poll for results and join processes as they finish
+    while num_finished < total:
+        # Try to get results from the queue as soon as they're available
+        try:
+            command, return_code = return_queue.get(timeout=3)
+            logging.info(
+                f"SUBPROCESS COMMAND: {command} FINISHED WITH RETURN CODE ---> return_code: {return_code}"
+            )
+            cmd_return_codes[str(command)] = return_code
+            num_finished += 1
+        except Empty:
+            pass
+
+        for process in processes:
+            if process.pid not in joined_pids and not process.is_alive():
+                process.join(timeout=1)
+                joined_pids.add(process.pid)
+
+    # Clean up remaining queue resources
+    return_queue.close()
+    return_queue.join_thread()
 
     logging.info("\n".join([f"{k} ---> {v}" for k, v in cmd_return_codes.items()]))
     return cmd_return_codes
