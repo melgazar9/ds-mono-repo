@@ -18,14 +18,14 @@ TAP_CONFIGS = {
         "db_target": os.getenv("TAP_YFINANCE_DB_TARGET"),
         "num_workers": int(os.getenv("TAP_YFINANCE_NUM_WORKERS")),
         "parallelism_method": os.getenv("TAP_YFINANCE_PARALLELISM_METHOD"),
-        "semaphore": int(os.getenv("TAP_YFINANCE_MP_SEMAPHORE", "4")),
+        "semaphore": int(os.getenv("TAP_YFINANCE_MP_SEMAPHORE", "8")),
     },
     "tap-polygon": {
         "file_target": os.getenv("TAP_POLYGON_FILE_TARGET"),
         "db_target": os.getenv("TAP_POLYGON_DB_TARGET"),
         "num_workers": int(os.getenv("TAP_POLYGON_NUM_WORKERS")),
         "parallelism_method": os.getenv("TAP_POLYGON_PARALLELISM_METHOD"),
-        "semaphore": int(os.getenv("TAP_POLYGON_MP_SEMAPHORE", "4")),
+        "semaphore": int(os.getenv("TAP_POLYGON_MP_SEMAPHORE", "8")),
     },
 }
 

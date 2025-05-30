@@ -194,6 +194,7 @@ class PostgresConnect(metaclass=MetaclassRDBMSEnforcer):
 
         try:
             self.con = self.engine.connect()
+            self.con = self.con.execution_options(isolation_level="AUTOCOMMIT")
         except SQLAlchemyError as e:
             print(f"Database connection failed: {e}")
             self.engine = None
