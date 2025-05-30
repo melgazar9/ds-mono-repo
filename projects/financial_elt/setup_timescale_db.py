@@ -1,5 +1,7 @@
 import os
+
 from ds_core.db_connectors import PostgresConnect
+
 
 def ensure_primary_key(db, schema, table, pk_cols):
     sql = f"""
@@ -9,20 +11,23 @@ def ensure_primary_key(db, schema, table, pk_cols):
       AND constraint_type = 'PRIMARY KEY';
     """
     res = db.run_sql(sql, df_type="pandas")
-    if res.iloc[0,0] == 0:
+    if res.iloc[0, 0] == 0:
         pk_cols_str = ", ".join(pk_cols)
-        db.run_sql(f"ALTER TABLE {schema}.{table} ADD PRIMARY KEY ({pk_cols_str});", df_type=None)
+        db.run_sql(
+            f"ALTER TABLE {schema}.{table} ADD PRIMARY KEY ({pk_cols_str});", df_type=None
+        )
+
 
 BAR_TABLES = {
-    "bars_1_second":  ("1 day",    "7 days",   8),
-    "bars_1_minute":  ("7 days",   "30 days",  8),
-    "bars_1_hour":    ("30 days",  "90 days",  8),
-    "bars_1_day":     ("90 days",  "365 days", 8),
-    "bars_1_week":    ("180 days", "730 days", 8),
-    "bars_1_month":   ("1 year",   "1095 days",8),
+    "bars_1_second": ("1 day", "7 days", 8),
+    "bars_1_minute": ("7 days", "30 days", 8),
+    "bars_1_hour": ("30 days", "90 days", 8),
+    "bars_1_day": ("90 days", "365 days", 8),
+    "bars_1_week": ("180 days", "730 days", 8),
+    "bars_1_month": ("1 year", "1095 days", 8),
 }
 
-ENV = os.getenv('ENVIRONMENT', 'dev')  # fallback to 'dev' if not set
+ENV = os.getenv("ENVIRONMENT", "dev")  # fallback to 'dev' if not set
 SCHEMA = f"tap_polygon_{ENV}"
 
 CREATE_SCHEMA = f"CREATE SCHEMA IF NOT EXISTS {SCHEMA};"
@@ -80,10 +85,25 @@ with PostgresConnect(database="financial_elt") as db:
         db.run_sql(TABLE_DDL.format(full_table=full_table), df_type=None)
         db.run_sql(GRANT_TABLE, df_type=None)
         ensure_primary_key(db, SCHEMA, table, ["timestamp", "ticker"])
-        db.run_sql(CREATE_HYPERTABLE.format(full_table=full_table, chunk_interval=chunk_interval), df_type=None)
-        db.run_sql(ADD_HASH_DIMENSION.format(full_table=full_table, hash_partitions=hash_partitions), df_type=None)
+        db.run_sql(
+            CREATE_HYPERTABLE.format(
+                full_table=full_table, chunk_interval=chunk_interval
+            ),
+            df_type=None,
+        )
+        db.run_sql(
+            ADD_HASH_DIMENSION.format(
+                full_table=full_table, hash_partitions=hash_partitions
+            ),
+            df_type=None,
+        )
         db.run_sql(ENABLE_COMPRESSION.format(full_table=full_table), df_type=None)
-        db.run_sql(ADD_COMPRESSION_POLICY.format(full_table=full_table, compress_interval=compress_interval), df_type=None)
+        db.run_sql(
+            ADD_COMPRESSION_POLICY.format(
+                full_table=full_table, compress_interval=compress_interval
+            ),
+            df_type=None,
+        )
 
     print("\nAll bar tables created and optimized!")
 
@@ -92,7 +112,7 @@ with PostgresConnect(database="financial_elt") as db:
     df = db.run_sql(
         "SELECT hypertable_schema, hypertable_name, num_dimensions, num_chunks, compression_enabled "
         "FROM timescaledb_information.hypertables ORDER BY hypertable_schema, hypertable_name;",
-        df_type="pandas"
+        df_type="pandas",
     )
     print(df)
     print("\nHypertable chunk intervals (time dimension):")
@@ -110,6 +130,6 @@ with PostgresConnect(database="financial_elt") as db:
         WHERE d.dimension_number = 1
         ORDER BY h.hypertable_schema, h.hypertable_name;
         """,
-        df_type="pandas"
+        df_type="pandas",
     )
     print(df)
