@@ -21,6 +21,9 @@ if ENVIRONMENT is None:
 
 TIMEOUT_SECONDS = 43200  # 12 hours
 
+def ensure_dir(path):
+    """Ensure directory exists."""
+    os.makedirs(path, exist_ok=True)
 
 def cur_timestamp(utc=True):
     if utc:
@@ -33,7 +36,6 @@ def cur_timestamp(utc=True):
         return (
             datetime.now().replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
         )
-
 
 class SimpleCompletedProcess:
     def __init__(self, returncode):
@@ -349,12 +351,12 @@ def execute_command(run_command, cwd, concurrency_semaphore=None):
 
 def execute_command_stg(run_command, cwd):
     """
-    Executes a shell command, redirecting stdout/stderr to files to prevent deadlocks
-    with large outputs. Raises exceptions for timeouts or non-zero exit codes.
+    Executes a shell command, redirecting stdout/stderr to files with unbuffered writes to prevent deadlocks.
+    Raises exceptions for timeouts or non-zero exit codes.
     """
     project_name = run_command[3]
     subprocess_log_dir = os.path.join(find_monorepo_root(), "logs", f"{project_name}")
-    os.makedirs(subprocess_log_dir, exist_ok=True)
+    ensure_dir(subprocess_log_dir)
 
     identifier_parts = ["meltano"]
     tap_name = None
@@ -392,77 +394,76 @@ def execute_command_stg(run_command, cwd):
     start_time = time.monotonic()
     process = None
 
-    try:
-        # Open log files for writing. Any errors here (e.g., permissions, disk full)
-        # will propagate as standard Python I/O exceptions.
-        process = subprocess.Popen(
-            run_command,
-            cwd=cwd,
-            stdout=None,
-            stderr=None,
-            shell=False,
-        )
+    # Open stdout/stderr in append, unbuffered, OS-level flush mode
+    # Use buffering=0 for binary mode (unbuffered writes)
+    # Use O_APPEND to guarantee atomic append
+    with open(stdout_log_path, "ab", buffering=0) as stdout_file, \
+         open(stderr_log_path, "ab", buffering=0) as stderr_file:
+        try:
+            process = subprocess.Popen(
+                run_command,
+                cwd=cwd,
+                stdout=stdout_file,
+                stderr=stderr_file,
+                shell=False,
+                close_fds=True
+            )
 
-        # Wait for the process to complete with a timeout.
-        # This will raise subprocess.TimeoutExpired if the process doesn't finish in time.
-        return_code = process.wait(timeout=TIMEOUT_SECONDS)
+            return_code = process.wait(timeout=TIMEOUT_SECONDS)
 
-        seconds_taken = time.monotonic() - start_time
+            seconds_taken = time.monotonic() - start_time
 
-        # Check the return code. If non-zero, raise CalledProcessError.
-        # This replicates the `check=True` behavior of subprocess.run.
-        if return_code != 0:
-            logging.error(
-                f"Command {' '.join(run_command)} failed with return code {return_code}. \n "
-                f"Subprocess took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes, "
-                f"{round(seconds_taken / 3600, 2)} hours) to fail.\n"
+            if return_code != 0:
+                logging.error(
+                    f"Command {' '.join(run_command)} failed with return code {return_code}. \n "
+                    f"Subprocess took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes, "
+                    f"{round(seconds_taken / 3600, 2)} hours) to fail.\n"
+                    f"Full STDOUT in: {stdout_log_path}\n"
+                    f"Full STDERR in: {stderr_log_path}"
+                )
+                raise subprocess.CalledProcessError(
+                    return_code,
+                    run_command,
+                    output=f"Output in {stdout_log_path}",
+                    stderr=f"Errors in {stderr_log_path}",
+                )
+
+            logging.info(
+                f"Command {' '.join(run_command)} completed successfully with return code {return_code}. \n"
+                f"Subprocess took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes,"
+                f"{round(seconds_taken / 3600, 2)} hours) to succeed.\n"
                 f"Full STDOUT in: {stdout_log_path}\n"
                 f"Full STDERR in: {stderr_log_path}"
             )
+            return SimpleCompletedProcess(return_code)
 
-            raise subprocess.CalledProcessError(
-                return_code,
-                run_command,
-                output=f"Output in {stdout_log_path}",
-                stderr=f"Errors in {stderr_log_path}",
+        except subprocess.TimeoutExpired as e:
+            seconds_taken = time.monotonic() - start_time
+            logging.error(
+                f"Command {' '.join(run_command)} timed out after {round(seconds_taken, 2)} seconds. "
+                f"Full logs in: {stdout_log_path} and {stderr_log_path}"
             )
+            if process and process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
+            raise e
 
-        logging.info(
-            f"Command {' '.join(run_command)} completed successfully with return code {return_code}. \n"
-            f"Subprocess took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes,"
-            f"{round(seconds_taken / 3600, 2)} hours) to succeed.\n"
-            f"Full STDOUT in: {stdout_log_path}\n"
-            f"Full STDERR in: {stderr_log_path}"
-        )
-        return SimpleCompletedProcess(return_code)
+        except FileNotFoundError as e:
+            logging.error(
+                f"Command not found: '{run_command[0]}'. Please ensure it's in your system's PATH. Error: {e}"
+            )
+            raise e
 
-    except subprocess.TimeoutExpired as e:
-        seconds_taken = time.monotonic() - start_time
-        logging.error(
-            f"Command {' '.join(run_command)} timed out after {round(seconds_taken, 2)} seconds. "
-            f"Full logs in: {stdout_log_path} and {stderr_log_path}"
-        )
-        if process and process.poll() is None:  # Check if process is still running
-            process.kill()
-            process.wait(timeout=5)
-        raise e
-
-    except FileNotFoundError as e:
-        logging.error(
-            f"Command not found: '{run_command[0]}'. Please ensure it's in your system's PATH. Error: {e}"
-        )
-        raise e
-
-    except Exception as e:
-        seconds_taken = time.monotonic() - start_time
-        logging.error(
-            f"An unexpected error occurred while executing command {' '.join(run_command)}: {e}. "
-            f"Time elapsed: {round(seconds_taken, 2)} seconds."
-        )
-        if process and process.poll() is None:
-            process.kill()
-            process.wait(timeout=5)
-        raise e
+        except Exception as e:
+            seconds_taken = time.monotonic() - start_time
+            logging.error(
+                f"An unexpected error occurred while executing command {' '.join(run_command)}: {e}. "
+                f"Time elapsed: {round(seconds_taken, 2)} seconds."
+            )
+            if process and process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
+            raise e
 
 
 def run_meltano_task(run_command, cwd, concurrency_semaphore=None, return_queue=None):
@@ -507,3 +508,4 @@ def run_meltano_task(run_command, cwd, concurrency_semaphore=None, return_queue=
             )
 
     return run_command, return_code
+

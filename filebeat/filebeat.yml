@@ -7,17 +7,13 @@ filebeat.inputs:
   paths:
     - /app/logs/**/*.log
   fields:
-    service: "financial_elt"
+    meltano_service: "financial_elt"
   fields_under_root: true
   processors:
-    - decode_json_fields:
-        fields: ["message", "log"]    # Try both, in case log file is JSON
-        target: ""
-        overwrite_keys: true
     - rename:
         fields:
-          - from: "log"
-            to: "message"
+          - from: "service"
+            to: "meltano_service"
         ignore_missing: true
 
 - type: container
@@ -58,3 +54,5 @@ setup.ilm.policy_file: "/usr/share/filebeat/filebeat-5d-policy.json"
 
 # =================== Logging ======================
 logging.level: info
+#logging.selectors: ["harvester", "elasticsearch"]
+
