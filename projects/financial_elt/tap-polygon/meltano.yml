@@ -265,11 +265,9 @@ plugins:
           limit: 1000
       splits:
         query_params:
-          execution_date__gte: "2000-08-21"
+          execution_date__gte: "2000-01-01"
           order: "asc"
           limit: 1000
-        other_params:
-          use_cached_tickers: true
       dividends:
         query_params:
           ex_dividend_date__gte: "2000-08-12"

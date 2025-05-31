@@ -13,6 +13,7 @@ from queue import Empty
 import yaml
 
 ENVIRONMENT = os.getenv("ENVIRONMENT")
+
 if ENVIRONMENT is None:
     raise ValueError(
         "Environment variable ENVIRONMENT is not set. Please set it to 'dev', 'staging', or 'production'."
