@@ -3,12 +3,13 @@ import multiprocessing as mp
 import os
 import subprocess
 import sys
+import threading
 import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from datetime import datetime
 from functools import lru_cache
 from glob import glob
-from queue import Empty
+from queue import Empty, Full, Queue
 
 import yaml
 
@@ -21,9 +22,11 @@ if ENVIRONMENT is None:
 
 TIMEOUT_SECONDS = 43200  # 12 hours
 
+
 def ensure_dir(path):
     """Ensure directory exists."""
     os.makedirs(path, exist_ok=True)
+
 
 def cur_timestamp(utc=True):
     if utc:
@@ -36,6 +39,7 @@ def cur_timestamp(utc=True):
         return (
             datetime.now().replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
         )
+
 
 class SimpleCompletedProcess:
     def __init__(self, returncode):
@@ -341,6 +345,37 @@ def find_monorepo_root(start_path=None):
     return best[1]
 
 
+def drain_stream(stream, log_path, max_queue=10000):
+    q = Queue(maxsize=max_queue)
+    stop_signal = object()
+
+    def reader():
+        for line in iter(stream.readline, ""):
+            try:
+                q.put_nowait(line)
+            except Full:
+                # Drop line if queue is full (too much log traffic)
+                pass
+        q.put(stop_signal)
+        stream.close()
+
+    def writer():
+        with open(log_path, "a", buffering=1) as f:
+            while True:
+                line = q.get()
+                if line is stop_signal:
+                    break
+                f.write(line)
+                q.task_done()
+
+    t_reader = threading.Thread(target=reader)
+    t_writer = threading.Thread(target=writer)
+    t_reader.start()
+    t_writer.start()
+    t_reader.join()
+    t_writer.join()
+
+
 def execute_command(run_command, cwd, concurrency_semaphore=None):
     """Runs a command with optional concurrency semaphore."""
     if concurrency_semaphore:
@@ -351,7 +386,7 @@ def execute_command(run_command, cwd, concurrency_semaphore=None):
 
 def execute_command_stg(run_command, cwd):
     """
-    Executes a shell command, redirecting stdout/stderr to files with unbuffered writes to prevent deadlocks.
+    Executes a shell command, redirecting stdout/stderr to files using threads to prevent deadlocks.
     Raises exceptions for timeouts or non-zero exit codes.
     """
     project_name = run_command[3]
@@ -394,76 +429,86 @@ def execute_command_stg(run_command, cwd):
     start_time = time.monotonic()
     process = None
 
-    # Open stdout/stderr in append, unbuffered, OS-level flush mode
-    # Use buffering=0 for binary mode (unbuffered writes)
-    # Use O_APPEND to guarantee atomic append
-    with open(stdout_log_path, "ab", buffering=0) as stdout_file, \
-         open(stderr_log_path, "ab", buffering=0) as stderr_file:
-        try:
-            process = subprocess.Popen(
-                run_command,
-                cwd=cwd,
-                stdout=stdout_file,
-                stderr=stderr_file,
-                shell=False,
-                close_fds=True
-            )
+    try:
+        # Start process with pipes for stdout/stderr
+        process = subprocess.Popen(
+            run_command,
+            cwd=cwd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+            bufsize=1,
+            shell=False,
+            close_fds=True,
+        )
 
-            return_code = process.wait(timeout=TIMEOUT_SECONDS)
+        # Start threads to drain stdout/stderr to files
+        t_out = threading.Thread(
+            target=drain_stream, args=(process.stdout, stdout_log_path)
+        )
+        t_err = threading.Thread(
+            target=drain_stream, args=(process.stderr, stderr_log_path)
+        )
+        t_out.start()
+        t_err.start()
 
-            seconds_taken = time.monotonic() - start_time
+        return_code = process.wait(timeout=TIMEOUT_SECONDS)
+        t_out.join()
+        t_err.join()
 
-            if return_code != 0:
-                logging.error(
-                    f"Command {' '.join(run_command)} failed with return code {return_code}. \n "
-                    f"Subprocess took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes, "
-                    f"{round(seconds_taken / 3600, 2)} hours) to fail.\n"
-                    f"Full STDOUT in: {stdout_log_path}\n"
-                    f"Full STDERR in: {stderr_log_path}"
-                )
-                raise subprocess.CalledProcessError(
-                    return_code,
-                    run_command,
-                    output=f"Output in {stdout_log_path}",
-                    stderr=f"Errors in {stderr_log_path}",
-                )
+        seconds_taken = time.monotonic() - start_time
 
-            logging.info(
-                f"Command {' '.join(run_command)} completed successfully with return code {return_code}. \n"
-                f"Subprocess took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes,"
-                f"{round(seconds_taken / 3600, 2)} hours) to succeed.\n"
+        if return_code != 0:
+            logging.error(
+                f"Command {' '.join(run_command)} failed with return code {return_code}. \n "
+                f"Subprocess took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes, "
+                f"{round(seconds_taken / 3600, 2)} hours) to fail.\n"
                 f"Full STDOUT in: {stdout_log_path}\n"
                 f"Full STDERR in: {stderr_log_path}"
             )
-            return SimpleCompletedProcess(return_code)
-
-        except subprocess.TimeoutExpired as e:
-            seconds_taken = time.monotonic() - start_time
-            logging.error(
-                f"Command {' '.join(run_command)} timed out after {round(seconds_taken, 2)} seconds. "
-                f"Full logs in: {stdout_log_path} and {stderr_log_path}"
+            raise subprocess.CalledProcessError(
+                return_code,
+                run_command,
+                output=f"Output in {stdout_log_path}",
+                stderr=f"Errors in {stderr_log_path}",
             )
-            if process and process.poll() is None:
-                process.kill()
-                process.wait(timeout=5)
-            raise e
 
-        except FileNotFoundError as e:
-            logging.error(
-                f"Command not found: '{run_command[0]}'. Please ensure it's in your system's PATH. Error: {e}"
-            )
-            raise e
+        logging.info(
+            f"Command {' '.join(run_command)} completed successfully with return code {return_code}. \n"
+            f"Subprocess took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes,"
+            f"{round(seconds_taken / 3600, 2)} hours) to succeed.\n"
+            f"Full STDOUT in: {stdout_log_path}\n"
+            f"Full STDERR in: {stderr_log_path}"
+        )
+        return SimpleCompletedProcess(return_code)
 
-        except Exception as e:
-            seconds_taken = time.monotonic() - start_time
-            logging.error(
-                f"An unexpected error occurred while executing command {' '.join(run_command)}: {e}. "
-                f"Time elapsed: {round(seconds_taken, 2)} seconds."
-            )
-            if process and process.poll() is None:
-                process.kill()
-                process.wait(timeout=5)
-            raise e
+    except subprocess.TimeoutExpired as e:
+        seconds_taken = time.monotonic() - start_time
+        logging.error(
+            f"Command {' '.join(run_command)} timed out after {round(seconds_taken, 2)} seconds. "
+            f"Full logs in: {stdout_log_path} and {stderr_log_path}"
+        )
+        if process and process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+        raise e
+
+    except FileNotFoundError as e:
+        logging.error(
+            f"Command not found: '{run_command[0]}'. Please ensure it's in your system's PATH. Error: {e}"
+        )
+        raise e
+
+    except Exception as e:
+        seconds_taken = time.monotonic() - start_time
+        logging.error(
+            f"An unexpected error occurred while executing command {' '.join(run_command)}: {e}. "
+            f"Time elapsed: {round(seconds_taken, 2)} seconds."
+        )
+        if process and process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+        raise e
 
 
 def run_meltano_task(run_command, cwd, concurrency_semaphore=None, return_queue=None):
@@ -508,4 +553,3 @@ def run_meltano_task(run_command, cwd, concurrency_semaphore=None, return_queue=
             )
 
     return run_command, return_code
-
