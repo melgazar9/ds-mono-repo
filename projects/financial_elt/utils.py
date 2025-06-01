@@ -268,18 +268,17 @@ def get_run_commands(base_run_command: str, task_chunks_dict: dict, tap_name: st
     }
 
     for target_type, task_chunks in task_chunks_dict.items():
+        if not task_chunks:
+            logging.info(f"No tasks for target type: '{target_type}' in {tap_name}. Task chunks: {task_chunks}. Skipping target-type {target_type}.")
+            continue
+
         target_name = os.getenv(target_env_vars[target_type])
         if not target_name:
             raise ValueError(
                 f"Missing environment variable: {target_env_vars[target_type]}"
             )
 
-        if "target-file" in base_run_command:
-            run_command = base_run_command.replace("target-file", f"target-{target_name}")
-        elif "target-db" in base_run_command:
-            run_command = base_run_command.replace("target-db", f"target-{target_name}")
-        else:
-            run_command = f"{base_run_command} target-{target_name}"
+        run_command = f"{base_run_command} target-{target_name}"
 
         target_cmds = []
         for chunk in task_chunks:
