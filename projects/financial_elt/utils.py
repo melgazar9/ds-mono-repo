@@ -269,7 +269,10 @@ def get_run_commands(base_run_command: str, task_chunks_dict: dict, tap_name: st
 
     for target_type, task_chunks in task_chunks_dict.items():
         if not task_chunks:
-            logging.info(f"No tasks for target type: '{target_type}' in {tap_name}. Task chunks: {task_chunks}. Skipping target-type {target_type}.")
+            logging.info(
+                f"No tasks for target type: '{target_type}' in {tap_name}. Task chunks: {task_chunks}."
+                f"Skipping target-type {target_type}."
+            )
             continue
 
         target_name = os.getenv(target_env_vars[target_type])
