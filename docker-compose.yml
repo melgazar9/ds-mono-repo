@@ -78,6 +78,7 @@ services:
       - .env
     volumes:
       - logs:/app/logs  # App writes logs here
+      - ./projects/financial_elt/tap-polygon/output:/app/tap-polygon/output
     logging:
       driver: "json-file"
       options:
