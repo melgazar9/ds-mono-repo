@@ -64,15 +64,14 @@ class MeltanoTap:
         self.num_workers = num_workers
         self.project_dir = project_dir
         self.tap_name = self.project_dir if tap_name is None else tap_name
-        self.target_name = (
-            target_name
-            if target_name is not None
-            else os.getenv(f"{tap_name.replace('-', '_').upper()}_TARGET")
-        )
 
-        assert (
-            self.target_name is not None
-        ), "Must supply target name for meltano destination."
+        env_prefix = self.tap_name.upper().replace("-", "_")
+        db_target = os.getenv(f"{env_prefix}_DB_TARGET")
+        file_target = os.getenv(f"{env_prefix}_FILE_TARGET")
+        if not db_target and not file_target:
+            raise ValueError(
+                f"You must set at least one of {env_prefix}_DB_TARGET or {env_prefix}_FILE_TARGET in your environment."
+            )
 
         self.base_run_command = f"meltano --environment={ENVIRONMENT} el {self.tap_name}"
         self.cwd = os.path.join(app.root_path, project_dir)

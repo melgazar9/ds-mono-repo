@@ -248,11 +248,18 @@ def get_run_commands(base_run_command: str, task_chunks_dict: dict, tap_name: st
             continue
         target_name = os.getenv(target_env_vars[target_type])
         if not target_name:
-            raise ValueError(f"Missing environment variable: {target_env_vars[target_type]}")
+            raise ValueError(
+                f"Missing environment variable: {target_env_vars[target_type]}"
+            )
         run_command = f"{base_run_command} target-{target_name}"
         for chunk in task_chunks:
             assert isinstance(chunk, list), "Invalid datatype task_chunks. Must be list."
-            state_id = (" ".join(chunk)).replace("--select ", "").replace(" ", "__").replace(".*", "")
+            state_id = (
+                " ".join(chunk)
+                .replace("--select ", "")
+                .replace(" ", "__")
+                .replace(".*", "")
+            )
             select_param = " ".join(chunk).replace(".*", "")
             cmd = (
                 f"{run_command} "

@@ -10,6 +10,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 
 from ds_core.db_connectors import PostgresConnect  # noqa: E402
 
+#########################
+###### tap-polygon ######
+#########################
+
+
 # ==============================
 # Hypertable time-series config (only streams that are time-series)
 # ==============================
@@ -377,6 +382,233 @@ with PostgresConnect(database="financial_elt") as db:
     df = safe_run_sql(
         db,
         """
+        SELECT
+          h.hypertable_schema,
+          h.hypertable_name,
+          d.column_name AS time_column,
+          (d.time_interval || ' seconds')::interval AS chunk_interval
+        FROM timescaledb_information.hypertables h
+        JOIN timescaledb_information.dimensions d
+          ON h.hypertable_schema = d.hypertable_schema
+         AND h.hypertable_name = d.hypertable_name
+        WHERE d.dimension_number = 1
+        ORDER BY h.hypertable_schema, h.hypertable_name;
+        """,
+        df_type="pandas",
+    )
+    print(df)
+
+
+
+
+##########################
+###### tap-yfinance ######
+##########################
+
+
+YF_TIMESERIES_TABLES = {
+    # Prices
+    "prices_1m":      (["timestamp", "ticker"], "timestamp", "7 days", "30 days", 8),
+    "prices_2m":      (["timestamp", "ticker"], "timestamp", "7 days", "30 days", 8),
+    "prices_5m":      (["timestamp", "ticker"], "timestamp", "21 days", "60 days", 8),
+    "prices_1h":      (["timestamp", "ticker"], "timestamp", "90 days", "365 days", 8),
+    "prices_1d":      (["timestamp", "ticker"], "timestamp", "365 days", "1095 days", 8),
+    # Corporate actions/events
+    "actions":        (["timestamp", "ticker"], "timestamp", "365 days", "1095 days", 4),
+    "dividends":      (["timestamp", "ticker"], "timestamp", "365 days", "1095 days", 4),
+    "splits":         (["timestamp", "ticker"], "timestamp", "365 days", "1095 days", 4),
+    # Earnings, news
+    "earnings_dates": (["timestamp", "ticker"], "timestamp", "365 days", "1095 days", 2),
+    "news":           (["timestamp_extracted", "ticker"], "timestamp_extracted", "30 days", "180 days", 2),
+}
+
+YF_PRICE_DDL = """
+CREATE TABLE IF NOT EXISTS {full_table} (
+    timestamp TIMESTAMPTZ NOT NULL,
+    ticker TEXT NOT NULL,
+    open NUMERIC,
+    high NUMERIC,
+    low NUMERIC,
+    close NUMERIC,
+    volume NUMERIC,
+    adjclose NUMERIC,
+    PRIMARY KEY (timestamp, ticker)
+);
+"""
+
+YF_ACTIONS_DDL = """
+CREATE TABLE IF NOT EXISTS {full_table} (
+    timestamp TIMESTAMPTZ NOT NULL,
+    ticker TEXT NOT NULL,
+    dividends NUMERIC,
+    stock_splits NUMERIC,
+    timezone TEXT,
+    timestamp_tz_aware TEXT,
+    PRIMARY KEY (timestamp, ticker)
+);
+"""
+
+YF_DIVIDENDS_DDL = """
+CREATE TABLE IF NOT EXISTS {full_table} (
+    timestamp TIMESTAMPTZ NOT NULL,
+    ticker TEXT NOT NULL,
+    dividends NUMERIC,
+    timezone TEXT,
+    timestamp_tz_aware TEXT,
+    PRIMARY KEY (timestamp, ticker)
+);
+"""
+
+YF_SPLITS_DDL = """
+CREATE TABLE IF NOT EXISTS {full_table} (
+    timestamp TIMESTAMPTZ NOT NULL,
+    ticker TEXT NOT NULL,
+    stock_splits NUMERIC,
+    timezone TEXT,
+    timestamp_tz_aware TEXT,
+    PRIMARY KEY (timestamp, ticker)
+);
+"""
+
+YF_EARNINGS_DATES_DDL = """
+CREATE TABLE IF NOT EXISTS {full_table} (
+    timestamp TIMESTAMPTZ NOT NULL,
+    ticker TEXT NOT NULL,
+    eps_estimate NUMERIC,
+    reported_eps NUMERIC,
+    pct_surprise NUMERIC,
+    timezone TEXT,
+    timestamp_tz_aware TEXT,
+    PRIMARY KEY (timestamp, ticker)
+);
+"""
+
+YF_NEWS_DDL = """
+CREATE TABLE IF NOT EXISTS {full_table} (
+    timestamp_extracted TIMESTAMPTZ NOT NULL,
+    ticker TEXT NOT NULL,
+    id TEXT,
+    content TEXT,
+    PRIMARY KEY (timestamp_extracted, ticker)
+);
+"""
+
+YF_DDL_MAP = {
+    "prices_1m": YF_PRICE_DDL,
+    "prices_2m": YF_PRICE_DDL,
+    "prices_5m": YF_PRICE_DDL,
+    "prices_1h": YF_PRICE_DDL,
+    "prices_1d": YF_PRICE_DDL,
+    "actions": YF_ACTIONS_DDL,
+    "dividends": YF_DIVIDENDS_DDL,
+    "splits": YF_SPLITS_DDL,
+    "earnings_dates": YF_EARNINGS_DATES_DDL,
+    "news": YF_NEWS_DDL,
+}
+
+YF_ENV = os.getenv("ENVIRONMENT", "dev")
+YF_SCHEMA = f"tap_yfinance_{YF_ENV}"
+
+YF_CREATE_SCHEMA = f"CREATE SCHEMA IF NOT EXISTS {YF_SCHEMA};"
+YF_GRANT_SCHEMA = f"GRANT USAGE, CREATE ON SCHEMA {YF_SCHEMA} TO data;"
+YF_GRANT_TABLE = f"GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA {YF_SCHEMA} TO data;"
+
+YF_CREATE_HYPERTABLE = """
+SELECT create_hypertable(
+    '{full_table}',
+    '{time_col}',
+    chunk_time_interval => INTERVAL '{chunk_interval}'
+);
+"""
+
+YF_ADD_HASH_DIMENSION = """
+SELECT add_dimension('{full_table}', 'ticker', number_partitions => {hash_partitions});
+"""
+
+YF_ADD_COMPRESSION_POLICY = """
+SELECT add_compression_policy('{full_table}', INTERVAL '{compress_interval}');
+"""
+
+def get_segmentby_col(pk_cols, time_col):
+    for col in pk_cols:
+        if col != time_col:
+            return col
+    return pk_cols[0]
+
+with PostgresConnect(database="financial_elt") as db:
+    db.con = db.con.execution_options(isolation_level="AUTOCOMMIT")
+    print("\nCreating tap-yfinance schema and granting access...")
+    safe_run_sql(db, YF_CREATE_SCHEMA, df_type=None)
+    safe_run_sql(db, YF_GRANT_SCHEMA, df_type=None)
+
+    # Create hypertables with PKs matching Meltano tap-yfinance
+    for table, (
+        pk_cols,
+        time_col,
+        chunk_interval,
+        compress_interval,
+        hash_partitions,
+    ) in YF_TIMESERIES_TABLES.items():
+        full_table = f"{YF_SCHEMA}.{table}"
+        table_ddl = YF_DDL_MAP[table]
+        print(f"Setting up hypertable: {full_table}...")
+        safe_run_sql(db, table_ddl.format(full_table=full_table), df_type=None)
+        safe_run_sql(db, YF_GRANT_TABLE, df_type=None)
+        safe_run_sql(
+            db,
+            YF_CREATE_HYPERTABLE.format(
+                full_table=full_table, time_col=time_col, chunk_interval=chunk_interval
+            ),
+            df_type=None,
+            ignore_error_codes=["TS101"],
+        )
+        if "ticker" in pk_cols and hash_partitions > 1:
+            safe_run_sql(
+                db,
+                YF_ADD_HASH_DIMENSION.format(
+                    full_table=full_table, hash_partitions=hash_partitions
+                ),
+                df_type=None,
+                ignore_error_codes=["TS202"],
+            )
+        segmentby_col = get_segmentby_col(pk_cols, time_col)
+        safe_run_sql(
+            db,
+            f"""
+            ALTER TABLE {full_table} SET (
+                timescaledb.compress,
+                timescaledb.compress_segmentby = '{segmentby_col}'
+            );
+            """,
+            df_type=None,
+            ignore_error_codes=["42701"],
+        )
+        safe_run_sql(
+            db,
+            YF_ADD_COMPRESSION_POLICY.format(
+                full_table=full_table, compress_interval=compress_interval
+            ),
+            df_type=None,
+            ignore_error_codes=["TS201"],
+        )
+
+    print("\nAll tap-yfinance hypertables created and optimized!")
+
+    # Show hypertables
+    print("\nHypertables in database (basic):")
+    df = safe_run_sql(
+        db,
+        f"""
+        SELECT hypertable_schema, hypertable_name, num_dimensions, num_chunks, compression_enabled
+        FROM timescaledb_information.hypertables ORDER BY hypertable_schema, hypertable_name;
+        """,
+        df_type="pandas",
+    )
+    print(df)
+    print("\nHypertable chunk intervals (time dimension):")
+    df = safe_run_sql(
+        db,
+        f"""
         SELECT
           h.hypertable_schema,
           h.hypertable_name,
