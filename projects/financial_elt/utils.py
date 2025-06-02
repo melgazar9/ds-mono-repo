@@ -14,31 +14,20 @@ from queue import Empty, Full, Queue
 import yaml
 
 ENVIRONMENT = os.getenv("ENVIRONMENT")
-
 if ENVIRONMENT is None:
     raise ValueError(
         "Environment variable ENVIRONMENT is not set. Please set it to 'dev', 'staging', or 'production'."
     )
-
 TIMEOUT_SECONDS = 43200  # 12 hours
 
 
 def ensure_dir(path):
-    """Ensure directory exists."""
     os.makedirs(path, exist_ok=True)
 
 
 def cur_timestamp(utc=True):
-    if utc:
-        return (
-            datetime.utcnow()
-            .replace(second=0, microsecond=0)
-            .strftime("%Y-%m-%d %H:%M:%S")
-        )
-    else:
-        return (
-            datetime.now().replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
-        )
+    dt = datetime.utcnow() if utc else datetime.now()
+    return dt.replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
 
 
 class SimpleCompletedProcess:
@@ -50,8 +39,10 @@ def get_task_chunks(num_tasks: int, tap_name):
     with open(f"{tap_name}/meltano.yml", "r") as meltano_cfg:
         cfg = yaml.safe_load(meltano_cfg)
 
-    all_tasks = cfg.get("plugins", {}).get("extractors", [{}])[0].get("select", [])
-    all_tasks = [str(i) for i in all_tasks]
+    all_tasks = [
+        str(i)
+        for i in cfg.get("plugins", {}).get("extractors", [{}])[0].get("select", [])
+    ]
 
     # Gather all allowed tables for both targets for mismatch detection
     allowed_tables_by_target = {}
@@ -59,19 +50,21 @@ def get_task_chunks(num_tasks: int, tap_name):
         env_var = (
             f"{tap_name.upper().replace('-', '_')}_TARGET_{target_type.upper()}_TABLES"
         )
-        allowed_tables = os.getenv(env_var, "")
-        allowed_tables = [x.strip() for x in allowed_tables.split(",") if x.strip()]
+        allowed_tables = [
+            x.strip() for x in os.getenv(env_var, "").split(",") if x.strip()
+        ]
         allowed_tables_by_target[target_type] = set(allowed_tables)
 
     tasks_set = set(all_tasks)
     for target_type, env_tables in allowed_tables_by_target.items():
-        missing_in_meltano = set()
-        for table in env_tables:
+        missing_in_meltano = {
+            table
+            for table in env_tables
             if not any(
                 select_item == table or select_item.startswith(f"{table}.")
                 for select_item in tasks_set
-            ):
-                missing_in_meltano.add(table)
+            )
+        }
         if missing_in_meltano:
             logging.warning(
                 f"[{tap_name}] WARNING: These tables in {target_type} env var NOT found in meltano.yml:"
@@ -79,11 +72,11 @@ def get_task_chunks(num_tasks: int, tap_name):
             )
 
     all_env_tables = set().union(*allowed_tables_by_target.values())
-    missing_in_env = set()
-    for select_item in tasks_set:
-        select_prefix = select_item.split(".", 1)[0]
-        if select_prefix not in all_env_tables:
-            missing_in_env.add(select_item)
+    missing_in_env = {
+        select_item
+        for select_item in tasks_set
+        if select_item.split(".", 1)[0] not in all_env_tables
+    }
     if missing_in_env:
         logging.warning(
             f"[{tap_name}] WARNING: These meltano.yml select entries are NOT in any *_TARGET_*_TABLES"
@@ -91,12 +84,10 @@ def get_task_chunks(num_tasks: int, tap_name):
         )
 
     chunks_by_target = {}
-
     for target_type in ["file", "db"]:
         allowed_tables = allowed_tables_by_target[target_type]
         if not allowed_tables:
-            continue  # Skip if no tables for this target
-
+            continue
         filtered_tasks = [
             f"--select {i}"
             for i in all_tasks
@@ -107,41 +98,27 @@ def get_task_chunks(num_tasks: int, tap_name):
 
         tasks_per_chunk = len(filtered_tasks) // num_tasks
         remainder = len(filtered_tasks) % num_tasks
-
         chunks = []
         start_index = 0
         for j in range(num_tasks):
             chunk_size = tasks_per_chunk + (1 if j < remainder else 0)
             chunks.append(filtered_tasks[start_index : start_index + chunk_size])
             start_index += chunk_size
-        chunks = [i for i in chunks if i]
-        chunks_by_target[target_type] = chunks
-
+        chunks_by_target[target_type] = [i for i in chunks if i]
     return chunks_by_target
 
 
 def run_pool_task(run_commands, cwd, num_workers, pool_task):
-    if pool_task.lower() == "processpool":
-        ExecutorClass = ProcessPoolExecutor
-    elif pool_task.lower() == "threadpool":
-        ExecutorClass = ThreadPoolExecutor
-    else:
-        raise ValueError(
-            "Invalid value for pool_task. Must be 'processpool' or 'threadpool'."
-        )
-
+    ExecutorClass = {
+        "processpool": ProcessPoolExecutor,
+        "threadpool": ThreadPoolExecutor,
+    }[pool_task.lower()]
     cmd_return_codes = {}
     with ExecutorClass(max_workers=num_workers) as executor:
-        futures = []
-        for run_command in run_commands:
-            futures.append(
-                executor.submit(
-                    run_meltano_task,
-                    run_command,
-                    cwd=cwd,
-                )
-            )
-
+        futures = [
+            executor.submit(run_meltano_task, run_command, cwd=cwd)
+            for run_command in run_commands
+        ]
         try:
             for future in as_completed(futures, timeout=TIMEOUT_SECONDS):
                 try:
@@ -154,12 +131,8 @@ def run_pool_task(run_commands, cwd, num_workers, pool_task):
             logging.error(
                 "Overall pool execution timed out after 8 hours. Attempting to terminate remaining processes."
             )
-            if isinstance(executor, ProcessPoolExecutor):
-                executor.shutdown(wait=False, cancel_futures=True)
-            elif isinstance(executor, ThreadPoolExecutor):
-                executor.shutdown(wait=False, cancel_futures=True)
+            executor.shutdown(wait=False, cancel_futures=True)
             raise
-
     logging.info("\n".join([f"{k} ---> {v}" for k, v in cmd_return_codes.items()]))
     return cmd_return_codes
 
@@ -193,9 +166,7 @@ def run_process_task(run_commands, cwd, concurrency_semaphore):
     total = len(processes)
     joined_pids = set()
 
-    # Poll for results and join processes as they finish
     while num_finished < total:
-        # Try to get results from the queue as soon as they're available
         try:
             command, return_code = return_queue.get(timeout=3)
             logging.info(
@@ -211,10 +182,8 @@ def run_process_task(run_commands, cwd, concurrency_semaphore):
                 process.join(timeout=1)
                 joined_pids.add(process.pid)
 
-    # Clean up remaining queue resources
     return_queue.close()
     return_queue.join_thread()
-
     logging.info("\n".join([f"{k} ---> {v}" for k, v in cmd_return_codes.items()]))
     return cmd_return_codes
 
@@ -234,11 +203,9 @@ def setup_logging():
 def clean_old_logs(log_dir, max_files=100):
     if not os.path.exists(log_dir):
         return
-
     log_files = sorted(
         glob(os.path.join(log_dir, "*.log")), key=os.path.getmtime, reverse=True
     )
-
     for old_log in log_files[max_files:]:
         try:
             os.remove(old_log)
@@ -248,8 +215,6 @@ def clean_old_logs(log_dir, max_files=100):
 
 def critical_shutdown_handler(signum, frame):
     logging.warning(f"Received signal {signum}. Shutting down...")
-
-    # Terminate all active child processes managed by multiprocessing
     for process in mp.active_children():
         logging.info(
             f"Terminating child process {process.pid} (command: {process._kwargs.get('run_command')})"
@@ -260,13 +225,20 @@ def critical_shutdown_handler(signum, frame):
 
 
 def get_run_commands(base_run_command: str, task_chunks_dict: dict, tap_name: str):
-    run_commands_dict = {}
+    """
+    Flatten the dictionary into a list of commands. Parallelism is automatically handled by the MeltanoTap class.
+    We don't want to mix two different targets in the same run_commands list. This is handled here and get_task_chunks.
+
+    Returns
+    -------
+    list of meltano run commands
+    """
+    run_commands = []
     tap_env_prefix = tap_name.upper().replace("-", "_")
     target_env_vars = {
         "file": f"{tap_env_prefix}_FILE_TARGET",
         "db": f"{tap_env_prefix}_DB_TARGET",
     }
-
     for target_type, task_chunks in task_chunks_dict.items():
         if not task_chunks:
             logging.info(
@@ -274,24 +246,13 @@ def get_run_commands(base_run_command: str, task_chunks_dict: dict, tap_name: st
                 f"Skipping target-type {target_type}."
             )
             continue
-
         target_name = os.getenv(target_env_vars[target_type])
         if not target_name:
-            raise ValueError(
-                f"Missing environment variable: {target_env_vars[target_type]}"
-            )
-
+            raise ValueError(f"Missing environment variable: {target_env_vars[target_type]}")
         run_command = f"{base_run_command} target-{target_name}"
-
-        target_cmds = []
         for chunk in task_chunks:
             assert isinstance(chunk, list), "Invalid datatype task_chunks. Must be list."
-            state_id = (
-                " ".join(chunk)
-                .replace("--select ", "")
-                .replace(" ", "__")
-                .replace(".*", "")
-            )
+            state_id = (" ".join(chunk)).replace("--select ", "").replace(" ", "__").replace(".*", "")
             select_param = " ".join(chunk).replace(".*", "")
             cmd = (
                 f"{run_command} "
@@ -300,25 +261,17 @@ def get_run_commands(base_run_command: str, task_chunks_dict: dict, tap_name: st
                 f"{ENVIRONMENT}__{state_id} "
                 f"{select_param}".split(" ")
             )
-            target_cmds.append(cmd)
-        run_commands_dict[target_type] = target_cmds
-
-    # Flatten the dictionary into a list of commands. Parallelism is automatically handled by the MeltanoTap class.
-    # We don't want to mix two different targets in the same run_commands list. This is handled here and get_task_chunks.
-    run_commands = [cmd for cmds in run_commands_dict.values() for cmd in cmds]
-
+            run_commands.append(cmd)
     return run_commands
 
 
 @lru_cache(maxsize=None)
 def find_monorepo_root(start_path=None):
-    # Markers ordered by priority (higher first)
     markers = [
         ".git",
         "docker-compose.yml",
         "pyproject.toml",
         "package.json",
-        # Lower priority markers after
         "state.json",
         "tap-polygon",
         "tap-yfinance",
@@ -333,16 +286,13 @@ def find_monorepo_root(start_path=None):
         for idx, marker in enumerate(markers):
             if os.path.exists(os.path.join(current_dir, marker)):
                 candidates.append((idx, current_dir))
-                # Don't return immediately, keep searching upward for better priority
                 break
         parent_dir = os.path.realpath(os.path.join(current_dir, ".."))
         if parent_dir == current_dir:
-            # reached root filesystem
             break
         current_dir = parent_dir
     if not candidates:
         return None
-    # Return dir with marker of highest priority (lowest index)
     best = min(candidates, key=lambda x: x[0])
     return best[1]
 
@@ -356,7 +306,6 @@ def drain_stream(stream, log_path, max_queue=10000):
             try:
                 q.put_nowait(line)
             except Full:
-                # Drop line if queue is full (too much log traffic)
                 pass
         q.put(stop_signal)
         stream.close()
@@ -379,7 +328,6 @@ def drain_stream(stream, log_path, max_queue=10000):
 
 
 def execute_command(run_command, cwd, concurrency_semaphore=None):
-    """Runs a command with optional concurrency semaphore."""
     if concurrency_semaphore:
         with concurrency_semaphore:
             return execute_command_stg(run_command, cwd)
@@ -421,7 +369,6 @@ def execute_command_stg(run_command, cwd):
         identifier_parts.append("__".join(selected_streams))
 
     command_identifier = "__".join(identifier_parts)
-
     stdout_log_path = os.path.join(subprocess_log_dir, f"{command_identifier}_stdout.log")
     stderr_log_path = os.path.join(subprocess_log_dir, f"{command_identifier}_stderr.log")
     logging.info(f"Executing command: {' '.join(run_command)}")
@@ -432,7 +379,6 @@ def execute_command_stg(run_command, cwd):
     process = None
 
     try:
-        # Start process with pipes for stdout/stderr
         process = subprocess.Popen(
             run_command,
             cwd=cwd,
@@ -444,7 +390,6 @@ def execute_command_stg(run_command, cwd):
             close_fds=True,
         )
 
-        # Start threads to drain stdout/stderr to files
         t_out = threading.Thread(
             target=drain_stream, args=(process.stdout, stdout_log_path)
         )
@@ -518,8 +463,7 @@ def run_meltano_task(run_command, cwd, concurrency_semaphore=None, return_queue=
     Runs the Meltano task, handling exceptions from execute_command_stg and
     putting the result (or error code) into the queue.
     """
-    return_code = 1  # Default to a generic error code
-
+    return_code = 1
     try:
         result = execute_command(
             run_command=run_command, cwd=cwd, concurrency_semaphore=concurrency_semaphore
@@ -546,12 +490,9 @@ def run_meltano_task(run_command, cwd, concurrency_semaphore=None, return_queue=
 
     if return_queue:
         try:
-            return_queue.put(
-                (run_command, return_code), timeout=5
-            )  # Add timeout to put as well
+            return_queue.put((run_command, return_code), timeout=5)
         except Exception as e:
             logging.error(
                 f"Failed to put result in queue for {' '.join(run_command)}: {e}"
             )
-
     return run_command, return_code
