@@ -304,34 +304,13 @@ def find_monorepo_root(start_path=None):
     return best[1]
 
 
-def drain_stream(stream, log_path, max_queue=10000):
-    q = Queue(maxsize=max_queue)
-    stop_signal = object()
-
-    def reader():
+def drain_stream(stream, log_path):
+    with open(log_path, "a", buffering=1) as f:
         for line in iter(stream.readline, ""):
-            try:
-                q.put_nowait(line)
-            except Full:
-                pass
-        q.put(stop_signal)
-        stream.close()
-
-    def writer():
-        with open(log_path, "a", buffering=1) as f:
-            while True:
-                line = q.get()
-                if line is stop_signal:
-                    break
-                f.write(line)
-                q.task_done()
-
-    t_reader = threading.Thread(target=reader)
-    t_writer = threading.Thread(target=writer)
-    t_reader.start()
-    t_writer.start()
-    t_reader.join()
-    t_writer.join()
+            if not line:
+                break
+            f.write(line)
+    stream.close()
 
 
 def execute_command(run_command, cwd, concurrency_semaphore=None):
