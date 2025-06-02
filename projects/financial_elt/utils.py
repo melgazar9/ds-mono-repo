@@ -10,7 +10,7 @@ from datetime import datetime
 from functools import lru_cache
 from glob import glob
 from queue import Empty, Full, Queue
-
+import tempfile
 import yaml
 
 ENVIRONMENT = os.getenv("ENVIRONMENT")
@@ -322,8 +322,8 @@ def execute_command(run_command, cwd, concurrency_semaphore=None):
 
 def execute_command_stg(run_command, cwd):
     """
-    Executes a shell command, redirecting stdout/stderr to files using threads to prevent deadlocks.
-    Raises exceptions for timeouts or non-zero exit codes.
+    Executes a shell command, redirecting stdout/stderr directly to files for deadlock-free operation.
+    Each run gets its own temp MELTANO_PROJECT_ROOT for lock/deadlock prevention.
     """
     project_name = run_command[3]
     subprocess_log_dir = os.path.join(find_monorepo_root(), "logs", f"{project_name}")
@@ -364,84 +364,89 @@ def execute_command_stg(run_command, cwd):
     start_time = time.monotonic()
     process = None
 
-    try:
-        process = subprocess.Popen(
-            run_command,
-            cwd=cwd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True,
-            bufsize=1,
-            shell=False,
-            close_fds=True,
-        )
+    with tempfile.TemporaryDirectory(prefix="meltano_job_") as tmp_project_dir:
+        for item in os.listdir(cwd):
+            s = os.path.join(cwd, item)
+            d = os.path.join(tmp_project_dir, item)
+            try:
+                if os.path.isdir(s):
+                    os.symlink(s, d, target_is_directory=True)
+                else:
+                    os.symlink(s, d)
+            except Exception as e:
+                if os.path.isdir(s):
+                    shutil.copytree(s, d, symlinks=True)
+                else:
+                    shutil.copy2(s, d)
+        env = os.environ.copy()
+        env["MELTANO_PROJECT_ROOT"] = tmp_project_dir
 
-        t_out = threading.Thread(
-            target=drain_stream, args=(process.stdout, stdout_log_path)
-        )
-        t_err = threading.Thread(
-            target=drain_stream, args=(process.stderr, stderr_log_path)
-        )
-        t_out.start()
-        t_err.start()
+        try:
+            with open(stdout_log_path, "w") as out, open(stderr_log_path, "w") as err:
+                process = subprocess.Popen(
+                    run_command,
+                    cwd=tmp_project_dir,
+                    stdout=out,
+                    stderr=err,
+                    shell=False,
+                    close_fds=True,
+                    env=env,
+                )
 
-        return_code = process.wait(timeout=TIMEOUT_SECONDS)
-        t_out.join()
-        t_err.join()
+                return_code = process.wait(timeout=TIMEOUT_SECONDS)
+                seconds_taken = time.monotonic() - start_time
 
-        seconds_taken = time.monotonic() - start_time
+                if return_code != 0:
+                    logging.error(
+                        f"Command {' '.join(run_command)} failed with return code {return_code}. \n "
+                        f"Subprocess took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes, "
+                        f"{round(seconds_taken / 3600, 2)} hours) to fail.\n"
+                        f"Full STDOUT in: {stdout_log_path}\n"
+                        f"Full STDERR in: {stderr_log_path}"
+                    )
+                    raise subprocess.CalledProcessError(
+                        return_code,
+                        run_command,
+                        output=f"Output in {stdout_log_path}",
+                        stderr=f"Errors in {stderr_log_path}",
+                    )
 
-        if return_code != 0:
+                logging.info(
+                    f"Command {' '.join(run_command)} completed successfully with return code {return_code}. \n"
+                    f"Subprocess took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes,"
+                    f"{round(seconds_taken / 3600, 2)} hours) to succeed.\n"
+                    f"Full STDOUT in: {stdout_log_path}\n"
+                    f"Full STDERR in: {stderr_log_path}"
+                )
+                return SimpleCompletedProcess(return_code)
+
+        except subprocess.TimeoutExpired as e:
+            seconds_taken = time.monotonic() - start_time
             logging.error(
-                f"Command {' '.join(run_command)} failed with return code {return_code}. \n "
-                f"Subprocess took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes, "
-                f"{round(seconds_taken / 3600, 2)} hours) to fail.\n"
-                f"Full STDOUT in: {stdout_log_path}\n"
-                f"Full STDERR in: {stderr_log_path}"
+                f"Command {' '.join(run_command)} timed out after {round(seconds_taken, 2)} seconds. "
+                f"Full logs in: {stdout_log_path} and {stderr_log_path}"
             )
-            raise subprocess.CalledProcessError(
-                return_code,
-                run_command,
-                output=f"Output in {stdout_log_path}",
-                stderr=f"Errors in {stderr_log_path}",
+            if process and process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
+            raise e
+
+        except FileNotFoundError as e:
+            logging.error(
+                f"Command not found: '{run_command[0]}'. Please ensure it's in your system's PATH. Error: {e}"
             )
+            raise e
 
-        logging.info(
-            f"Command {' '.join(run_command)} completed successfully with return code {return_code}. \n"
-            f"Subprocess took {round(seconds_taken, 2)} seconds ({round(seconds_taken / 60, 2)} minutes,"
-            f"{round(seconds_taken / 3600, 2)} hours) to succeed.\n"
-            f"Full STDOUT in: {stdout_log_path}\n"
-            f"Full STDERR in: {stderr_log_path}"
-        )
-        return SimpleCompletedProcess(return_code)
-
-    except subprocess.TimeoutExpired as e:
-        seconds_taken = time.monotonic() - start_time
-        logging.error(
-            f"Command {' '.join(run_command)} timed out after {round(seconds_taken, 2)} seconds. "
-            f"Full logs in: {stdout_log_path} and {stderr_log_path}"
-        )
-        if process and process.poll() is None:
-            process.kill()
-            process.wait(timeout=5)
-        raise e
-
-    except FileNotFoundError as e:
-        logging.error(
-            f"Command not found: '{run_command[0]}'. Please ensure it's in your system's PATH. Error: {e}"
-        )
-        raise e
-
-    except Exception as e:
-        seconds_taken = time.monotonic() - start_time
-        logging.error(
-            f"An unexpected error occurred while executing command {' '.join(run_command)}: {e}. "
-            f"Time elapsed: {round(seconds_taken, 2)} seconds."
-        )
-        if process and process.poll() is None:
-            process.kill()
-            process.wait(timeout=5)
-        raise e
+        except Exception as e:
+            seconds_taken = time.monotonic() - start_time
+            logging.error(
+                f"An unexpected error occurred while executing command {' '.join(run_command)}: {e}. "
+                f"Time elapsed: {round(seconds_taken, 2)} seconds."
+            )
+            if process and process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
+            raise e
 
 
 def run_meltano_task(run_command, cwd, concurrency_semaphore=None, return_queue=None):
