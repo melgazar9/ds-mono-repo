@@ -83,28 +83,28 @@ TIMESERIES_TABLES = {
         "7 days",
         16,
     ),
-    "stock_sma": (
+    "sma": (
         ["timestamp", "ticker", "indicator", "series_window_timespan"],
         "timestamp",
         "3 days",
         "21 days",
         8,
     ),
-    "stock_ema": (
+    "ema": (
         ["timestamp", "ticker", "indicator", "series_window_timespan"],
         "timestamp",
         "3 days",
         "21 days",
         8,
     ),
-    "stock_macd": (
+    "macd": (
         ["timestamp", "ticker", "indicator", "series_window_timespan"],
         "timestamp",
         "3 days",
         "21 days",
         8,
     ),
-    "stock_rsi": (
+    "rsi": (
         ["timestamp", "ticker", "indicator", "series_window_timespan"],
         "timestamp",
         "3 days",
@@ -284,10 +284,10 @@ DDL_MAP = {
     "top_market_movers": TOP_MARKET_MOVERS_DDL,
     "stock_trades": STOCK_TRADES_DDL,
     "stock_quotes": STOCK_QUOTES_DDL,
-    "stock_sma": INDICATOR_DDL,
-    "stock_ema": INDICATOR_DDL,
-    "stock_macd": INDICATOR_DDL,
-    "stock_rsi": INDICATOR_DDL,
+    "sma": INDICATOR_DDL,
+    "ema": INDICATOR_DDL,
+    "macd": INDICATOR_DDL,
+    "rsi": INDICATOR_DDL,
     "short_interest": SHORT_INTEREST_DDL,
     "short_volume": SHORT_VOLUME_DDL,
 }
