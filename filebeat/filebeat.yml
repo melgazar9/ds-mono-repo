@@ -7,13 +7,13 @@ filebeat.inputs:
   paths:
     - /app/logs/**/*.log
   fields:
-    meltano_service: "financial_elt"
+    meltano-service: "financial-elt"
   fields_under_root: true
   processors:
     - rename:
         fields:
           - from: "service"
-            to: "meltano_service"
+            to: "meltano-service"
         ignore_missing: true
 
 - type: container
@@ -30,7 +30,7 @@ filebeat.inputs:
           not:
             or:
               - contains:
-                  container.name: "financial_elt"
+                  container.name: "financial-elt-"
     - rename:
         fields:
           - from: "log"

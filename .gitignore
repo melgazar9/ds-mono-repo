@@ -48,3 +48,9 @@ catboost_info/
 # Override ignore rule for example config
 !**/config_example.ini
 
+share/
+CACHEDIR.TAG
+bin/
+etc/
+lib/
+pyvenv.cfg

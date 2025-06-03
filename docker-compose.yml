@@ -9,9 +9,9 @@ volumes:
   logs:  # Shared log volume
 
 services:
-  elasticsearch:
+  elasticsearch-${ENVIRONMENT}:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
-    container_name: elasticsearch
+    container_name: elasticsearch-${ENVIRONMENT}
     platform: linux/amd64
     environment:
       - discovery.type=single-node
@@ -28,12 +28,12 @@ services:
     env_file:
       - .env
 
-  kibana:
+  kibana-${ENVIRONMENT}:
     image: docker.elastic.co/kibana/kibana:8.13.4
-    container_name: kibana
+    container_name: kibana-${ENVIRONMENT}
     platform: linux/amd64
     environment:
-      - ELASTICSEARCH_HOSTS=["http://elasticsearch:9200"]
+      - ELASTICSEARCH_HOSTS=["http://elasticsearch-${ENVIRONMENT}:9200"]
     networks:
       - elastic
     ports:
@@ -41,19 +41,19 @@ services:
     volumes:
       - kibana_data:/usr/share/kibana/data
     depends_on:
-      - elasticsearch
+      - elasticsearch-${ENVIRONMENT}
     env_file:
       - .env
 
-  filebeat:
+  filebeat-${ENVIRONMENT}:
     image: docker.elastic.co/beats/filebeat:8.12.0
     user: root
-    container_name: filebeat
+    container_name: filebeat-${ENVIRONMENT}
     platform: linux/amd64
     networks:
       - elastic
     depends_on:
-      - elasticsearch
+      - elasticsearch-${ENVIRONMENT}
     volumes:
       - filebeat_data:/usr/share/filebeat/data
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
@@ -62,15 +62,15 @@ services:
       - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
       - ./filebeat/filebeat-5d-policy.json:/usr/share/filebeat/filebeat-5d-policy.json:ro
     environment:
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_HOSTS=http://elasticsearch-{ENVIRONMENT}:9200
 
-  financial_elt:
+  financial-elt-${ENVIRONMENT}:
     build:
-      context: ./projects/financial_elt/
+      context: ./projects/financial-elt/
       dockerfile: Dockerfile
       args:
         CI: "true"
-    container_name: financial_elt
+    container_name: financial-elt-${ENVIRONMENT}
     platform: linux/amd64
     networks:
       - elastic
@@ -78,7 +78,7 @@ services:
       - .env
     volumes:
       - logs:/app/logs  # App writes logs here
-      - ./projects/financial_elt/tap-polygon/output:/app/tap-polygon/output
+      - ./projects/financial-elt/tap-polygon/output:/app/tap-polygon/output
     logging:
       driver: "json-file"
       options:

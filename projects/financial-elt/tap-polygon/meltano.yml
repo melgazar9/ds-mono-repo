@@ -54,25 +54,24 @@ plugins:
       - ticker_details.*
       - ticker_types.*
       - related_companies.*
-      - bars_1_second.*
-      - bars_30_second.*
-      - bars_1_minute.*
-      - bars_5_minute.*
-      - bars_30_minute.*
-      - bars_1_hour.*
-      - bars_1_day.*
-      - bars_1_week.*
-      - bars_1_month.*
+      - stock_bars_1_second.*
+      - stock_bars_30_second.*
+      - stock_bars_1_minute.*
+      - stock_bars_5_minute.*
+      - stock_bars_30_minute.*
+      - stock_bars_1_hour.*
+      - stock_bars_1_day.*
+      - stock_bars_1_week.*
+      - stock_bars_1_month.*
       - daily_market_summary.*
       - daily_ticker_summary.*
       - previous_day_bar.*
       - top_market_movers.*
-      - trades.*
-      - quotes.*
-      - sma.*
-      - ema.*
-      - macd.*
-      - rsi.*
+      - stock_trades.*
+      - stock_sma.*
+      - stock_ema.*
+      - stock_macd.*
+      - stock_rsi.*
       - exchanges.*
       - market_holidays.*
       - market_status.*
@@ -106,7 +105,7 @@ plugins:
         other_params:
           loop_over_dates_gte_date: true
 
-      bars_1_second:
+      stock_bars_1_second:
         path_params:
           multiplier: 1
           timespan: "second"
@@ -116,7 +115,7 @@ plugins:
           sort: "asc"
           limit: 50000
 
-      bars_30_second:
+      stock_bars_30_second:
         path_params:
           multiplier: 30
           timespan: "second"
@@ -126,7 +125,7 @@ plugins:
           sort: "asc"
           limit: 50000
 
-      bars_1_minute:
+      stock_bars_1_minute:
         path_params:
           multiplier: 1
           timespan: "minute"
@@ -136,7 +135,7 @@ plugins:
           sort: "asc"
           limit: 50000
 
-      bars_5_minute:
+      stock_bars_5_minute:
         path_params:
           multiplier: 5
           timespan: "minute"
@@ -146,7 +145,7 @@ plugins:
           sort: "asc"
           limit: 50000
 
-      bars_30_minute:
+      stock_bars_30_minute:
         path_params:
           multiplier: 30
           timespan: "minute"
@@ -156,7 +155,7 @@ plugins:
           sort: "asc"
           limit: 50000
 
-      bars_1_hour:
+      stock_bars_1_hour:
         path_params:
           multiplier: 1
           timespan: "hour"
@@ -166,7 +165,7 @@ plugins:
           sort: "asc"
           limit: 50000
 
-      bars_1_day:
+      stock_bars_1_day:
         path_params:
           multiplier: 1
           timespan: "day"
@@ -176,7 +175,7 @@ plugins:
           sort: "asc"
           limit: 50000
 
-      bars_1_week:
+      stock_bars_1_week:
         path_params:
           multiplier: 1
           timespan: "week"
@@ -186,7 +185,7 @@ plugins:
           sort: "asc"
           limit: 50000
 
-      bars_1_month:
+      stock_bars_1_month:
         path_params:
           multiplier: 1
           timespan: "month"
@@ -215,13 +214,13 @@ plugins:
         query_params:
           direction: "gainers"  # set to "" or "both" to get both directions
           include_otc: false
-      trades:
+      stock_trades:
         query_params:
           sort: timestamp
           order: "asc"
           timestamp__gte: "2015-06-01"
           limit: 50000
-      sma:
+      stock_sma:
         query_params:
           timestamp__gte: "2015-06-01"
           order: "asc"
@@ -230,7 +229,7 @@ plugins:
           series_type: close
           expand_underlying: true
           limit: 5000
-      ema:
+      stock_ema:
         query_params:
           timestamp__gte: "2015-06-01"
           order: "asc"
@@ -239,7 +238,7 @@ plugins:
           series_type: close
           expand_underlying: true
           limit: 5000
-      macd:
+      stock_macd:
         query_params:
           timestamp__gte: "2015-06-01"
           order: "asc"
@@ -250,7 +249,7 @@ plugins:
           series_type: close
           expand_underlying: true
           limit: 5000
-      rsi:
+      stock_rsi:
         query_params:
           timestamp__gte: "2015-06-01"
           order: "asc"
@@ -323,4 +322,4 @@ plugins:
       destination_path: output/parquets
       compression_method: zstd
       max_pyarrow_table_size: 5500
-      max_batch_size: 100000
+      max_batch_size: 10000

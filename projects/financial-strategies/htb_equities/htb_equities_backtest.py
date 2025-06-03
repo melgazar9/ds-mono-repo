@@ -18,6 +18,8 @@ pd.set_option("future.no_silent_downcasting", True)
 # The goal is to essentially data mine specific types of <stocks> that optimizes entry and exit points for an intraday
 # trading strategy. Aside from pure data mining, there should be fundamental reasons for sustainable profitability.
 
+### Steps ###
+
 # 1. Set a starting bankroll
 # 2. Set a fixed bet amount per trade
 # 3. Set a fixed dollar stop-loss amount
@@ -46,6 +48,9 @@ pd.set_option("future.no_silent_downcasting", True)
 # For testing, we can do it from scratch or use an open sourced tool like backtrader, zipline, or quantconnect.
 
 ### --- Global Configuration --- ###
+
+START_DATE = "2018-01-01"
+END_DATE = "2023-01-01"
 
 STARTING_BANKROLL = 100000
 BET_AMOUNT = 2000
