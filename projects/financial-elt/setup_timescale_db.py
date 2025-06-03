@@ -20,15 +20,15 @@ from ds_core.db_connectors import PostgresConnect  # noqa: E402
 # ==============================
 
 TIMESERIES_TABLES = {
-    "bars_1_second": (["timestamp", "ticker"], "timestamp", "1 day", "7 days", 8),
-    "bars_30_second": (["timestamp", "ticker"], "timestamp", "3 days", "14 days", 8),
-    "bars_1_minute": (["timestamp", "ticker"], "timestamp", "7 days", "30 days", 8),
-    "bars_5_minute": (["timestamp", "ticker"], "timestamp", "21 days", "60 days", 8),
-    "bars_30_minute": (["timestamp", "ticker"], "timestamp", "30 days", "90 days", 8),
-    "bars_1_hour": (["timestamp", "ticker"], "timestamp", "30 days", "90 days", 8),
-    "bars_1_day": (["timestamp", "ticker"], "timestamp", "90 days", "365 days", 8),
-    "bars_1_week": (["timestamp", "ticker"], "timestamp", "180 days", "730 days", 8),
-    "bars_1_month": (["timestamp", "ticker"], "timestamp", "1 year", "1095 days", 8),
+    "stock_bars_1_second": (["timestamp", "ticker"], "timestamp", "1 day", "7 days", 8),
+    "stock_bars_30_second": (["timestamp", "ticker"], "timestamp", "3 days", "14 days", 8),
+    "stock_bars_1_minute": (["timestamp", "ticker"], "timestamp", "7 days", "30 days", 8),
+    "stock_bars_5_minute": (["timestamp", "ticker"], "timestamp", "21 days", "60 days", 8),
+    "stock_bars_30_minute": (["timestamp", "ticker"], "timestamp", "30 days", "90 days", 8),
+    "stock_bars_1_hour": (["timestamp", "ticker"], "timestamp", "30 days", "90 days", 8),
+    "stock_bars_1_day": (["timestamp", "ticker"], "timestamp", "90 days", "365 days", 8),
+    "stock_bars_1_week": (["timestamp", "ticker"], "timestamp", "180 days", "730 days", 8),
+    "stock_bars_1_month": (["timestamp", "ticker"], "timestamp", "1 year", "1095 days", 8),
     "daily_market_summary": (
         ["timestamp", "ticker"],
         "timestamp",
@@ -39,36 +39,36 @@ TIMESERIES_TABLES = {
     "daily_ticker_summary": (["from", "symbol"], "from", "90 days", "365 days", 8),
     "previous_day_bar": (["timestamp", "ticker"], "timestamp", "90 days", "365 days", 8),
     "top_market_movers": (["updated", "ticker"], "updated", "90 days", "365 days", 8),
-    "trades": (["ticker", "exchange", "id"], "sip_timestamp", "1 day", "7 days", 16),
-    "quotes": (
+    "stock_trades": (["ticker", "exchange", "id"], "sip_timestamp", "1 day", "7 days", 16),
+    "stock_quotes": (
         ["ticker", "sip_timestamp", "sequence_number"],
         "sip_timestamp",
         "1 day",
         "7 days",
         16,
     ),
-    "sma": (
+    "stock_sma": (
         ["timestamp", "ticker", "indicator", "series_window_timespan"],
         "timestamp",
         "3 days",
         "21 days",
         8,
     ),
-    "ema": (
+    "stock_ema": (
         ["timestamp", "ticker", "indicator", "series_window_timespan"],
         "timestamp",
         "3 days",
         "21 days",
         8,
     ),
-    "macd": (
+    "stock_macd": (
         ["timestamp", "ticker", "indicator", "series_window_timespan"],
         "timestamp",
         "3 days",
         "21 days",
         8,
     ),
-    "rsi": (
+    "stock_rsi": (
         ["timestamp", "ticker", "indicator", "series_window_timespan"],
         "timestamp",
         "3 days",
@@ -88,7 +88,7 @@ TIMESERIES_TABLES = {
 # ==============================
 # DDL templates for hypertables
 # ==============================
-BAR_DDL = """
+STOCK_BAR_DDL = """
 CREATE TABLE IF NOT EXISTS {full_table} (
     timestamp TIMESTAMP NOT NULL,
     ticker TEXT NOT NULL,
@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS {full_table} (
 );
 """
 
-DAILY_MARKET_SUMMARY_DDL = BAR_DDL
+DAILY_MARKET_SUMMARY_DDL = STOCK_BAR_DDL
 
 DAILY_TICKER_SUMMARY_DDL = """
 CREATE TABLE IF NOT EXISTS {full_table} (
@@ -123,7 +123,7 @@ CREATE TABLE IF NOT EXISTS {full_table} (
 );
 """
 
-PREVIOUS_DAY_BAR_DDL = BAR_DDL
+PREVIOUS_DAY_STOCK_BAR_DDL = STOCK_BAR_DDL
 
 TOP_MARKET_MOVERS_DDL = """
 CREATE TABLE IF NOT EXISTS {full_table} (
@@ -141,7 +141,7 @@ CREATE TABLE IF NOT EXISTS {full_table} (
 );
 """
 
-TRADES_DDL = """
+STOCK_TRADES_DDL = """
 CREATE TABLE IF NOT EXISTS {full_table} (
     ticker TEXT NOT NULL,
     exchange INTEGER NOT NULL,
@@ -160,7 +160,7 @@ CREATE TABLE IF NOT EXISTS {full_table} (
 );
 """
 
-QUOTES_DDL = """
+STOCK_QUOTES_DDL = """
 CREATE TABLE IF NOT EXISTS {full_table} (
     ticker TEXT NOT NULL,
     sip_timestamp TIMESTAMP NOT NULL,
@@ -233,25 +233,25 @@ CREATE TABLE IF NOT EXISTS {full_table} (
 """
 
 DDL_MAP = {
-    "bars_1_second": BAR_DDL,
-    "bars_30_second": BAR_DDL,
-    "bars_1_minute": BAR_DDL,
-    "bars_5_minute": BAR_DDL,
-    "bars_30_minute": BAR_DDL,
-    "bars_1_hour": BAR_DDL,
-    "bars_1_day": BAR_DDL,
-    "bars_1_week": BAR_DDL,
-    "bars_1_month": BAR_DDL,
+    "stock_bars_1_second": STOCK_BAR_DDL,
+    "stock_bars_30_second": STOCK_BAR_DDL,
+    "stock_bars_1_minute": STOCK_BAR_DDL,
+    "stock_bars_5_minute": STOCK_BAR_DDL,
+    "stock_bars_30_minute": STOCK_BAR_DDL,
+    "stock_bars_1_hour": STOCK_BAR_DDL,
+    "stock_bars_1_day": STOCK_BAR_DDL,
+    "stock_bars_1_week": STOCK_BAR_DDL,
+    "stock_bars_1_month": STOCK_BAR_DDL,
     "daily_market_summary": DAILY_MARKET_SUMMARY_DDL,
     "daily_ticker_summary": DAILY_TICKER_SUMMARY_DDL,
-    "previous_day_bar": PREVIOUS_DAY_BAR_DDL,
+    "previous_day_bar": PREVIOUS_DAY_STOCK_BAR_DDL,
     "top_market_movers": TOP_MARKET_MOVERS_DDL,
-    "trades": TRADES_DDL,
-    "quotes": QUOTES_DDL,
-    "sma": INDICATOR_DDL,
-    "ema": INDICATOR_DDL,
-    "macd": INDICATOR_DDL,
-    "rsi": INDICATOR_DDL,
+    "stock_trades": STOCK_TRADES_DDL,
+    "stock_quotes": STOCK_QUOTES_DDL,
+    "stock_sma": INDICATOR_DDL,
+    "stock_ema": INDICATOR_DDL,
+    "stock_macd": INDICATOR_DDL,
+    "stock_rsi": INDICATOR_DDL,
     "short_interest": SHORT_INTEREST_DDL,
     "short_volume": SHORT_VOLUME_DDL,
 }
