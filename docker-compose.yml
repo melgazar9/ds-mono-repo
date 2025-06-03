@@ -6,10 +6,10 @@ volumes:
   elasticsearch_data:
   kibana_data:
   filebeat_data:
-  logs:  # Shared log volume
+  logs:
 
 services:
-  elasticsearch-${ENVIRONMENT}:
+  elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
     container_name: elasticsearch-${ENVIRONMENT}
     platform: linux/amd64
@@ -17,7 +17,6 @@ services:
       - discovery.type=single-node
       - xpack.security.enabled=false # TODO: add pw for security purposes
       # - ELASTIC_PASSWORD=<password>
-
     networks:
       - elastic
     ports:
@@ -28,7 +27,7 @@ services:
     env_file:
       - .env
 
-  kibana-${ENVIRONMENT}:
+  kibana:
     image: docker.elastic.co/kibana/kibana:8.13.4
     container_name: kibana-${ENVIRONMENT}
     platform: linux/amd64
@@ -41,11 +40,11 @@ services:
     volumes:
       - kibana_data:/usr/share/kibana/data
     depends_on:
-      - elasticsearch-${ENVIRONMENT}
+      - elasticsearch
     env_file:
       - .env
 
-  filebeat-${ENVIRONMENT}:
+  filebeat:
     image: docker.elastic.co/beats/filebeat:8.12.0
     user: root
     container_name: filebeat-${ENVIRONMENT}
@@ -53,18 +52,20 @@ services:
     networks:
       - elastic
     depends_on:
-      - elasticsearch-${ENVIRONMENT}
+      - elasticsearch
     volumes:
       - filebeat_data:/usr/share/filebeat/data
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - logs:/app/logs:ro  # Shared log volume for app logs
+      - logs:/app/logs:ro
       - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
       - ./filebeat/filebeat-5d-policy.json:/usr/share/filebeat/filebeat-5d-policy.json:ro
     environment:
-      - ELASTICSEARCH_HOSTS=http://elasticsearch-{ENVIRONMENT}:9200
+      - ELASTICSEARCH_HOSTS=http://elasticsearch-${ENVIRONMENT}:9200
+    env_file:
+      - .env
 
-  financial-elt-${ENVIRONMENT}:
+  financial-elt:
     build:
       context: ./projects/financial-elt/
       dockerfile: Dockerfile
@@ -77,14 +78,13 @@ services:
     env_file:
       - .env
     volumes:
-      - logs:/app/logs  # App writes logs here
+      - logs:/app/logs
       - ./projects/financial-elt/tap-polygon/output:/app/tap-polygon/output
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "5"
-    # increase ulimits to prevent deadlocks
     ulimits:
       nofile:
         soft: 65536
