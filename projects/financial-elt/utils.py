@@ -44,17 +44,39 @@ def get_task_chunks(num_tasks: int, tap_name):
         str(i)
         for i in cfg.get("plugins", {}).get("extractors", [{}])[0].get("select", [])
     ]
+    all_tables = set([i.split(".", 1)[0] for i in all_tasks])  # just base table names
 
-    # Gather all allowed tables for both targets for mismatch detection
+    db_env_var = f"{tap_name.upper().replace('-', '_')}_TARGET_DB_TABLES"
+    file_env_var = f"{tap_name.upper().replace('-', '_')}_TARGET_FILE_TABLES"
+    db_tables_raw = os.getenv(db_env_var, "").strip()
+    file_tables_raw = os.getenv(file_env_var, "").strip()
+
+    db_tables_set = set(x.strip() for x in db_tables_raw.split(",") if x.strip()) if db_tables_raw and db_tables_raw != "*" else None
+    file_tables_set = set(x.strip() for x in file_tables_raw.split(",") if x.strip()) if file_tables_raw and file_tables_raw != "*" else None
+
+    if db_tables_raw == "*" and file_tables_raw == "*":
+        raise ValueError("Both DB and FILE target tables are set to '*', cannot send all tables to both targets.")
+
     allowed_tables_by_target = {}
-    for target_type in ["file", "db"]:
-        env_var = (
-            f"{tap_name.upper().replace('-', '_')}_TARGET_{target_type.upper()}_TABLES"
+
+    if db_tables_raw == "*":
+        # Assign all tables except those explicitly assigned to file
+        allowed_tables_by_target["db"] = all_tables - (file_tables_set or set())
+    else:
+        allowed_tables_by_target["db"] = db_tables_set or set()
+
+    if file_tables_raw == "*":
+        # Assign all tables except those explicitly assigned to db
+        allowed_tables_by_target["file"] = all_tables - (db_tables_set or set())
+    else:
+        allowed_tables_by_target["file"] = file_tables_set or set()
+
+    # Check for overlaps
+    overlap = allowed_tables_by_target["file"] & allowed_tables_by_target["db"]
+    if overlap:
+        raise ValueError(
+            f"These tables are assigned to both file and db targets: {sorted(overlap)}"
         )
-        allowed_tables = [
-            x.strip() for x in os.getenv(env_var, "").split(",") if x.strip()
-        ]
-        allowed_tables_by_target[target_type] = set(allowed_tables)
 
     tasks_set = set(all_tasks)
     for target_type, env_tables in allowed_tables_by_target.items():
