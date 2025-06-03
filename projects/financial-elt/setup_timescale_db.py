@@ -21,14 +21,44 @@ from ds_core.db_connectors import PostgresConnect  # noqa: E402
 
 TIMESERIES_TABLES = {
     "stock_bars_1_second": (["timestamp", "ticker"], "timestamp", "1 day", "7 days", 8),
-    "stock_bars_30_second": (["timestamp", "ticker"], "timestamp", "3 days", "14 days", 8),
+    "stock_bars_30_second": (
+        ["timestamp", "ticker"],
+        "timestamp",
+        "3 days",
+        "14 days",
+        8,
+    ),
     "stock_bars_1_minute": (["timestamp", "ticker"], "timestamp", "7 days", "30 days", 8),
-    "stock_bars_5_minute": (["timestamp", "ticker"], "timestamp", "21 days", "60 days", 8),
-    "stock_bars_30_minute": (["timestamp", "ticker"], "timestamp", "30 days", "90 days", 8),
+    "stock_bars_5_minute": (
+        ["timestamp", "ticker"],
+        "timestamp",
+        "21 days",
+        "60 days",
+        8,
+    ),
+    "stock_bars_30_minute": (
+        ["timestamp", "ticker"],
+        "timestamp",
+        "30 days",
+        "90 days",
+        8,
+    ),
     "stock_bars_1_hour": (["timestamp", "ticker"], "timestamp", "30 days", "90 days", 8),
     "stock_bars_1_day": (["timestamp", "ticker"], "timestamp", "90 days", "365 days", 8),
-    "stock_bars_1_week": (["timestamp", "ticker"], "timestamp", "180 days", "730 days", 8),
-    "stock_bars_1_month": (["timestamp", "ticker"], "timestamp", "1 year", "1095 days", 8),
+    "stock_bars_1_week": (
+        ["timestamp", "ticker"],
+        "timestamp",
+        "180 days",
+        "730 days",
+        8,
+    ),
+    "stock_bars_1_month": (
+        ["timestamp", "ticker"],
+        "timestamp",
+        "1 year",
+        "1095 days",
+        8,
+    ),
     "daily_market_summary": (
         ["timestamp", "ticker"],
         "timestamp",
@@ -39,7 +69,13 @@ TIMESERIES_TABLES = {
     "daily_ticker_summary": (["from", "symbol"], "from", "90 days", "365 days", 8),
     "previous_day_bar": (["timestamp", "ticker"], "timestamp", "90 days", "365 days", 8),
     "top_market_movers": (["updated", "ticker"], "updated", "90 days", "365 days", 8),
-    "stock_trades": (["ticker", "exchange", "id"], "sip_timestamp", "1 day", "7 days", 16),
+    "stock_trades": (
+        ["ticker", "exchange", "id"],
+        "sip_timestamp",
+        "1 day",
+        "7 days",
+        16,
+    ),
     "stock_quotes": (
         ["ticker", "sip_timestamp", "sequence_number"],
         "sip_timestamp",
@@ -399,8 +435,6 @@ with PostgresConnect(database="financial_elt") as db:
     print(df)
 
 
-
-
 ##########################
 ###### tap-yfinance ######
 ##########################
@@ -408,18 +442,24 @@ with PostgresConnect(database="financial_elt") as db:
 
 YF_TIMESERIES_TABLES = {
     # Prices
-    "prices_1m":      (["timestamp", "ticker"], "timestamp", "7 days", "30 days", 8),
-    "prices_2m":      (["timestamp", "ticker"], "timestamp", "7 days", "30 days", 8),
-    "prices_5m":      (["timestamp", "ticker"], "timestamp", "21 days", "60 days", 8),
-    "prices_1h":      (["timestamp", "ticker"], "timestamp", "90 days", "365 days", 8),
-    "prices_1d":      (["timestamp", "ticker"], "timestamp", "365 days", "1095 days", 8),
+    "prices_1m": (["timestamp", "ticker"], "timestamp", "7 days", "30 days", 8),
+    "prices_2m": (["timestamp", "ticker"], "timestamp", "7 days", "30 days", 8),
+    "prices_5m": (["timestamp", "ticker"], "timestamp", "21 days", "60 days", 8),
+    "prices_1h": (["timestamp", "ticker"], "timestamp", "90 days", "365 days", 8),
+    "prices_1d": (["timestamp", "ticker"], "timestamp", "365 days", "1095 days", 8),
     # Corporate actions/events
-    "actions":        (["timestamp", "ticker"], "timestamp", "365 days", "1095 days", 4),
-    "dividends":      (["timestamp", "ticker"], "timestamp", "365 days", "1095 days", 4),
-    "splits":         (["timestamp", "ticker"], "timestamp", "365 days", "1095 days", 4),
+    "actions": (["timestamp", "ticker"], "timestamp", "365 days", "1095 days", 4),
+    "dividends": (["timestamp", "ticker"], "timestamp", "365 days", "1095 days", 4),
+    "splits": (["timestamp", "ticker"], "timestamp", "365 days", "1095 days", 4),
     # Earnings, news
     "earnings_dates": (["timestamp", "ticker"], "timestamp", "365 days", "1095 days", 2),
-    "news":           (["timestamp_extracted", "ticker"], "timestamp_extracted", "30 days", "180 days", 2),
+    "news": (
+        ["timestamp_extracted", "ticker"],
+        "timestamp_extracted",
+        "30 days",
+        "180 days",
+        2,
+    ),
 }
 
 YF_PRICE_DDL = """
@@ -529,11 +569,13 @@ YF_ADD_COMPRESSION_POLICY = """
 SELECT add_compression_policy('{full_table}', INTERVAL '{compress_interval}');
 """
 
+
 def get_segmentby_col(pk_cols, time_col):
     for col in pk_cols:
         if col != time_col:
             return col
     return pk_cols[0]
+
 
 with PostgresConnect(database="financial_elt") as db:
     db.con = db.con.execution_options(isolation_level="AUTOCOMMIT")
@@ -598,7 +640,7 @@ with PostgresConnect(database="financial_elt") as db:
     print("\nHypertables in database (basic):")
     df = safe_run_sql(
         db,
-        f"""
+        """
         SELECT hypertable_schema, hypertable_name, num_dimensions, num_chunks, compression_enabled
         FROM timescaledb_information.hypertables ORDER BY hypertable_schema, hypertable_name;
         """,
@@ -608,7 +650,7 @@ with PostgresConnect(database="financial_elt") as db:
     print("\nHypertable chunk intervals (time dimension):")
     df = safe_run_sql(
         db,
-        f"""
+        """
         SELECT
           h.hypertable_schema,
           h.hypertable_name,

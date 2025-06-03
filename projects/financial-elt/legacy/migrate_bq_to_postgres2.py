@@ -390,7 +390,8 @@ def delete_local_files(local_file_paths: list):
             os.remove(local_path)
         except Exception as e:
             print(
-                f"⚠️ Warning: Error deleting local file {local_path}: {e}", file=sys.stderr
+                f"⚠️ Warning: Error deleting local file {local_path}: {e}",
+                file=sys.stderr,
             )
     print("Local file deletion complete.")
 

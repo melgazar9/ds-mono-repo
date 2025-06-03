@@ -1,16 +1,17 @@
 import logging
 import multiprocessing as mp
 import os
+import queue
+import shutil
 import subprocess
 import sys
-import threading
+import tempfile
 import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from datetime import datetime
 from functools import lru_cache
 from glob import glob
-from queue import Empty, Full, Queue
-import tempfile
+
 import yaml
 
 ENVIRONMENT = os.getenv("ENVIRONMENT")
@@ -174,7 +175,7 @@ def run_process_task(run_commands, cwd, concurrency_semaphore):
             )
             cmd_return_codes[str(command)] = return_code
             num_finished += 1
-        except Empty:
+        except queue.Empty:
             pass
 
         for process in processes:
@@ -373,7 +374,7 @@ def execute_command_stg(run_command, cwd):
                     os.symlink(s, d, target_is_directory=True)
                 else:
                     os.symlink(s, d)
-            except Exception as e:
+            except Exception:
                 if os.path.isdir(s):
                     shutil.copytree(s, d, symlinks=True)
                 else:

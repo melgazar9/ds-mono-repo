@@ -44,31 +44,12 @@ plugins:
         - stream-maps
 
       select:
-        - stock_tickers.*
-        - futures_tickers.*
-        - forex_tickers.*
-        - crypto_tickers.*
-        - crypto_tickers_top_250.*
-        - stock_prices_1m.*
-        - futures_prices_1m.*
-        - forex_prices_1m.*
-        - crypto_prices_1m.*
-        - stock_prices_2m.*
-        - futures_prices_2m.*
-        - forex_prices_2m.*
-        - crypto_prices_2m.*
-        - stock_prices_5m.*
-        - futures_prices_5m.*
-        - forex_prices_5m.*
-        - crypto_prices_5m.*
-        - stock_prices_1h.*
-        - futures_prices_1h.*
-        - forex_prices_1h.*
-        - crypto_prices_1h.*
-        - stock_prices_1d.*
-        - futures_prices_1d.*
-        - forex_prices_1d.*
-        - crypto_prices_1d.*
+        - all_tickers.*
+        - prices_1m.*
+        - prices_2m.*
+        - prices_5m.*
+        - prices_1h.*
+        - prices_1d.*
         - actions.*
         - analyst_price_targets.*
         - balance_sheet.*
@@ -98,6 +79,7 @@ plugins:
         - recommendations_summary.*
         - revenue_estimate.*
         - sec_filings.*
+        - sec_tickers.*
         - shares_full.*
         - splits.*
         - sustainability.*
@@ -111,6 +93,13 @@ plugins:
         - quarterly_financials.*
         - quarterly_income_stmt.*
         - upgrades_downgrades.*
+        - private_companies_tickers.*
+        - etf_tickers.*
+        - bonds_tickers.*
+        - mutual_fund_tickers.*
+        - world_indices_tickers.*
+        - sectors.*
+        - stock_tickers_pts.*
 
       config:
         default_start_date: "1950-01-01"
@@ -118,6 +107,8 @@ plugins:
 
         ### tickers ###
 
+        all_tickers:
+          tickers: "*"
         stock_tickers:
           tickers: "*"
         futures_tickers:
@@ -130,6 +121,27 @@ plugins:
           tickers: "*"
 
         ### prices ###
+
+        prices_1m:
+          tickers: "*"
+          yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+          prices_2m:
+            tickers: "*"
+            yf_params: { "interval": 2m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+          prices_5m:
+            tickers: "*"
+            yf_params: { "interval": 5m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+          prices_1h:
+            tickers: "*"
+            yf_params: { "interval": 1h, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+          prices_1d:
+            tickers: "*"
+            yf_params: { "interval": 1d, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
 
         stock_prices_1m:
           tickers: "*"
@@ -363,25 +375,6 @@ plugins:
 
 
       metadata:
-
-        ### tickers ###
-
-        stock_tickers:
-          replication-method: INCREMENTAL
-          replication-key: ticker
-        futures_tickers:
-          replication-method: INCREMENTAL
-          replication-key: ticker
-        forex_tickers:
-          replication-method: INCREMENTAL
-          replication-key: ticker
-        crypto_tickers:
-          replication-method: INCREMENTAL
-          replication-key: ticker
-        crypto_tickers_top_250:
-          replication-method: INCREMENTAL
-          replication-key: ticker
-
 
         ### prices ###
 
@@ -638,28 +631,3 @@ plugins:
     - name: target-jsonl
       variant: andyh1203
       pip_url: target-jsonl
-
-    #- name: target-bigquery
-    #  variant: z3z1ma
-    #  pip_url: git+https://github.com/z3z1ma/target-bigquery.git@9d1d0b08606a716a5a36f53b3388cbd6055535a8
-    #  config:
-    #    method: ${TARGET_BIGQUERY_METHOD}
-    #    project: ${GCP_PROJECT_ID}
-    #    credentials_path: ${GOOGLE_APPLICATION_CREDENTIALS}
-    #    dataset: ${GCP_DATASET}
-    #    batch_size: ${TARGET_BIGQUERY_BATCH_SIZE}
-    #    denormalized: true
-    #    bucket: ${GCP_BUCKET_NAME}
-
-    #    - name: target-snowflake
-    #      variant: meltanolabs
-    #      pip_url: git+https://github.com/MeltanoLabs/target-snowflake.git
-    #      config:
-    #        account: ${SNOWFLAKE_ACCOUNT}
-    #        user: MELTANO
-    #        password: ${SNOWFLAKE_PASSWORD}
-    #        warehouse: ${SNOWFLAKE_WAREHOUSE}
-    #        database: MELTANO
-    #        role: MELTANO
-    #        file_format: CSV_FORMAT
-    #        batch_size_rows: ${SNOWFLAKE_BATCH_SIZE_ROWS}

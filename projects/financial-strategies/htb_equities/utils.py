@@ -2,6 +2,7 @@ import pandas as pd
 
 from ds_core.db_connectors import PostgresConnect
 
+
 def pull_and_clean_data() -> pd.DataFrame:
     """
     Pulls data from polygon flat files 1-min bars --> returns a pandas df with adjusted OHLCV.
