@@ -55,10 +55,8 @@ plugins:
       - ticker_types.*
       - related_companies.*
       - stock_bars_1_second.*
-      - stock_bars_30_second.*
       - stock_bars_1_minute.*
       - stock_bars_5_minute.*
-      - stock_bars_30_minute.*
       - stock_bars_1_hour.*
       - stock_bars_1_day.*
       - stock_bars_1_week.*
@@ -68,10 +66,10 @@ plugins:
       - previous_day_bar.*
       - top_market_movers.*
       - stock_trades.*
-      - stock_sma.*
-      - stock_ema.*
-      - stock_macd.*
-      - stock_rsi.*
+      - sma.*
+      - ema.*
+      - macd.*
+      - rsi.*
       - exchanges.*
       - market_holidays.*
       - market_status.*
@@ -220,7 +218,7 @@ plugins:
           order: "asc"
           timestamp__gte: "2015-06-01"
           limit: 50000
-      stock_sma:
+      sma:
         query_params:
           timestamp__gte: "2015-06-01"
           order: "asc"
@@ -229,7 +227,7 @@ plugins:
           series_type: close
           expand_underlying: true
           limit: 5000
-      stock_ema:
+      ema:
         query_params:
           timestamp__gte: "2015-06-01"
           order: "asc"
@@ -238,7 +236,7 @@ plugins:
           series_type: close
           expand_underlying: true
           limit: 5000
-      stock_macd:
+      macd:
         query_params:
           timestamp__gte: "2015-06-01"
           order: "asc"
@@ -249,7 +247,7 @@ plugins:
           series_type: close
           expand_underlying: true
           limit: 5000
-      stock_rsi:
+      rsi:
         query_params:
           timestamp__gte: "2015-06-01"
           order: "asc"
