@@ -65,18 +65,47 @@ services:
     env_file:
       - .env
 
-  financial-elt:
+  tap-yfinance:
     build:
       context: ./projects/financial-elt/
       dockerfile: Dockerfile
       args:
         CI: "true"
-    container_name: financial-elt-${ENVIRONMENT}
+    container_name: tap-yfinance-${ENVIRONMENT}
     platform: linux/amd64
     networks:
       - elastic
     env_file:
       - .env
+    environment:
+      - FINANCIAL_ELT_TAPS_TO_RUN=tap-yfinance
+    volumes:
+      - logs:/app/logs
+      - ./projects/financial-elt/tap-yfinance/output:/app/tap-yfinance/output
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
+  tap-polygon:
+    build:
+      context: ./projects/financial-elt/
+      dockerfile: Dockerfile
+      args:
+        CI: "true"
+    container_name: tap-polygon-${ENVIRONMENT}
+    platform: linux/amd64
+    networks:
+      - elastic
+    env_file:
+      - .env
+    environment:
+      - FINANCIAL_ELT_TAPS_TO_RUN=tap-polygon
     volumes:
       - logs:/app/logs
       - ./projects/financial-elt/tap-polygon/output:/app/tap-polygon/output

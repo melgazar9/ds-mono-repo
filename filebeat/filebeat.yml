@@ -30,7 +30,9 @@ filebeat.inputs:
           not:
             or:
               - contains:
-                  container.name: "financial-elt-"
+                  container.name: "tap-yfinance-"
+              - contains:
+                  container.name: "tap-polygon-"
     - rename:
         fields:
           - from: "log"
