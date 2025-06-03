@@ -19,7 +19,7 @@ if ENVIRONMENT is None:
     raise ValueError(
         "Environment variable ENVIRONMENT is not set. Please set it to 'dev', 'staging', or 'production'."
     )
-TIMEOUT_SECONDS = 43200  # 12 hours
+TIMEOUT_SECONDS = 777600  # 9 days just for safety, but should not be needed... set this high because of the first stream
 
 
 def ensure_dir(path):
@@ -51,11 +51,21 @@ def get_task_chunks(num_tasks: int, tap_name):
     db_tables_raw = os.getenv(db_env_var, "").strip()
     file_tables_raw = os.getenv(file_env_var, "").strip()
 
-    db_tables_set = set(x.strip() for x in db_tables_raw.split(",") if x.strip()) if db_tables_raw and db_tables_raw != "*" else None
-    file_tables_set = set(x.strip() for x in file_tables_raw.split(",") if x.strip()) if file_tables_raw and file_tables_raw != "*" else None
+    db_tables_set = (
+        set(x.strip() for x in db_tables_raw.split(",") if x.strip())
+        if db_tables_raw and db_tables_raw != "*"
+        else None
+    )
+    file_tables_set = (
+        set(x.strip() for x in file_tables_raw.split(",") if x.strip())
+        if file_tables_raw and file_tables_raw != "*"
+        else None
+    )
 
     if db_tables_raw == "*" and file_tables_raw == "*":
-        raise ValueError("Both DB and FILE target tables are set to '*', cannot send all tables to both targets.")
+        raise ValueError(
+            "Both DB and FILE target tables are set to '*', cannot send all tables to both targets."
+        )
 
     allowed_tables_by_target = {}
 
@@ -451,7 +461,7 @@ def execute_command_stg(run_command, cwd):
             )
             if process and process.poll() is None:
                 process.kill()
-                process.wait(timeout=5)
+                process.wait(timeout=60)
             raise e
 
         except FileNotFoundError as e:
@@ -468,7 +478,7 @@ def execute_command_stg(run_command, cwd):
             )
             if process and process.poll() is None:
                 process.kill()
-                process.wait(timeout=5)
+                process.wait(timeout=60)
             raise e
 
 
@@ -504,7 +514,7 @@ def run_meltano_task(run_command, cwd, concurrency_semaphore=None, return_queue=
 
     if return_queue:
         try:
-            return_queue.put((run_command, return_code), timeout=5)
+            return_queue.put((run_command, return_code), timeout=60)
         except Exception as e:
             logging.error(
                 f"Failed to put result in queue for {' '.join(run_command)}: {e}"

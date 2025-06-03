@@ -627,6 +627,7 @@ plugins:
         database: financial_elt
         use_copy: true    # Faster bulk loading
         add_record_metadata: true
+        load_method: upsert
 
     - name: target-jsonl
       variant: andyh1203
