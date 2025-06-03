@@ -20,39 +20,39 @@ from ds_core.db_connectors import PostgresConnect  # noqa: E402
 # ==============================
 
 TIMESERIES_TABLES = {
-    "stock_bars_1_second": (["timestamp", "ticker"], "timestamp", "1 day", "7 days", 8),
-    "stock_bars_30_second": (
+    "bars_1_second": (["timestamp", "ticker"], "timestamp", "1 day", "7 days", 8),
+    "bars_30_second": (
         ["timestamp", "ticker"],
         "timestamp",
         "3 days",
         "14 days",
         8,
     ),
-    "stock_bars_1_minute": (["timestamp", "ticker"], "timestamp", "7 days", "30 days", 8),
-    "stock_bars_5_minute": (
+    "bars_1_minute": (["timestamp", "ticker"], "timestamp", "7 days", "30 days", 8),
+    "bars_5_minute": (
         ["timestamp", "ticker"],
         "timestamp",
         "21 days",
         "60 days",
         8,
     ),
-    "stock_bars_30_minute": (
+    "bars_30_minute": (
         ["timestamp", "ticker"],
         "timestamp",
         "30 days",
         "90 days",
         8,
     ),
-    "stock_bars_1_hour": (["timestamp", "ticker"], "timestamp", "30 days", "90 days", 8),
-    "stock_bars_1_day": (["timestamp", "ticker"], "timestamp", "90 days", "365 days", 8),
-    "stock_bars_1_week": (
+    "bars_1_hour": (["timestamp", "ticker"], "timestamp", "30 days", "90 days", 8),
+    "bars_1_day": (["timestamp", "ticker"], "timestamp", "90 days", "365 days", 8),
+    "bars_1_week": (
         ["timestamp", "ticker"],
         "timestamp",
         "180 days",
         "730 days",
         8,
     ),
-    "stock_bars_1_month": (
+    "bars_1_month": (
         ["timestamp", "ticker"],
         "timestamp",
         "1 year",
@@ -69,14 +69,14 @@ TIMESERIES_TABLES = {
     "daily_ticker_summary": (["from", "symbol"], "from", "90 days", "365 days", 8),
     "previous_day_bar": (["timestamp", "ticker"], "timestamp", "90 days", "365 days", 8),
     "top_market_movers": (["updated", "ticker"], "updated", "90 days", "365 days", 8),
-    "stock_trades": (
+    "trades": (
         ["ticker", "exchange", "id"],
         "sip_timestamp",
         "1 day",
         "7 days",
         16,
     ),
-    "stock_quotes": (
+    "quotes": (
         ["ticker", "sip_timestamp", "sequence_number"],
         "sip_timestamp",
         "1 day",
@@ -124,7 +124,7 @@ TIMESERIES_TABLES = {
 # ==============================
 # DDL templates for hypertables
 # ==============================
-STOCK_BAR_DDL = """
+BAR_DDL = """
 CREATE TABLE IF NOT EXISTS {full_table} (
     timestamp TIMESTAMP NOT NULL,
     ticker TEXT NOT NULL,
@@ -140,7 +140,7 @@ CREATE TABLE IF NOT EXISTS {full_table} (
 );
 """
 
-DAILY_MARKET_SUMMARY_DDL = STOCK_BAR_DDL
+DAILY_MARKET_SUMMARY_DDL = BAR_DDL
 
 DAILY_TICKER_SUMMARY_DDL = """
 CREATE TABLE IF NOT EXISTS {full_table} (
@@ -159,7 +159,7 @@ CREATE TABLE IF NOT EXISTS {full_table} (
 );
 """
 
-PREVIOUS_DAY_STOCK_BAR_DDL = STOCK_BAR_DDL
+PREVIOUS_DAY_BAR_DDL = BAR_DDL
 
 TOP_MARKET_MOVERS_DDL = """
 CREATE TABLE IF NOT EXISTS {full_table} (
@@ -177,7 +177,7 @@ CREATE TABLE IF NOT EXISTS {full_table} (
 );
 """
 
-STOCK_TRADES_DDL = """
+TRADES_DDL = """
 CREATE TABLE IF NOT EXISTS {full_table} (
     ticker TEXT NOT NULL,
     exchange INTEGER NOT NULL,
@@ -196,7 +196,7 @@ CREATE TABLE IF NOT EXISTS {full_table} (
 );
 """
 
-STOCK_QUOTES_DDL = """
+QUOTES_DDL = """
 CREATE TABLE IF NOT EXISTS {full_table} (
     ticker TEXT NOT NULL,
     sip_timestamp TIMESTAMP NOT NULL,
@@ -269,21 +269,21 @@ CREATE TABLE IF NOT EXISTS {full_table} (
 """
 
 DDL_MAP = {
-    "stock_bars_1_second": STOCK_BAR_DDL,
-    "stock_bars_30_second": STOCK_BAR_DDL,
-    "stock_bars_1_minute": STOCK_BAR_DDL,
-    "stock_bars_5_minute": STOCK_BAR_DDL,
-    "stock_bars_30_minute": STOCK_BAR_DDL,
-    "stock_bars_1_hour": STOCK_BAR_DDL,
-    "stock_bars_1_day": STOCK_BAR_DDL,
-    "stock_bars_1_week": STOCK_BAR_DDL,
-    "stock_bars_1_month": STOCK_BAR_DDL,
+    "bars_1_second": BAR_DDL,
+    "bars_30_second": BAR_DDL,
+    "bars_1_minute": BAR_DDL,
+    "bars_5_minute": BAR_DDL,
+    "bars_30_minute": BAR_DDL,
+    "bars_1_hour": BAR_DDL,
+    "bars_1_day": BAR_DDL,
+    "bars_1_week": BAR_DDL,
+    "bars_1_month": BAR_DDL,
     "daily_market_summary": DAILY_MARKET_SUMMARY_DDL,
     "daily_ticker_summary": DAILY_TICKER_SUMMARY_DDL,
-    "previous_day_bar": PREVIOUS_DAY_STOCK_BAR_DDL,
+    "previous_day_bar": PREVIOUS_DAY_BAR_DDL,
     "top_market_movers": TOP_MARKET_MOVERS_DDL,
-    "stock_trades": STOCK_TRADES_DDL,
-    "stock_quotes": STOCK_QUOTES_DDL,
+    "trades": TRADES_DDL,
+    "quotes": QUOTES_DDL,
     "sma": INDICATOR_DDL,
     "ema": INDICATOR_DDL,
     "macd": INDICATOR_DDL,
@@ -316,7 +316,7 @@ SELECT add_compression_policy('{full_table}', INTERVAL '{compress_interval}');
 """
 
 
-def get_segmentby_col(pk_cols, time_col):
+def get_segment_col(pk_cols, time_col):
     # Prefer a key that is not the time column
     for col in pk_cols:
         if col != time_col:
@@ -380,13 +380,13 @@ with PostgresConnect(database="financial_elt") as db:
                 ignore_error_codes=["TS202"],  # Already has hash dimension
             )
         # Use the correct segmentby column for compression
-        segmentby_col = get_segmentby_col(pk_cols, time_col)
+        segment_col = get_segment_col(pk_cols, time_col)
         safe_run_sql(
             db,
             f"""
             ALTER TABLE {full_table} SET (
                 timescaledb.compress,
-                timescaledb.compress_segmentby = '{segmentby_col}'
+                timescaledb.compress_segmentby = '{segment_col}'
             );
             """,
             df_type=None,
@@ -570,7 +570,7 @@ SELECT add_compression_policy('{full_table}', INTERVAL '{compress_interval}');
 """
 
 
-def get_segmentby_col(pk_cols, time_col):
+def get_segment_col(pk_cols, time_col):
     for col in pk_cols:
         if col != time_col:
             return col
@@ -613,13 +613,13 @@ with PostgresConnect(database="financial_elt") as db:
                 df_type=None,
                 ignore_error_codes=["TS202"],
             )
-        segmentby_col = get_segmentby_col(pk_cols, time_col)
+        segment_col = get_segment_col(pk_cols, time_col)
         safe_run_sql(
             db,
             f"""
             ALTER TABLE {full_table} SET (
                 timescaledb.compress,
-                timescaledb.compress_segmentby = '{segmentby_col}'
+                timescaledb.compress_segmentby = '{segment_col}'
             );
             """,
             df_type=None,
