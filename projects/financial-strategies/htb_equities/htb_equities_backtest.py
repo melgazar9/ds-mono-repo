@@ -61,6 +61,7 @@ PCT_CHANGE_TRIGGER_TO_ENTER = 0.33
 DATA_DIR = os.path.expanduser("~/polygon_data/")
 PROCESSED_DIR = os.path.expanduser("~/processed_strategy_results/")
 os.makedirs(PROCESSED_DIR, exist_ok=True)
+
 all_csv_files = sorted(Path(DATA_DIR).glob("*.csv.gz"))
 
 
