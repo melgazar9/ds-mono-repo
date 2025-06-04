@@ -1,4 +1,5 @@
 import json
+import logging
 import signal
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -27,10 +28,12 @@ if __name__ == "__main__":
     if "tap-yfinance" in os.getenv("FINANCIAL_ELT_TAPS_TO_RUN"):
         tap_yfinance_cron = json.loads(os.getenv("TAP_YFINANCE_CRON"))
         scheduler.add_job(tap_yfinance, trigger="cron", **tap_yfinance_cron, jitter=120)
+        logging.info(f"Added tap-yfinance job with cron: {tap_yfinance_cron}")
 
     if "tap-polygon" in os.getenv("FINANCIAL_ELT_TAPS_TO_RUN"):
         tap_polygon_cron = json.loads(os.getenv("TAP_POLYGON_CRON"))
         scheduler.add_job(tap_polygon, trigger="cron", **tap_polygon_cron, jitter=120)
+        logging.info(f"Added tap-polygon job with cron: {tap_polygon_cron}")
 
     ###### host ######
 
