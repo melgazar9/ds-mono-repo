@@ -384,7 +384,8 @@ plugins:
         password: ${POSTGRES_PASSWORD}
         dialect: ${POSTGRES_DIALECT}
         database: financial_elt
-        use_copy: true    # Faster bulk loading
+        batch_size_rows: 30000
+        use_copy: true
         add_record_metadata: true
         load_method: upsert
 
