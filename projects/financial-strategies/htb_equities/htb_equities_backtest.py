@@ -3,9 +3,9 @@
 import os
 from datetime import time
 from pathlib import Path
-
 import pandas as pd
-from utils import pull_and_clean_data
+# os.chdir('projects/financial-strategies/htb_equities')
+from utils import SingleDayBacktest
 
 # import polars as pl
 # from polars import col, lit, when, plr
@@ -58,17 +58,26 @@ STOP_LOSS_AMOUNT = 4000
 TIME_TO_FLATTEN_POSITIONS = time(14, 55)
 PCT_CHANGE_TRIGGER_TO_ENTER = 0.33
 
-DATA_DIR = os.path.expanduser("~/polygon_data/")
+DATA_DIR = os.path.expanduser("~/polygon_data/bars_1min/")
 PROCESSED_DIR = os.path.expanduser("~/processed_strategy_results/")
 os.makedirs(PROCESSED_DIR, exist_ok=True)
-
 all_csv_files = sorted(Path(DATA_DIR).glob("*.csv.gz"))
 
+### --- Run Backtest --- ###
 
-### --- Pull Data --- ###
+first_day_file = all_csv_files[0]
 
-file_path = all_csv_files[0]  # Example: using the first file in the list
-df = pull_and_clean_data(file_path)
-df
-
-#### --- Process Data --- ###
+backtester = SingleDayBacktest()
+backtester.pull_and_clean_data(cur_day_file=all_csv_files[1], prev_day_file=all_csv_files[0])
+backtester.trigger_buy_sell(
+    pre_market_pct_chg_range=(0.01, 1),
+    market_pct_chg_range=(0.01, 1),
+    trigger_condition="or",
+    direction="both"
+)
+backtester.trigger_stop_loss(stop_loss_pct=.01)
+backtester.trigger_take_profit(take_profit_pct=0.01, slippage_pct=0.01, slippage_method="partway")
+backtester.calc_rolling_pnl_no_stop_no_profit()
+backtester.calc_rolling_pnl_with_stop(slippage_pct=0.05, slippage_method="partway")
+backtester.trigger_exit(close_trade_timestamp_cst=time(14, 55))
+backtester.df_cur.groupby("ticker").agg()
