@@ -357,6 +357,7 @@ def execute_command_stg(run_command, cwd):
     """
     Executes a shell command, redirecting stdout/stderr directly to files for deadlock-free operation.
     Each run gets its own temp MELTANO_PROJECT_ROOT for lock/deadlock prevention.
+    .meltano/state is symlinked to the shared, persistent state directory.
     """
     project_name = run_command[3]
     subprocess_log_dir = os.path.join(find_monorepo_root(), "logs", f"{project_name}")
@@ -398,9 +399,12 @@ def execute_command_stg(run_command, cwd):
     process = None
 
     with tempfile.TemporaryDirectory(prefix="meltano_job_") as tmp_project_dir:
+        # Copy everything EXCEPT .meltano
         for item in os.listdir(cwd):
             s = os.path.join(cwd, item)
             d = os.path.join(tmp_project_dir, item)
+            if item == ".meltano":
+                continue  # handled below
             try:
                 if os.path.isdir(s):
                     os.symlink(s, d, target_is_directory=True)
@@ -411,6 +415,27 @@ def execute_command_stg(run_command, cwd):
                     shutil.copytree(s, d, symlinks=True)
                 else:
                     shutil.copy2(s, d)
+        # Copy .meltano (except state), symlink .meltano/state to cwd .meltano/state
+        meltano_src = os.path.join(cwd, ".meltano")
+        meltano_dst = os.path.join(tmp_project_dir, ".meltano")
+        shutil.copytree(
+            meltano_src,
+            meltano_dst,
+            symlinks=True,
+            ignore=shutil.ignore_patterns("state"),
+        )
+        # Remove the empty/newly created .meltano/state (if it exists), then symlink it to the real state dir
+        meltano_state_dst = os.path.join(meltano_dst, "state")
+        meltano_state_src = os.path.join(meltano_src, "state")
+        try:
+            if os.path.islink(meltano_state_dst) or os.path.isfile(meltano_state_dst):
+                os.unlink(meltano_state_dst)
+            elif os.path.isdir(meltano_state_dst):
+                shutil.rmtree(meltano_state_dst)
+        except FileNotFoundError:
+            pass
+        os.symlink(meltano_state_src, meltano_state_dst, target_is_directory=True)
+
         env = os.environ.copy()
         env["MELTANO_PROJECT_ROOT"] = tmp_project_dir
 
