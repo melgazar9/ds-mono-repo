@@ -2,13 +2,9 @@ from flask import Flask, make_response
 from utils import *
 
 DEBUG = False
-
 ENVIRONMENT = os.getenv("ENVIRONMENT")
-
 app = Flask(__name__)
-
 app.url_map.strict_slashes = False
-
 
 ### GLOBALS ###
 
@@ -64,12 +60,11 @@ class MeltanoTap:
         self.num_workers = num_workers
         self.project_dir = project_dir
         self.tap_name = self.project_dir if tap_name is None else tap_name
-        self.target_name = target_name
 
         env_prefix = self.tap_name.upper().replace("-", "_")
-        db_target = os.getenv(f"{env_prefix}_DB_TARGET")
-        file_target = os.getenv(f"{env_prefix}_FILE_TARGET")
-        if not db_target and not file_target:
+        self.db_target = os.getenv(f"{env_prefix}_DB_TARGET")
+        self.file_target = os.getenv(f"{env_prefix}_FILE_TARGET")
+        if not self.db_target and not self.file_target:
             raise ValueError(
                 f"You must set at least one of {env_prefix}_DB_TARGET or {env_prefix}_FILE_TARGET in your environment."
             )
@@ -86,13 +81,20 @@ class MeltanoTap:
 
     def run_tap_single_threaded(self):
         logging.info("Running meltano ELT without multiprocessing.")
-        if not self.target_name:
-            raise ValueError("target_name must be provided for single-threaded execution.")
-        run_command = (
-            f"{self.base_run_command} target-{self.target_name} "
-            f"--state-id {self.tap_name.replace('-', '_')}_{ENVIRONMENT}_{self.target_name}".split(" ")
-        )
-        run_meltano_task(run_command=run_command, cwd=self.cwd)
+
+        tasks_dict = get_task_chunks(1, self.tap_name)
+
+        for target_type, target in [("file", self.file_target), ("db", self.db_target)]:
+            if target and tasks_dict.get(target_type):
+                chunk = tasks_dict[target_type][
+                    0
+                ]  # Only one chunk in single-threaded mode
+                select_param = " ".join(chunk).replace(".*", "")
+                state_id = f"{self.tap_name.replace('-', '_')}_{ENVIRONMENT}_{target}"
+                run_command = f"{self.base_run_command} target-{target} --state-id {state_id} {select_param}".split(
+                    " "
+                )
+                run_meltano_task(run_command=run_command, cwd=self.cwd)
 
     def run_tap_in_parallel(self):
         run_commands = get_run_commands(
