@@ -83,18 +83,31 @@ class MeltanoTap:
         logging.info("Running meltano ELT without multiprocessing.")
 
         tasks_dict = get_task_chunks(1, self.tap_name)
+        results = []
 
         for target_type, target in [("file", self.file_target), ("db", self.db_target)]:
             if target and tasks_dict.get(target_type):
-                chunk = tasks_dict[target_type][
-                    0
-                ]  # Only one chunk in single-threaded mode
-                select_param = " ".join(chunk).replace(".*", "")
-                state_id = f"{self.tap_name.replace('-', '_')}_{ENVIRONMENT}_{target}"
-                run_command = f"{self.base_run_command} target-{target} --state-id {state_id} {select_param}".split(
-                    " "
-                )
-                run_meltano_task(run_command=run_command, cwd=self.cwd)
+                for chunk in tasks_dict[target_type]:
+                    select_param = " ".join(chunk).replace(".*", "")
+                    select_id = (
+                        select_param.replace("--select ", "").replace(" ", "_")
+                        if select_param
+                        else "unknown"
+                    )
+                    state_id = f"{self.tap_name.replace('-', '_')}_{ENVIRONMENT}_{target}__{select_id}"
+                    run_command = (
+                        f"{self.base_run_command} target-{target} --state-id {state_id} {select_param}"
+                    ).split(" ")
+                    command, return_code = run_meltano_task(
+                        run_command=run_command, cwd=self.cwd
+                    )
+                    logging.info(f"command: {command} ---> return_code: {return_code}")
+                    results.append((command, return_code))
+
+        if results:
+            logging.info("SINGLE-THREADED SUMMARY:")
+            for command, return_code in results:
+                logging.info(f"command: {command} ---> return_code: {return_code}")
 
     def run_tap_in_parallel(self):
         run_commands = get_run_commands(

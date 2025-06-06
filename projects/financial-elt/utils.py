@@ -44,7 +44,7 @@ def get_task_chunks(num_tasks: int, tap_name):
         str(i)
         for i in cfg.get("plugins", {}).get("extractors", [{}])[0].get("select", [])
     ]
-    all_tables = set([i.split(".", 1)[0] for i in all_tasks])  # just base table names
+    all_tables = set([i.split(".", 1)[0] for i in all_tasks])
 
     db_env_var = f"{tap_name.upper().replace('-', '_')}_TARGET_DB_TABLES"
     file_env_var = f"{tap_name.upper().replace('-', '_')}_TARGET_FILE_TABLES"
@@ -70,13 +70,11 @@ def get_task_chunks(num_tasks: int, tap_name):
     allowed_tables_by_target = {}
 
     if db_tables_raw == "*":
-        # Assign all tables except those explicitly assigned to file
         allowed_tables_by_target["db"] = all_tables - (file_tables_set or set())
     else:
         allowed_tables_by_target["db"] = db_tables_set or set()
 
     if file_tables_raw == "*":
-        # Assign all tables except those explicitly assigned to db
         allowed_tables_by_target["file"] = all_tables - (db_tables_set or set())
     else:
         allowed_tables_by_target["file"] = file_tables_set or set()
@@ -129,15 +127,20 @@ def get_task_chunks(num_tasks: int, tap_name):
         if not filtered_tasks:
             continue
 
-        tasks_per_chunk = len(filtered_tasks) // num_tasks
-        remainder = len(filtered_tasks) % num_tasks
-        chunks = []
-        start_index = 0
-        for j in range(num_tasks):
-            chunk_size = tasks_per_chunk + (1 if j < remainder else 0)
-            chunks.append(filtered_tasks[start_index : start_index + chunk_size])
-            start_index += chunk_size
-        chunks_by_target[target_type] = [i for i in chunks if i]
+        if num_tasks == 1:
+            chunks = [[t] for t in filtered_tasks]
+        else:
+            tasks_per_chunk = len(filtered_tasks) // num_tasks
+            remainder = len(filtered_tasks) % num_tasks
+            chunks = []
+            start_index = 0
+            for j in range(num_tasks):
+                chunk_size = tasks_per_chunk + (1 if j < remainder else 0)
+                chunks.append(filtered_tasks[start_index : start_index + chunk_size])
+                start_index += chunk_size
+            chunks = [i for i in chunks if i]
+
+        chunks_by_target[target_type] = chunks
     return chunks_by_target
 
 
