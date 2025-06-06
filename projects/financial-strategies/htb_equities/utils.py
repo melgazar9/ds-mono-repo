@@ -7,6 +7,13 @@ from datetime import time
 from ds_core.db_connectors import PostgresConnect
 
 
+def first_true(series):
+    idx = series.idxmax() if series.any() else None
+    result = pd.Series(False, index=series.index)
+    if idx is not None:
+        result.loc[idx] = True
+    return result
+
 class SingleDayBacktest:
     def __init__(self):
         self.prev_day_close_cache = {}
@@ -73,62 +80,21 @@ class SingleDayBacktest:
         rows_before_join = self.df_cur.shape[0]
         self.df_cur = self.df_cur.merge(
             self.df_adj_chg[["ticker", "had_split_or_dividend", "split_from", "split_to", "split_ratio", "cash_amount",
-                             "pre_market_open", "market_open", "prev_close", "adj_mkt_pct_chg", "adj_pre_mkt_pct_chg"]],
+                             "pre_market_open", "market_open", "prev_close", "adj_pmkt_pct_chg", "adj_mkt_pct_chg"]],
             on="ticker",
             how="left"
         )
         assert self.df_cur.shape[0] == rows_before_join, "Rows added from join --- bug in join logic!"
         return self
 
-    @staticmethod
-    def _likely_adjusted_state(open_, prev_close, adj, pct_tolerance) -> pd.DataFrame:
-        gap_to_adj = np.abs(open_ - adj)
-        gap_to_raw = np.abs(open_ - prev_close)
-        state = np.full(open_.shape, "", dtype="object")
-        valid = (~pd.isna(open_)) & (~pd.isna(prev_close)) & (~pd.isna(adj))
-        mask_both_zero = valid & (gap_to_adj == 0) & (gap_to_raw == 0)
-        state[mask_both_zero] = "unknown"
-        mask_gap_to_adj_zero = valid & (gap_to_adj == 0) & (gap_to_raw != 0)
-        mask_gap_to_raw_zero = valid & (gap_to_raw == 0) & (gap_to_adj != 0)
-        state[mask_gap_to_adj_zero] = "adjusted"
-        state[mask_gap_to_raw_zero] = "unadjusted"
-
-        mask_standard = valid & ~(mask_both_zero | mask_gap_to_adj_zero | mask_gap_to_raw_zero)
-        best = np.where(gap_to_adj < gap_to_raw, gap_to_adj, gap_to_raw)
-        worst = np.where(gap_to_adj < gap_to_raw, gap_to_raw, gap_to_adj)
-        label = np.where(gap_to_adj < gap_to_raw, "adjusted", "unadjusted")
-
-        # Avoid division by zero
-        mask_worst_zero = mask_standard & (worst == 0)
-        state[mask_worst_zero] = np.where(best[mask_worst_zero] == 0, "unknown", label[mask_worst_zero])
-
-        mask_normal = mask_standard & (worst != 0)
-        ratio = np.full(open_.shape, np.nan)
-        ratio[mask_normal] = best[mask_normal] / worst[mask_normal]
-        mask_label = mask_normal & (ratio <= pct_tolerance)
-        mask_unknown = mask_normal & (ratio > pct_tolerance)
-        state[mask_label] = label[mask_label]
-        state[mask_unknown] = "unknown"
-        return state
-
-    def _price_gap_with_split_or_dividend(self, df_prev, df_cur, df_splits_dividends, pct_tolerance=0.65) -> pd.DataFrame:
-        # --- Prepare previous close ---
-        df_prev = df_prev.copy()
+    def _price_gap_with_split_or_dividend(
+            self, df_prev, df_cur, df_splits_dividends, abs_tol=0.02, rel_tol=0.002
+    ):
         prev_close = (
-            df_prev[df_prev["timestamp_cst"].dt.time <= time(15, 0)]
-            .groupby(["ticker", "date"], sort=False)
+            df_prev.groupby(["ticker", "date"], sort=False)
             .agg(prev_close=("close", "last"))
             .reset_index()
             .rename(columns={"date": "prev_date"})
-        )
-
-        # --- Prepare current opens (market and pre-market) ---
-        df_cur = df_cur.copy()
-        mkt_open = (
-            df_cur[df_cur["timestamp_cst"].dt.time >= time(8, 30)]
-            .groupby(["ticker", "date"], sort=False)
-            .agg(market_open=("open", "first"))
-            .reset_index()
         )
         pmkt_open = (
             df_cur[df_cur["timestamp_cst"].dt.time >= time(3, 0)]
@@ -136,115 +102,91 @@ class SingleDayBacktest:
             .agg(pre_market_open=("open", "first"))
             .reset_index()
         )
-        df_grouped = pd.merge(mkt_open, pmkt_open, on=["ticker", "date"], how="outer")
-
-        # --- Merge prev_close ---
+        mkt_open = (
+            df_cur[df_cur["timestamp_cst"].dt.time >= time(8, 30)]
+            .groupby(["ticker", "date"], sort=False)
+            .agg(market_open=("open", "first"))
+            .reset_index()
+        )
+        df_open = pd.merge(pmkt_open, mkt_open, on=["ticker", "date"], how="left")
         prev_dates = df_prev.groupby("ticker")["date"].max().rename("prev_date").reset_index()
-        df_grouped = df_grouped.merge(prev_dates, on=["ticker"], how="left")
+        df_open = df_open.merge(prev_dates, on=["ticker"], how="left").merge(prev_close, on=["ticker", "prev_date"],
+                                                                             how="left")
+        df_open = df_open.merge(df_splits_dividends, left_on=["ticker", "date"], right_on=["ticker", "event_date"],
+                                how="left")
 
-        assert df_grouped[df_grouped["prev_date"] > df_grouped["date"]].shape[
-                   0] == 0, "Error joining prev df to cur df, prev dates must be less than cur date!"
+        df_open["split_from"] = df_open["split_from"].fillna(1.0)
+        df_open["split_to"] = df_open["split_to"].fillna(1.0)
+        df_open["cash_amount"] = df_open["cash_amount"].fillna(0.0)
+        df_open["split_ratio"] = df_open["split_from"] / df_open["split_to"]
+        df_open["expected_unchanged_adj_split_only"] = df_open["prev_close"] * df_open["split_ratio"]
+        df_open["expected_unchanged_adj_split_dividend"] = df_open["prev_close"] * df_open["split_ratio"] - df_open["cash_amount"]
+        df_open["had_split_or_dividend"] = df_open["event_type"].notna()
 
-        df_grouped = df_grouped.merge(
-            prev_close,
-            on=["ticker", "prev_date"],
-            how="left",
-            sort=False,
+        is_split = df_open["event_type"] == "split"
+        is_div = df_open["event_type"] == "dividend"
+
+        def assign_adj_state(open_col):
+            valid = ~df_open[open_col].isna() & ~df_open["prev_close"].isna() & ~df_open["expected_unchanged_adj_split_dividend"].isna()
+            diff_adj = np.abs(df_open[open_col] - df_open["expected_unchanged_adj_split_dividend"])
+            diff_prev = np.abs(df_open[open_col] - df_open["prev_close"])
+            rel_adj = diff_adj / np.maximum(np.abs(df_open["expected_unchanged_adj_split_dividend"]), 1e-8)
+            rel_prev = diff_prev / np.maximum(np.abs(df_open["prev_close"]), 1e-8)
+
+            state = np.full(df_open.shape[0], "unknown", dtype=object)
+
+            # SPLIT: usually adjusted, but check
+            mask = valid & is_split & ((diff_adj <= abs_tol) | (rel_adj <= rel_tol))
+            state[mask] = "adjusted"
+            mask = valid & is_split & ((diff_prev <= abs_tol) | (rel_prev <= rel_tol)) & (state == "unknown")
+            state[mask] = "unadjusted"
+            # DIVIDEND: almost always unadjusted
+            mask = valid & is_div & ((diff_prev <= abs_tol) | (rel_prev <= rel_tol))
+            state[mask] = "unadjusted"
+            # If you want to catch rare dividend adjustment, uncomment these lines:
+            # mask = valid & is_div & ((diff_adj <= abs_tol) | (rel_adj <= rel_tol)) & (state == "unknown")
+            # state[mask] = "adjusted"
+            return state
+
+        df_open["pre_market_open_adj_state"] = assign_adj_state("pre_market_open")
+        df_open["market_open_adj_state"] = assign_adj_state("market_open")
+
+        # Robust: prefer market open, else pre-market, else unknown
+        robust = np.where(
+            df_open["market_open_adj_state"] != "unknown",
+            df_open["market_open_adj_state"],
+            np.where(
+                df_open["pre_market_open_adj_state"] != "unknown",
+                df_open["pre_market_open_adj_state"],
+                "unknown"
+            )
         )
+        df_open["robust_open_adj_state"] = robust
 
-        # --- Merge event info ---
-        df_grouped = df_grouped.merge(
-            df_splits_dividends,
-            left_on=["ticker", "date"],
-            right_on=["ticker", "event_date"],
-            how="left",
-        )
-        df_grouped["had_split_or_dividend"] = df_grouped["event_type"].notnull()
-        df_grouped["split_from"] = df_grouped["split_from"].fillna(1.0)
-        df_grouped["split_to"] = df_grouped["split_to"].fillna(1.0)
-        df_grouped["cash_amount"] = df_grouped["cash_amount"].fillna(0.0)
-        df_grouped["split_ratio"] = df_grouped["split_from"] / df_grouped["split_to"]
+        # Set NaN for no-event rows in all *_adj_state columns
+        mask_no_event = (df_open["split_ratio"] == 1.0) & (df_open["cash_amount"] == 0.0)
+        for col in ["pre_market_open_adj_state", "market_open_adj_state", "robust_open_adj_state"]:
+            df_open.loc[mask_no_event, col] = np.nan
 
-        # --- Calculate expected df_grouped ---
-        df_grouped["expected_unchanged_open_split"] = df_grouped["prev_close"] * df_grouped["split_ratio"]
-        df_grouped["expected_unchanged_open_split_div"] = df_grouped["expected_unchanged_open_split"] - df_grouped[
-            "cash_amount"]
+        # Determine which baseline to use for each row
+        is_div = df_open["event_type"] == "dividend"
+        is_split = df_open["event_type"] == "split"
+        is_div_unknown = is_div & (df_open["robust_open_adj_state"] == "unknown")
+        baseline = np.where(is_div_unknown, df_open["prev_close"],
+                            np.where(is_split, df_open["expected_unchanged_adj_split_only"],
+                                     df_open["expected_unchanged_adj_split_dividend"]))
 
-        # --- Calculate percent changes ---
-        df_grouped["raw_mkt_pct_chg"] = (df_grouped["market_open"] - df_grouped["prev_close"]) / df_grouped[
-            "prev_close"]
-        df_grouped["raw_pre_mkt_pct_chg"] = (df_grouped["pre_market_open"] - df_grouped["prev_close"]) / df_grouped[
-            "prev_close"]
+        df_open["adj_pmkt_pct_chg"] = (df_open["pre_market_open"] - baseline) / baseline
+        df_open["adj_mkt_pct_chg"] = (df_open["market_open"] - baseline) / baseline
 
-        # placeholder
-        df_grouped["adj_mkt_pct_chg"] = df_grouped["raw_mkt_pct_chg"]
-        df_grouped["adj_pre_mkt_pct_chg"] = df_grouped["raw_pre_mkt_pct_chg"]
-
-        mask = df_grouped["had_split_or_dividend"]
-
-        # For splits denom = expected_unchanged_open_split, for dividends denom = expected_unchanged_open_split_div
-        adj_mkt_denom = np.where(
-            df_grouped["event_type"] == "split",
-            df_grouped["expected_unchanged_open_split"],
-            df_grouped["expected_unchanged_open_split_div"],
-        )
-        adj_pre_mkt_denom = adj_mkt_denom.copy()
-
-        df_grouped.loc[mask, "adj_mkt_pct_chg"] = (
-                (df_grouped.loc[mask, "market_open"].values - adj_mkt_denom[mask]) / adj_mkt_denom[mask]
-        )
-        df_grouped.loc[mask, "adj_pre_mkt_pct_chg"] = (
-                (df_grouped.loc[mask, "pre_market_open"].values - adj_pre_mkt_denom[mask]) / adj_pre_mkt_denom[mask]
-        )
-
-        # --- _likely_adjusted_state for both market and pre-market ---
-        adj_for_mkt_state = np.where(
-            df_grouped["event_type"] == "split",
-            df_grouped["expected_unchanged_open_split"],
-            df_grouped["expected_unchanged_open_split_div"],
-        )
-        adj_for_pre_mkt_state = adj_for_mkt_state.copy()
-
-        df_grouped["mkt_likely_adjusted_state"] = self._likely_adjusted_state(
-            df_grouped["market_open"].values,
-            df_grouped["prev_close"].values,
-            adj_for_mkt_state,
-            pct_tolerance,
-        )
-        df_grouped["pre_mkt_likely_adjusted_state"] = self._likely_adjusted_state(
-            df_grouped["pre_market_open"].values,
-            df_grouped["prev_close"].values,
-            adj_for_pre_mkt_state,
-            pct_tolerance,
-        )
-        df_grouped.loc[~mask, "mkt_likely_adjusted_state"] = None
-        df_grouped.loc[~mask, "pre_mkt_likely_adjusted_state"] = None
-
-        # --- Organize columns for output ---
         column_order = [
-            "ticker",
-            "date",
-            "event_date",
-            "market_open",
-            "pre_market_open",
-            "prev_date",
-            "prev_close",
-            "raw_mkt_pct_chg",
-            "raw_pre_mkt_pct_chg",
-            "adj_mkt_pct_chg",
-            "adj_pre_mkt_pct_chg",
-            "had_split_or_dividend",
-            "event_type",
-            "split_from",
-            "split_to",
-            "cash_amount",
-            "split_ratio",
-            "expected_unchanged_open_split",
-            "expected_unchanged_open_split_div",
-            "mkt_likely_adjusted_state",
-            "pre_mkt_likely_adjusted_state",
+            "ticker", "date", "pre_market_open", "market_open", "prev_close", "had_split_or_dividend",
+            "event_type", "split_from", "split_to", "cash_amount", "split_ratio",
+            "expected_unchanged_adj_split_dividend", "expected_unchanged_adj_split_only",
+            "pre_market_open_adj_state", "market_open_adj_state", "robust_open_adj_state",
+            "adj_pmkt_pct_chg", "adj_mkt_pct_chg"
         ]
-        return df_grouped[column_order]
+        return df_open[column_order]
 
     def _trigger_entry_booleans(self,
                                 pre_market_pct_chg_range: tuple[float, float] = (0.01, 1),
@@ -252,7 +194,8 @@ class SingleDayBacktest:
                                 trigger_condition="or",
                                 direction="both") -> pd.DataFrame:
         """
-        Adds entry criteria based on overnight and pre-market percentage changes.
+        Adds entry criteria based on overnight and pre-market percentage changes. For simulation purposes I'll test both
+        long and short entries.
 
         :param pre_market_pct_chg_range: Minimum range pre-market percentage change to trigger entry. The first value is the
         lower bound and the second value is the upper bound.
@@ -274,11 +217,11 @@ class SingleDayBacktest:
             assert len(pre_market_pct_chg_range) == 2, "Pre-market percentage change range must be a tuple of two floats."
             pmkt_pct_chg_lower, pmkt_pct_chg_upper = pre_market_pct_chg_range[0], pre_market_pct_chg_range[1]
             if direction == "up":
-                self.df_cur["pmkt_trigger_entry"] = (self.df_cur["adj_pre_mkt_pct_chg"] >= pmkt_pct_chg_lower) & (self.df_cur["adj_pre_mkt_pct_chg"] <= pmkt_pct_chg_upper)
+                self.df_cur["pmkt_trigger_entry"] = (self.df_cur["adj_pmkt_pct_chg"] >= pmkt_pct_chg_lower) & (self.df_cur["adj_pmkt_pct_chg"] <= pmkt_pct_chg_upper)
             elif direction == "down":
-                self.df_cur["pmkt_trigger_entry"] = (self.df_cur["adj_pre_mkt_pct_chg"] <= -pmkt_pct_chg_lower) & (self.df_cur["adj_pre_mkt_pct_chg"] >= -pmkt_pct_chg_upper)
+                self.df_cur["pmkt_trigger_entry"] = (self.df_cur["adj_pmkt_pct_chg"] <= -pmkt_pct_chg_lower) & (self.df_cur["adj_pmkt_pct_chg"] >= -pmkt_pct_chg_upper)
             else:  # direction == "both"
-                self.df_cur["pmkt_trigger_entry"] = self.df_cur["adj_pre_mkt_pct_chg"].abs().between(pmkt_pct_chg_lower, pmkt_pct_chg_upper)
+                self.df_cur["pmkt_trigger_entry"] = self.df_cur["adj_pmkt_pct_chg"].abs().between(pmkt_pct_chg_lower, pmkt_pct_chg_upper)
         else:
             self.df_cur["pmkt_trigger_entry"] = False
 
@@ -368,17 +311,9 @@ class SingleDayBacktest:
         self.df_cur["btc_stop_price"] = self.df_cur["bto_price"] * (1 - stop_loss_pct)
         self.df_cur["stc_stop_price"] = self.df_cur["sto_price"] * (1 + stop_loss_pct)
 
-        # Compute raw triggers
+        # Compute raw triggers -- placeholder
         self.df_cur["raw_long_stop"] = self.df_cur["low"] <= self.df_cur["btc_stop_price"]
         self.df_cur["raw_short_stop"] = self.df_cur["high"] >= self.df_cur["stc_stop_price"]
-
-        # Only keep the first True per group, set the rest to False
-        def first_true(series):
-            idx = series.idxmax() if series.any() else None
-            result = pd.Series(False, index=series.index)
-            if idx is not None:
-                result.loc[idx] = True
-            return result
 
         self.df_cur["long_stop_triggered"] = (
             self.df_cur.groupby(["ticker", "date"])["raw_long_stop"].transform(first_true)
@@ -391,7 +326,7 @@ class SingleDayBacktest:
         return self
 
     def trigger_take_profit(
-            self, take_profit_pct=0.01, slippage_pct=0.01, slippage_method="partway"
+            self, take_profit_pct=0.01, slippage_pct=0.1, slippage_method="partway"
     ):
         """
         For each (ticker, date), computes rolling PnL for long and short until their respective first take-profit trigger.
@@ -429,201 +364,162 @@ class SingleDayBacktest:
         # Calculate take profit prices and triggers
         self.df_cur["btc_tp_price"] = self.df_cur["bto_price"] * (1 + take_profit_pct)
         self.df_cur["stc_tp_price"] = self.df_cur["sto_price"] * (1 - take_profit_pct)
-        self.df_cur["long_tp_triggered"] = self.df_cur["high"] >= self.df_cur["btc_tp_price"]
-        self.df_cur["short_tp_triggered"] = self.df_cur["low"] <= self.df_cur["stc_tp_price"]
-
-        def fill_rolling_tp(group):
-            # Long TP logic
-            entry_long = group["bto_price"].iloc[0]
-            rolling_long = group["high"] - entry_long
-            long_tp_slip = np.nan * np.ones(len(group))
-            long_tp_mask = group["long_tp_triggered"].values
-            if long_tp_mask.any():
-                tp_idx = long_tp_mask.argmax()
-                tp_price = group["btc_tp_price"].iloc[tp_idx]
-                bar_high = group["high"].iloc[tp_idx]
-                if slippage_method == "fixed_pct":
-                    fill_price = tp_price * (1 + slippage_pct)
-                elif slippage_method == "partway":
-                    fill_price = tp_price + (bar_high - tp_price) * slippage_pct
-                pnl_tp = fill_price - entry_long
-                rolling_long.iloc[:tp_idx] = group["high"].iloc[:tp_idx] - entry_long
-                rolling_long.iloc[tp_idx:] = pnl_tp
-                long_tp_slip[tp_idx] = fill_price
-            group["long_pnl_with_tp_only"] = rolling_long
-            group["long_tp_price_with_slippage"] = long_tp_slip
-
-            # Short TP logic
-            entry_short = group["sto_price"].iloc[0]
-            rolling_short = entry_short - group["low"]
-            short_tp_slip = np.nan * np.ones(len(group))
-            short_tp_mask = group["short_tp_triggered"].values
-            if short_tp_mask.any():
-                tp_idx = short_tp_mask.argmax()
-                tp_price = group["stc_tp_price"].iloc[tp_idx]
-                bar_low = group["low"].iloc[tp_idx]
-                if slippage_method == "fixed_pct":
-                    fill_price = tp_price * (1 - slippage_pct)
-                elif slippage_method == "partway":
-                    fill_price = tp_price + (bar_low - tp_price) * slippage_pct
-                pnl_tp = entry_short - fill_price
-                rolling_short.iloc[:tp_idx] = entry_short - group["low"].iloc[:tp_idx]
-                rolling_short.iloc[tp_idx:] = pnl_tp
-                short_tp_slip[tp_idx] = fill_price
-            group["short_pnl_with_tp_only"] = rolling_short
-            group["short_tp_price_with_slippage"] = short_tp_slip
-            return group
-
-        self.df_cur = (
-            self.df_cur.groupby(["ticker", "date"], group_keys=False)
-            .apply(fill_rolling_tp)
-            .reset_index(drop=True)
+        self.df_cur["long_tp_triggered"] = (
+            self.df_cur.groupby(["ticker", "date"])["high"].transform(
+                lambda x: first_true(x >= self.df_cur.loc[x.index, "btc_tp_price"])
+            )
+        )
+        self.df_cur["short_tp_triggered"] = (
+            self.df_cur.groupby(["ticker", "date"])["low"].transform(
+                lambda x: first_true(x <= self.df_cur.loc[x.index, "stc_tp_price"])
+            )
         )
 
-    def calc_rolling_pnl_no_stop_no_profit(self):
-        self.df_cur["long_pnl_no_stop"] = self.df_cur["low"] - self.df_cur["bto_price"]
-        self.df_cur["short_pnl_no_stop"] = self.df_cur["sto_price"] - self.df_cur["high"]
-
-    def calc_rolling_pnl_with_stop(self, slippage_pct=0.05, slippage_method="partway"):
+    def calc_rolling_pnl_no_stop_no_profit(self, slippage_pct=0.10, slippage_method="partway", min_slip=0.01):
         """
-        For each (ticker, date), computes rolling PnL for long and short until their respective first stop-out.
-        After stop-out, PnL is fixed at stop value for the rest of the day for that direction only.
-
-        For slippage, two supported methods:
-            - "fixed_pct": Stop fill at stop price ± slippage_pct
-            - "partway":   Stop fill at stop price ± (overrun * slippage_pct)
-
-        Params
-        ------
-        :slippage_pct: Percentage (as a float, e.g. 0.01 for 1%) to account for slippage.
-        :slippage_method: "partway" (default) or "fixed_pct"
+        Rolling PnL for long/short, with entry/exit slippage.
         """
+        bto = self.df_cur["bto_price"]
+        sto = self.df_cur["sto_price"]
+        high = self.df_cur["high"]
+        low = self.df_cur["low"]
+        close = self.df_cur["close"]
 
-        self.df_cur["long_pnl_with_stop"] = np.nan
-        self.df_cur["short_pnl_with_stop"] = np.nan
+        if slippage_method == "fixed_pct":
+            long_entry_price_with_slippage = bto * (1 + slippage_pct)
+            short_entry_price_with_slippage = sto * (1 - slippage_pct)
+            long_exit_price_with_slippage = close * (1 - slippage_pct)
+            short_exit_price_with_slippage = close * (1 + slippage_pct)
+        elif slippage_method == "partway":
+            long_entry_price_with_slippage = bto + np.maximum(high - bto, min_slip) * slippage_pct
+            short_entry_price_with_slippage = sto + np.minimum(low - sto, -min_slip) * slippage_pct
+            long_exit_price_with_slippage = close - np.maximum(close - low, min_slip) * slippage_pct
+            short_exit_price_with_slippage = close + np.maximum(high - close, min_slip) * slippage_pct
+        else:
+            raise ValueError("slippage_method must be 'fixed_pct' or 'partway'")
 
-        self.df_cur["long_stop_price_with_slippage"] = np.nan
-        self.df_cur["short_stop_price_with_slippage"] = np.nan
+        self.df_cur["long_pnl_no_stop"] = long_exit_price_with_slippage - long_entry_price_with_slippage
+        self.df_cur["short_pnl_no_stop"] = short_entry_price_with_slippage - short_exit_price_with_slippage
 
-        assert isinstance(slippage_pct, float) and 0 < slippage_pct < 1, "Slippage percentage must be a float between 0 and 1."
-        assert slippage_method in ("partway", "fixed_pct"), "slippage_method must be 'partway' or 'fixed_pct'"
+    def calc_pnl_stop_only(self, slippage_pct=0.10, slippage_method="partway", min_slip=0.01):
+        """
+        Assigns PnL columns for stop-loss only (no take profit).
+        Columns: long_pnl_stop_only, short_pnl_stop_only
+        """
+        bto = self.df_cur["bto_price"]
+        sto = self.df_cur["sto_price"]
+        high = self.df_cur["high"]
+        low = self.df_cur["low"]
+        btc_stop_price = self.df_cur["btc_stop_price"]
+        stc_stop_price = self.df_cur["stc_stop_price"]
 
-        def fill_rolling_pnl(group):
-            # Long logic
-            entry_long = group["bto_price"].iloc[0]
-            rolling_long = group["low"] - entry_long
-            long_stop_slip = np.nan * np.ones(len(group))
-            long_stop_mask = group["long_stop_triggered"].values
-            if long_stop_mask.any():
-                stop_idx = long_stop_mask.argmax()
-                stop_price = group["btc_stop_price"].iloc[stop_idx]
-                bar_low = group["low"].iloc[stop_idx]
-                if slippage_method == "fixed_pct":
-                    fill_price = stop_price * (1 - slippage_pct)
-                elif slippage_method == "partway":
-                    fill_price = stop_price + (bar_low - stop_price) * slippage_pct
-                pnl_stop = fill_price - entry_long
-                rolling_long.iloc[:stop_idx] = group["low"].iloc[:stop_idx] - entry_long
-                rolling_long.iloc[stop_idx:] = pnl_stop
-                long_stop_slip[stop_idx] = fill_price
-            group["long_pnl_with_stop"] = rolling_long
-            group["long_stop_price_with_slippage"] = long_stop_slip
+        # ENTRY
+        if slippage_method == "fixed_pct":
+            long_entry = bto * (1 + slippage_pct)
+            short_entry = sto * (1 - slippage_pct)
+        elif slippage_method == "partway":
+            long_entry = bto + np.maximum(high - bto, min_slip) * slippage_pct
+            short_entry = sto + np.minimum(low - sto, -min_slip) * slippage_pct
+        else:
+            raise ValueError("slippage_method must be 'fixed_pct' or 'partway'")
 
-            # Short logic
-            entry_short = group["sto_price"].iloc[0]
-            rolling_short = entry_short - group["high"]
-            short_stop_slip = np.nan * np.ones(len(group))
-            short_stop_mask = group["short_stop_triggered"].values
-            if short_stop_mask.any():
-                stop_idx = short_stop_mask.argmax()
-                stop_price = group["stc_stop_price"].iloc[stop_idx]
-                bar_high = group["high"].iloc[stop_idx]
-                if slippage_method == "fixed_pct":
-                    fill_price = stop_price * (1 + slippage_pct)
-                elif slippage_method == "partway":
-                    fill_price = stop_price + (bar_high - stop_price) * slippage_pct
-                pnl_stop = entry_short - fill_price
-                rolling_short.iloc[:stop_idx] = entry_short - group["high"].iloc[:stop_idx]
-                rolling_short.iloc[stop_idx:] = pnl_stop
-                short_stop_slip[stop_idx] = fill_price
-            group["short_pnl_with_stop"] = rolling_short
-            group["short_stop_price_with_slippage"] = short_stop_slip
-            return group
+        # EXIT at stop
+        long_exit = np.where(low <= btc_stop_price, np.minimum(btc_stop_price, low), np.nan)
+        short_exit = np.where(high >= stc_stop_price, np.maximum(stc_stop_price, high), np.nan)
 
-        self.df_cur = (
+        self.df_cur["long_pnl_stop_only"] = long_exit - long_entry
+        self.df_cur["short_pnl_stop_only"] = short_entry - short_exit
+
+    def calc_pnl_tp_only(self, slippage_pct=0.10, slippage_method="partway", min_slip=0.01):
+        """
+        Assigns PnL columns for take-profit only (no stop).
+        Columns: long_pnl_tp_only, short_pnl_tp_only
+        """
+        bto = self.df_cur["bto_price"]
+        sto = self.df_cur["sto_price"]
+        high = self.df_cur["high"]
+        low = self.df_cur["low"]
+        btc_tp_price = self.df_cur["btc_tp_price"]
+        stc_tp_price = self.df_cur["stc_tp_price"]
+
+        # ENTRY
+        if slippage_method == "fixed_pct":
+            long_entry = bto * (1 + slippage_pct)
+            short_entry = sto * (1 - slippage_pct)
+        elif slippage_method == "partway":
+            long_entry = bto + np.maximum(high - bto, min_slip) * slippage_pct
+            short_entry = sto + np.minimum(low - sto, -min_slip) * slippage_pct
+        else:
+            raise ValueError("slippage_method must be 'fixed_pct' or 'partway'")
+
+        # EXIT at take profit
+        long_exit = np.where(high >= btc_tp_price, np.maximum(btc_tp_price, high), np.nan)
+        short_exit = np.where(low <= stc_tp_price, np.minimum(stc_tp_price, low), np.nan)
+
+        self.df_cur["long_pnl_tp_only"] = long_exit - long_entry
+        self.df_cur["short_pnl_tp_only"] = short_entry - short_exit
+
+    # TODO: Fix
+    def calc_pnl_with_stop_and_tp(self):
+        """
+        Assigns PnL for stop AND TP, whichever is hit first (stop wins if both in same bar).
+        Uses the output columns of calc_pnl_stop_only and calc_pnl_tp_only.
+        Columns: long_pnl_stop_or_tp, short_pnl_stop_or_tp
+        """
+        # Boolean columns for triggered exits
+        long_stop_hit = self.df_cur["long_pnl_stop_only"].notnull()
+        long_tp_hit = self.df_cur["long_pnl_tp_only"].notnull()
+        short_stop_hit = self.df_cur["short_pnl_stop_only"].notnull()
+        short_tp_hit = self.df_cur["short_pnl_tp_only"].notnull()
+
+        # Conservative: stop wins if both triggered in same bar
+        long_both = long_stop_hit & long_tp_hit
+        short_both = short_stop_hit & short_tp_hit
+
+        def first_trigger_idx(group, stop_hit, tp_hit, both_hit):
+            # Returns index of the first relevant row in a group
+            if both_hit.any():
+                return group.index[both_hit.loc[group.index]].min()
+            stop_idxs = group.index[stop_hit.loc[group.index]]
+            tp_idxs = group.index[tp_hit.loc[group.index]]
+            if len(stop_idxs) > 0 and (len(tp_idxs) == 0 or stop_idxs[0] < tp_idxs[0]):
+                return stop_idxs[0]
+            elif len(tp_idxs) > 0:
+                return tp_idxs[0]
+            else:
+                return None
+
+        # For each group, get the index of the first trigger
+        long_first_trigger_idx = (
             self.df_cur.groupby(["ticker", "date"], group_keys=False)
-            .apply(fill_rolling_pnl)
-            .reset_index(drop=True)
+            .apply(lambda g: first_trigger_idx(g, long_stop_hit, long_tp_hit, long_both))
+        )
+        short_first_trigger_idx = (
+            self.df_cur.groupby(["ticker", "date"], group_keys=False)
+            .apply(lambda g: first_trigger_idx(g, short_stop_hit, short_tp_hit, short_both))
         )
 
-    def calc_rolling_pnl_with_stop_or_tp(self):
-        """
-        For each (ticker, date), computes rolling PnL for long and short until the first stop, TP, or close.
-        After exit, PnL is fixed at the slippage price for the rest of the day.
-        """
+        # Build boolean masks aligned to self.df_cur
+        long_first_exit_mask = pd.Series(False, index=self.df_cur.index)
+        short_first_exit_mask = pd.Series(False, index=self.df_cur.index)
+        for idx in long_first_trigger_idx.dropna().values:
+            long_first_exit_mask.loc[idx] = True
+        for idx in short_first_trigger_idx.dropna().values:
+            short_first_exit_mask.loc[idx] = True
 
-        def flatten_pnl(group):
-            entry_long = group["bto_price"].iloc[0]
-            entry_short = group["sto_price"].iloc[0]
+        self.df_cur["long_pnl_stop_or_tp"] = None
+        self.df_cur["short_pnl_stop_or_tp"] = None
 
-            # Find trigger indices
-            n = len(group)
-            stop_idx = group["long_stop_triggered"].values.argmax() if group["long_stop_triggered"].any() else n
-            tp_idx = group["long_tp_triggered"].values.argmax() if group["long_tp_triggered"].any() else n
-            close_idx = group["close_timestamp_triggered"].values.argmax() if group[
-                "close_timestamp_triggered"].any() else n
-            exit_idx = min(stop_idx, tp_idx, close_idx)
+        self.df_cur.loc[long_first_exit_mask & long_stop_hit, "long_pnl_stop_or_tp"] = self.df_cur.loc[
+            long_first_exit_mask & long_stop_hit, "long_pnl_stop_only"]
+        self.df_cur.loc[long_first_exit_mask & ~long_stop_hit & long_tp_hit, "long_pnl_stop_or_tp"] = self.df_cur.loc[
+            long_first_exit_mask & ~long_stop_hit & long_tp_hit, "long_pnl_tp_only"]
 
-            # Pick correct slippage price for exit
-            if exit_idx == stop_idx and stop_idx < n:
-                fill_price_long = group["long_stop_price_with_slippage"].iloc[stop_idx]
-            elif exit_idx == tp_idx and tp_idx < n:
-                fill_price_long = group["long_tp_price_with_slippage"].iloc[tp_idx]
-            elif exit_idx == close_idx and close_idx < n:
-                fill_price_long = group["close"].iloc[close_idx]
-            else:
-                fill_price_long = np.nan
-
-            rolling_long = np.full(n, np.nan)
-            if exit_idx < n:
-                # Mark-to-market until exit, then flatten at fill price
-                rolling_long[:exit_idx] = group["low"].iloc[:exit_idx] - entry_long
-                rolling_long[exit_idx:] = fill_price_long - entry_long
-            else:
-                rolling_long[:] = group["low"] - entry_long
-
-            # Short direction
-            stop_idx = group["short_stop_triggered"].values.argmax() if group["short_stop_triggered"].any() else n
-            tp_idx = group["short_tp_triggered"].values.argmax() if group["short_tp_triggered"].any() else n
-            close_idx = group["close_timestamp_triggered"].values.argmax() if group[
-                "close_timestamp_triggered"].any() else n
-            exit_idx = min(stop_idx, tp_idx, close_idx)
-
-            if exit_idx == stop_idx and stop_idx < n:
-                fill_price_short = group["short_stop_price_with_slippage"].iloc[stop_idx]
-            elif exit_idx == tp_idx and tp_idx < n:
-                fill_price_short = group["short_tp_price_with_slippage"].iloc[tp_idx]
-            elif exit_idx == close_idx and close_idx < n:
-                fill_price_short = group["close"].iloc[close_idx]
-            else:
-                fill_price_short = np.nan
-
-            rolling_short = np.full(n, np.nan)
-            if exit_idx < n:
-                rolling_short[:exit_idx] = entry_short - group["high"].iloc[:exit_idx]
-                rolling_short[exit_idx:] = entry_short - fill_price_short
-            else:
-                rolling_short[:] = entry_short - group["high"]
-
-            group["long_pnl_with_stop_or_tp"] = rolling_long
-            group["short_pnl_with_stop_or_tp"] = rolling_short
-            return group
-
-        self.df_cur = (
-            self.df_cur.groupby(["ticker", "date"], group_keys=False)
-            .apply(flatten_pnl)
-            .reset_index(drop=True)
-        )
+        self.df_cur.loc[short_first_exit_mask & short_stop_hit, "short_pnl_stop_or_tp"] = self.df_cur.loc[
+            short_first_exit_mask & short_stop_hit, "short_pnl_stop_only"]
+        self.df_cur.loc[short_first_exit_mask & ~short_stop_hit & short_tp_hit, "short_pnl_stop_or_tp"] = \
+        self.df_cur.loc[
+            short_first_exit_mask & ~short_stop_hit & short_tp_hit, "short_pnl_tp_only"]
 
     def trigger_exit(self, close_trade_timestamp_cst=time(14, 55)):
         """
@@ -650,7 +546,7 @@ class SingleDayBacktest:
             total_volume=("volume", "sum"),
             had_split=("split_ratio", lambda x: (x != 1).any()),
             had_dividend=("cash_amount", lambda x: (x != 0).any()),
-            adj_pre_mkt_pct_chg=("adj_pre_mkt_pct_chg", "first"),
+            adj_pmkt_pct_chg=("adj_pmkt_pct_chg", "first"),
             adj_mkt_pct_chg=("adj_mkt_pct_chg", "first"),
             entered_long=("bto_price", lambda x: max(x.notnull())),
             entered_short=("sto_price", lambda x: max(x.notnull())),
@@ -672,3 +568,18 @@ class SingleDayBacktest:
         Method to integrate segments to find optimal subgroups of the strategy (e.g. short_volume, short_interest, market_cap, etc.)
         """
         pass
+
+    def run_backtest(self, cur_day_file: str, prev_day_file: str):
+        self.pull_and_clean_data(cur_day_file=cur_day_file, prev_day_file=prev_day_file)
+        self.trigger_buy_sell(
+            pre_market_pct_chg_range=(0.01, 1),
+            market_pct_chg_range=(0.01, 1),
+            trigger_condition="or",
+            direction="both"
+        )
+        self.trigger_stop_loss(stop_loss_pct=.01)
+        self.trigger_take_profit(take_profit_pct=0.01, slippage_pct=0.1, slippage_method="partway")
+        self.calc_rolling_pnl_no_stop_no_profit()
+        self.calc_rolling_pnl_with_stop(slippage_pct=0.1, slippage_method="partway")
+        self.trigger_exit(close_trade_timestamp_cst=time(14, 55))
+        self.summarize_strategy_daily()

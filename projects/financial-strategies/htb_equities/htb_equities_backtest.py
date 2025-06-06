@@ -67,17 +67,5 @@ all_csv_files = sorted(Path(DATA_DIR).glob("*.csv.gz"))
 
 first_day_file = all_csv_files[0]
 
-backtester = SingleDayBacktest()
-backtester.pull_and_clean_data(cur_day_file=all_csv_files[1], prev_day_file=all_csv_files[0])
-backtester.trigger_buy_sell(
-    pre_market_pct_chg_range=(0.01, 1),
-    market_pct_chg_range=(0.01, 1),
-    trigger_condition="or",
-    direction="both"
-)
-backtester.trigger_stop_loss(stop_loss_pct=.01)
-backtester.trigger_take_profit(take_profit_pct=0.01, slippage_pct=0.01, slippage_method="partway")
-backtester.calc_rolling_pnl_no_stop_no_profit()
-backtester.calc_rolling_pnl_with_stop(slippage_pct=0.05, slippage_method="partway")
-backtester.trigger_exit(close_trade_timestamp_cst=time(14, 55))
-backtester.df_cur.groupby("ticker").agg()
+bt = SingleDayBacktest()
+bt.run_backtest(cur_day_file=all_csv_files[1], prev_day_file=all_csv_files[0])
