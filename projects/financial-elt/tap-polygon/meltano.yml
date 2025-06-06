@@ -310,7 +310,9 @@ plugins:
       password: ${POSTGRES_PASSWORD}
       dialect: ${POSTGRES_DIALECT}
       database: financial_elt
-      use_copy: true  # Faster bulk loading
+      max_batch_size: 10000
+      load_method: upsert  # for the first run set to append-only --> much faster loading
+      use_copy: true  # Faster bulk loadingcd
       add_record_metadata: true
 
   - name: target-parquet
@@ -321,9 +323,3 @@ plugins:
       compression_method: zstd
       max_pyarrow_table_size: 5500
       max_batch_size: 10000
-      schema_overrides:
-        trades:
-          price:
-            type: number
-            x-precision: 38
-            x-scale: 18
