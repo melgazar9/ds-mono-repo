@@ -111,7 +111,7 @@ class MeltanoTap:
         ), f"Must provide parallelism_method {parallelism_env_var} in .env."
 
         logging.info(
-            f"Running meltano ELT using approach {parallelism_method}. Number of workers set to {self.num_workers}."
+            f"Running meltano ELT {self.tap_name} using {parallelism_method}. Number of workers set to {self.num_workers}."
         )
 
         if parallelism_method.lower() in ["threadpool", "processpool"]:
