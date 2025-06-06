@@ -64,6 +64,7 @@ class MeltanoTap:
         self.num_workers = num_workers
         self.project_dir = project_dir
         self.tap_name = self.project_dir if tap_name is None else tap_name
+        self.target_name = target_name
 
         env_prefix = self.tap_name.upper().replace("-", "_")
         db_target = os.getenv(f"{env_prefix}_DB_TARGET")
@@ -85,12 +86,11 @@ class MeltanoTap:
 
     def run_tap_single_threaded(self):
         logging.info("Running meltano ELT without multiprocessing.")
-
+        if not self.target_name:
+            raise ValueError("target_name must be provided for single-threaded execution.")
         run_command = (
-            f"{self.base_run_command} "
-            f"--state-id {self.tap_name.replace('-', '_')}_{ENVIRONMENT}_{self.target_name}".split(
-                " "
-            )
+            f"{self.base_run_command} target-{self.target_name} "
+            f"--state-id {self.tap_name.replace('-', '_')}_{ENVIRONMENT}_{self.target_name}".split(" ")
         )
         run_meltano_task(run_command=run_command, cwd=self.cwd)
 
