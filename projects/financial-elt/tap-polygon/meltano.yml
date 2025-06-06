@@ -86,7 +86,7 @@ plugins:
 
     config:
       # set this for a global start date for all streams -- will be overridden by the streams incremental state if that's more recent.
-      start_date: '2000-01-01T00:00:00Z'
+#      start_date: '2000-01-01T00:00:00Z'
       api_key: ${POLYGON_API_KEY}
       base_url: https://api.polygon.io
 
@@ -321,3 +321,9 @@ plugins:
       compression_method: zstd
       max_pyarrow_table_size: 5500
       max_batch_size: 10000
+      schema_overrides:
+        trades:
+          price:
+            type: number
+            x-precision: 38
+            x-scale: 18
