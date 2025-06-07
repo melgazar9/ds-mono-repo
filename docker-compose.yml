@@ -82,7 +82,7 @@ services:
     volumes:
       - logs:/app/logs
       - ./projects/financial-elt/tap-yfinance/output:/app/tap-yfinance/output
-      - ./projects/financial-elt/tap-yfinance/.meltano:/app/tap-yfinance/.meltano
+      - ./projects/financial-elt/tap-yfinance/state:/app/tap-yfinance/state
     logging:
       driver: "json-file"
       options:
@@ -110,7 +110,7 @@ services:
     volumes:
       - logs:/app/logs
       - ./projects/financial-elt/tap-polygon/output:/app/tap-polygon/output
-      - ./projects/financial-elt/tap-polygon/.meltano:/app/tap-polygon/.meltano
+      - ./projects/financial-elt/tap-polygon/state:/app/tap-polygon/state
     logging:
       driver: "json-file"
       options:

@@ -24,12 +24,18 @@ RUN pipx install "meltano==3.7.3" && \
     poetry install && \
     meltano install
 
-WORKDIR /app/tap-polygon
+WORKDIR $APP_HOME/tap-polygon
 RUN meltano install
-
 WORKDIR $APP_HOME
+
+# Create directories to hold the symlinked state files
+RUN mkdir -p /app/tap-yfinance/state
+RUN mkdir -p /app/tap-polygon/state
+
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+ENTRYPOINT ["/app/entrypoint.sh"]
 
 EXPOSE 5000
 
-#CMD ["poetry", "run", "python", "host.py"]
 CMD ["bash", "-c", "poetry run python host.py"]

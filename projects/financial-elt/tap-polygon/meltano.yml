@@ -216,7 +216,7 @@ plugins:
         query_params:
           sort: timestamp
           order: "asc"
-          timestamp__gte: "2015-06-01"
+          timestamp__gte: "2025-06-01"
           limit: 50000
       sma:
         query_params:
