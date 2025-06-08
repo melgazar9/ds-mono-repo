@@ -29,8 +29,8 @@ RUN meltano install
 WORKDIR $APP_HOME
 
 # Create directories to hold the symlinked state files
-RUN mkdir -p /app/tap-yfinance/state
-RUN mkdir -p /app/tap-polygon/state
+RUN mkdir -p /app/tap-yfinance/state & \
+    mkdir -p /app/tap-polygon/state
 
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
