@@ -1,0 +1,394 @@
+version: 1
+send_anonymous_usage_stats: false
+project_id: tap_yfinance
+
+default_environment: dev
+
+state_backend:
+  uri: file://$MELTANO_PROJECT_ROOT/state.json
+
+environments:
+  - name: dev
+    config:
+      plugins:
+        loaders:
+          - name: target-snowflake
+            env:
+              TARGET_SNOWFLAKE_DEFAULT_TARGET_SCHEMA: TAP_YFINANCE_DEV
+          - name: target-postgres
+            config:
+              default_target_schema: tap_yfinance_dev
+
+  - name: production
+    config:
+      plugins:
+        loaders:
+          - name: target-snowflake
+            env:
+              TARGET_SNOWFLAKE_DEFAULT_TARGET_SCHEMA: TAP_YFINANCE_PRODUCTION
+          - name: target-postgres
+            config:
+              default_target_schema: tap_yfinance_production
+
+plugins:
+  extractors:
+    - name: "tap-yfinance"
+      namespace: "tap_yfinance"
+      pip_url: git+https://github.com/melgazar9/tap-yfinance
+
+      capabilities:
+        - state
+        - catalog
+        - discover
+        - about
+        - stream-maps
+
+      select:
+        - all_tickers.*
+#        - prices_1m.*
+#        - prices_2m.*
+#        - prices_5m.*
+        - prices_1h.*
+        - prices_1d.*
+        - actions.*
+        - analyst_price_targets.*
+        - balance_sheet.*
+        - calendar.*
+        - cash_flow.*
+        - dividends.*
+        - earnings_dates.*
+        - earnings_estimate.*
+        - earnings_history.*
+        - eps_revisions.*
+        - eps_trend.*
+#        - fast_info.*
+        - financials.*
+        - growth_estimates.*
+#        - history_metadata.*
+        - info.*
+        - income_stmt.*
+        - insider_purchases.*
+        - insider_roster_holders.*
+        - insider_transactions.*
+        - institutional_holders.*
+        - isin.*
+        - major_holders.*
+        - mutualfund_holders.*
+        - news.*
+        - recommendations.*
+        - recommendations_summary.*
+        - revenue_estimate.*
+        - sec_filings.*
+        - sec_tickers.*
+        - shares_full.*
+#        - splits.*
+        - sustainability.*
+        - ttm_cash_flow.*
+        - ttm_financials.*
+        - ttm_income_stmt.*
+        - option_chain.*
+        - options.*
+        - quarterly_balance_sheet.*
+        - quarterly_cash_flow.*
+        - quarterly_financials.*
+        - quarterly_income_stmt.*
+        - upgrades_downgrades.*
+        - private_companies_tickers.*
+        - etf_tickers.*
+        - bonds_tickers.*
+        - mutual_fund_tickers.*
+        - world_indices_tickers.*
+        - sectors.*
+        - stock_tickers_pts.*
+
+      config:
+        default_start_date: "1950-01-01"
+        add_record_metadata: true
+
+        ### tickers ###
+
+        all_tickers:
+          tickers: "*"
+        stock_tickers:
+          tickers: "*"
+        futures_tickers:
+          tickers: "*"
+        forex_tickers:
+          tickers: "*"
+        crypto_tickers:
+          tickers: "*"
+        crypto_tickers_top_250:
+          tickers: "*"
+
+        ### prices ###
+
+        prices_1m:
+          tickers: "*"
+          yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+          prices_2m:
+            tickers: "*"
+            yf_params: { "interval": 2m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+          prices_5m:
+            tickers: "*"
+            yf_params: { "interval": 5m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+          prices_1h:
+            tickers: "*"
+            yf_params: { "interval": 1h, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+          prices_1d:
+            tickers: "*"
+            yf_params: { "interval": 1d, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+
+        stock_prices_1m:
+          tickers: "*"
+          yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+        futures_prices_1m:
+          tickers: "*"
+          yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+        forex_prices_1m:
+          tickers: "*"
+          yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+        crypto_prices_1m:
+          tickers: "*"
+          yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+
+        stock_prices_2m:
+          tickers: "*"
+          yf_params: { "interval": 2m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+        futures_prices_2m:
+          tickers: "*"
+          yf_params: { "interval": 2m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+        forex_prices_2m:
+          tickers: "*"
+          yf_params: { "interval": 2m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+        crypto_prices_2m:
+          tickers: "*"
+          yf_params: { "interval": 2m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+
+        stock_prices_5m:
+          tickers: "*"
+          yf_params: { "interval": 5m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+        futures_prices_5m:
+          tickers: "*"
+          yf_params: { "interval": 5m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+        forex_prices_5m:
+          tickers: "*"
+          yf_params: { "interval": 5m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+        crypto_prices_5m:
+          tickers: "*"
+          yf_params: { "interval": 5m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+
+        stock_prices_1h:
+          tickers: "*"
+          yf_params: { "interval": 1h, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+        futures_prices_1h:
+          tickers: "*"
+          yf_params: { "interval": 1h, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+        forex_prices_1h:
+          tickers: "*"
+          yf_params: { "interval": 1h, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+        crypto_prices_1h:
+          tickers: "*"
+          yf_params: { "interval": 1h, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+
+        stock_prices_1d:
+          tickers: "*"
+          yf_params: { "interval": 1d, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+        futures_prices_1d:
+          tickers: "*"
+          yf_params: { "interval": 1d, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+        forex_prices_1d:
+          tickers: "*"
+          yf_params: { "interval": 1d, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+        crypto_prices_1d:
+          tickers: "*"
+          yf_params: { "interval": 1d, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+        ### wide ###
+
+        stock_prices_wide_1m:
+          tickers: "*"
+          yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+        futures_prices_wide_1m:
+          tickers: [ "ES=F", "CL=F" ]
+          yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+        forex_prices_wide_1m:
+          tickers: [ "EURUSD=X", "RUB=X" ]
+          yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+        crypto_prices_wide_1m:
+          tickers: [ "BTC-USD", "ETH-USD" ]
+          yf_params: { "interval": 1m, "prepost": true, "repair": true, "auto_adjust": true, "back_adjust": false }
+
+        ### financials ###
+
+        actions:
+          tickers: "*"
+
+        analyst_price_targets:
+          tickers: "*"
+
+        balance_sheet:
+          tickers: "*"
+
+        calendar:
+          tickers: "*"
+
+        cash_flow:
+          tickers: "*"
+
+        dividends:
+          tickers: "*"
+
+        earnings_dates:
+          tickers: "*"
+
+        earnings_estimate:
+          tickers: "*"
+
+        earnings_history:
+          tickers: "*"
+
+        eps_revisions:
+          tickers: "*"
+
+        eps_trend:
+          tickers: "*"
+
+        fast_info:
+          tickers: "*"
+
+        financials:
+          tickers: "*"
+
+        growth_estimates:
+          tickers: "*"
+
+        history_metadata:
+          tickers: "*"
+
+        info:
+          tickers: "*"
+
+        income_stmt:
+          tickers: "*"
+
+        insider_purchases:
+          tickers: "*"
+
+        insider_roster_holders:
+          tickers: "*"
+
+        insider_transactions:
+          tickers: "*"
+
+        institutional_holders:
+          tickers: "*"
+
+        isin:
+          tickers: "*"
+
+        major_holders:
+          tickers: "*"
+
+        mutualfund_holders:
+          tickers: "*"
+
+        news:
+          tickers: "*"
+
+        recommendations:
+          tickers: "*"
+
+        recommendations_summary:
+          tickers: "*"
+
+        revenue_estimate:
+          tickers: "*"
+
+        sec_filings:
+          tickers: "*"
+
+        shares_full:
+          tickers: "*"
+
+        splits:
+          tickers: "*"
+
+        sustainability:
+          tickers: "*"
+
+        ttm_cash_flow:
+          tickers: "*"
+
+        ttm_financials:
+          tickers: "*"
+
+        ttm_income_stmt:
+          tickers: "*"
+
+        option_chain:
+          tickers: "*"
+
+        options:
+          tickers: "*"
+
+        quarterly_balance_sheet:
+          tickers: "*"
+
+        quarterly_cash_flow:
+          tickers: "*"
+
+        quarterly_financials:
+          tickers: "*"
+
+        quarterly_income_stmt:
+          tickers: "*"
+
+        upgrades_downgrades:
+          tickers: "*"
+
+  loaders:
+    - name: target-postgres
+      variant: meltanolabs
+      pip_url: git+https://github.com/MeltanoLabs/target-postgres
+      config:
+        host: ${POSTGRES_HOST}
+        port: ${POSTGRES_PORT}
+        user: ${POSTGRES_USER}
+        password: ${POSTGRES_PASSWORD}
+        dialect: ${POSTGRES_DIALECT}
+        database: financial_elt
+        batch_size_rows: 30000
+        use_copy: true
+        add_record_metadata: true
+        load_method: upsert
+
+    - name: target-jsonl
+      variant: andyh1203
+      pip_url: target-jsonl

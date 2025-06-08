@@ -1,5 +1,10 @@
-def parallize_pandas_func(df, df_attribute, parallelize_by_col=True, num_workers=mp.cpu_count(), **kwargs):
-    """ parallelize by row not implemented yet """
+# flake8: noqa
+
+
+def parallize_pandas_func(
+    df, df_attribute, parallelize_by_col=True, num_workers=mp.cpu_count(), **kwargs
+):
+    """parallelize by row not implemented yet"""
     start_pos = 0
     chunk_len = int(np.floor(len(df.columns) / num_workers))
     delayed_list = []
@@ -19,4 +24,3 @@ def parallize_pandas_func(df, df_attribute, parallelize_by_col=True, num_workers
         dask_tuple = dask.compute(*delayed_list)
         df_out = pd.concat([i for i in dask_tuple], axis=1)
         return df_out
-

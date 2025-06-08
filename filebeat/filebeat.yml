@@ -1,0 +1,61 @@
+# =================== Filebeat inputs ======================
+
+filebeat.inputs:
+- type: filestream
+  id: app-logs
+  enabled: true
+  paths:
+    - /app/logs/**/*.log
+  fields:
+    meltano-service: "financial-elt"
+  fields_under_root: true
+  processors:
+    - rename:
+        fields:
+          - from: "service"
+            to: "meltano-service"
+        ignore_missing: true
+        overwrite: true
+
+- type: container
+  enabled: true
+  paths:
+    - /var/lib/docker/containers/*/*.log
+  fields:
+    log_type: "container"
+  fields_under_root: true
+  processors:
+    - add_docker_metadata: ~
+    - drop_event:
+        when:
+          not:
+            or:
+              - contains:
+                  container.name: "tap-yfinance-"
+              - contains:
+                  container.name: "tap-polygon-"
+    - rename:
+        fields:
+          - from: "log"
+            to: "message"
+        ignore_missing: true
+
+# =================== Elasticsearch output ======================
+output.elasticsearch:
+  hosts: ["http://elasticsearch:9200"]
+
+# =================== Kibana setup ======================
+setup.kibana:
+  host: "http://kibana:5601"
+
+# =================== ILM setup ======================
+
+setup.ilm.enabled: true
+setup.ilm.policy_name: "filebeat-5d-policy"
+setup.ilm.overwrite: true
+setup.ilm.policy_file: "/usr/share/filebeat/filebeat-5d-policy.json"
+
+# =================== Logging ======================
+logging.level: info
+#logging.selectors: ["harvester", "elasticsearch"]
+

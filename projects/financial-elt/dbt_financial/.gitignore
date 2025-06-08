@@ -1,0 +1,6 @@
+# created by virtualenv automatically
+bin/
+pyvenv.cfg
+target/
+
+dbt_packages/*

@@ -1,0 +1,12 @@
+steps:
+- name: 'docker'
+  dir: 'projects/financial_elt'
+  args: [ 'build', '-t', 'gcr.io/$PROJECT_ID/financial-elt-image', '.' ]
+
+images:
+- 'gcr.io/$PROJECT_ID/financial-elt-image'
+
+tags: ['gcp-cloud-build-financial-elt']
+
+options:
+  logging: CLOUD_LOGGING_ONLY

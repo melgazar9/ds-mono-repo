@@ -1,0 +1,325 @@
+version: 1
+send_anonymous_usage_stats: true
+project_id: "tap-polygon"
+
+state_backend:
+  uri: file://$MELTANO_PROJECT_ROOT/state
+
+default_environment: dev
+
+environments:
+  - name: dev
+    config:
+      plugins:
+        loaders:
+          - name: target-postgres
+            config:
+              default_target_schema: tap_polygon_dev
+
+  - name: production
+    config:
+      plugins:
+        loaders:
+          - name: target-postgres
+            config:
+              default_target_schema: tap_polygon_production
+
+plugins:
+  extractors:
+  - name: "tap-polygon"
+    namespace: "tap_polygon"
+    pip_url: git+https://github.com/melgazar9/tap-polygon.git
+
+    capabilities:
+      - state
+      - catalog
+      - discover
+      - about
+      - stream-maps
+
+    settings:
+      - name: rest_api_key
+        kind: password
+        label: Polygon API Key
+        description: Polygon.io API Key
+        sensitive: true
+
+      - name: start_date
+        kind: date_iso8601
+        label: Start Date
+        description: Initial date to start extracting data from
+
+    select:
+      - tickers.*
+      - ticker_details.*
+      - ticker_types.*
+      - related_companies.*
+      - bars_1_second.*
+      - bars_1_minute.*
+      - bars_5_minute.*
+      - bars_1_hour.*
+      - bars_1_day.*
+      - bars_1_week.*
+      - bars_1_month.*
+      - daily_market_summary.*
+      - daily_ticker_summary.*
+      - previous_day_bar.*
+      - top_market_movers.*
+#      - trades.*
+      - sma.*
+      - ema.*
+      - macd.*
+      - rsi.*
+      - exchanges.*
+      - market_holidays.*
+      - market_status.*
+      - condition_codes.*
+      - ipos.*
+      - splits.*
+      - dividends.*
+      - ticker_events.*
+      - financials.*
+      - short_interest.*
+      - short_volume.*
+      - news.*
+      - treasury_yields.*
+
+    config:
+      # set this for a global start date for all streams -- will be overridden by the streams incremental state if that's more recent.
+#      start_date: '2000-01-01T00:00:00Z'
+      api_key: ${POLYGON_API_KEY}
+      base_url: https://api.polygon.io
+
+      # The tickers that are set here persist across all streams that require a single stock ticker as input.
+      # To run different tickers across different streams you need to call the tap N times,
+      # where N is the number of distinct groups of ticker.
+      tickers:
+        query_params:
+          sort: ticker
+
+      ticker_details:
+        query_params:
+          date: "2000-01-01"
+        other_params:
+          loop_over_dates_gte_date: true
+
+      bars_1_second:
+        path_params:
+          multiplier: 1
+          timespan: "second"
+          from: "2015-06-01"
+        query_params:
+          adjusted: false
+          sort: "asc"
+          limit: 50000
+
+      bars_30_second:
+        path_params:
+          multiplier: 30
+          timespan: "second"
+          from: "2015-06-01"
+        query_params:
+          adjusted: false
+          sort: "asc"
+          limit: 50000
+
+      bars_1_minute:
+        path_params:
+          multiplier: 1
+          timespan: "minute"
+          from: "2015-06-01"
+        query_params:
+          adjusted: false
+          sort: "asc"
+          limit: 50000
+
+      bars_5_minute:
+        path_params:
+          multiplier: 5
+          timespan: "minute"
+          from: "2015-06-01"
+        query_params:
+          adjusted: false
+          sort: "asc"
+          limit: 50000
+
+      bars_30_minute:
+        path_params:
+          multiplier: 30
+          timespan: "minute"
+          from: "2015-01-06"
+        query_params:
+          adjusted: false
+          sort: "asc"
+          limit: 50000
+
+      bars_1_hour:
+        path_params:
+          multiplier: 1
+          timespan: "hour"
+          from: "2015-01-06"
+        query_params:
+          adjusted: false
+          sort: "asc"
+          limit: 50000
+
+      bars_1_day:
+        path_params:
+          multiplier: 1
+          timespan: "day"
+          from: "2015-01-06"
+        query_params:
+          adjusted: false
+          sort: "asc"
+          limit: 50000
+
+      bars_1_week:
+        path_params:
+          multiplier: 1
+          timespan: "week"
+          from: "2015-01-06"
+        query_params:
+          adjusted: false
+          sort: "asc"
+          limit: 50000
+
+      bars_1_month:
+        path_params:
+          multiplier: 1
+          timespan: "month"
+          from: "2015-01-06"
+        query_params:
+          adjusted: false
+          sort: "asc"
+          limit: 50000
+
+      daily_market_summary:
+        path_params:
+          date: "2015-06-01"  # leave blank or set to "" to get current day
+        query_params:
+          adjusted: true
+          include_otc: true
+        other_params:
+          loop_over_dates_gte_date: true
+      daily_ticker_summary:
+        path_params:
+          date: "2015-06-01"
+        query_params:
+          adjusted: true
+        other_params:
+          loop_over_dates_gte_date: true
+      top_market_movers:
+        query_params:
+          direction: "gainers"  # set to "" or "both" to get both directions
+          include_otc: false
+      trades:
+        query_params:
+          sort: timestamp
+          order: "asc"
+          timestamp__gte: "2025-06-01"
+          limit: 50000
+      sma:
+        query_params:
+          timestamp__gte: "2015-06-01"
+          order: "asc"
+          timespan: "minute"
+          window: 20
+          series_type: close
+          expand_underlying: true
+          limit: 5000
+      ema:
+        query_params:
+          timestamp__gte: "2015-06-01"
+          order: "asc"
+          timespan: "minute"
+          window: 10
+          series_type: close
+          expand_underlying: true
+          limit: 5000
+      macd:
+        query_params:
+          timestamp__gte: "2015-06-01"
+          order: "asc"
+          timespan: "minute"
+          short_window: 12
+          long_window: 26
+          signal_window: 9
+          series_type: close
+          expand_underlying: true
+          limit: 5000
+      rsi:
+        query_params:
+          timestamp__gte: "2015-06-01"
+          order: "asc"
+          timespan: "minute"
+          window: 18
+          series_type: close
+          expand_underlying: true
+          limit: 5000
+      ipos:
+        query_params:
+          listing_date__gte: "2008-12-10"
+          limit: 1000
+      splits:
+        query_params:
+          execution_date__gte: "2000-01-01"
+          order: "asc"
+          limit: 1000
+      dividends:
+        query_params:
+          ex_dividend_date__gte: "2000-08-12"
+          order: "asc"
+          limit: 1000
+      financials:
+        query_params:
+          filing_date__gte: "2000-01-01"
+          order: "asc"
+          include_sources: true
+          limit: 100
+      short_interest:
+        query_params:
+          settlement_date__gte: "2015-06-01"
+          limit: 50000
+      short_volume:
+        query_params:
+          date__gte: "2015-06-01"
+          order: "asc"
+          limit: 50000
+      news:
+        query_params:
+          published_utc__gte: "2015-06-21"
+          order: "asc"
+          limit: 1000
+      treasury_yields:
+        query_params:
+          date__gte: "1962-01-01"
+          limit: 50000
+
+  loaders:
+  - name: target-jsonl
+    variant: andyh1203
+    pip_url: target-jsonl
+
+  - name: target-postgres
+    variant: meltanolabs
+    pip_url: git+https://github.com/MeltanoLabs/target-postgres
+    config:
+      host: ${POSTGRES_HOST}
+      port: ${POSTGRES_PORT}
+      user: ${POSTGRES_USER}
+      password: ${POSTGRES_PASSWORD}
+      dialect: ${POSTGRES_DIALECT}
+      database: financial_elt
+      max_batch_size: 10000
+      load_method: upsert  # for the first run set to append-only --> much faster loading
+      use_copy: true  # Faster bulk loadingcd
+      add_record_metadata: true
+
+  - name: target-parquet
+    variant: automattic
+    pip_url: git+https://github.com/Automattic/target-parquet.git
+    config:
+      destination_path: output/parquets
+      compression_method: zstd
+      max_pyarrow_table_size: 5500
+      max_batch_size: 10000

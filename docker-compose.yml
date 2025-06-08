@@ -1,33 +1,122 @@
-version: '3'
+networks:
+  elastic:
+    driver: bridge
 
 volumes:
-  ds-core:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ds_core
+  elasticsearch_data:
+  kibana_data:
+  filebeat_data:
+  logs:
 
 services:
-  ds-monorepo-default:
-    container_name: ds-monorepo-default
-    image: ds-monorepo-default:latest
-    restart: always
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    container_name: elasticsearch-${ENVIRONMENT}
+    platform: linux/amd64
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false # TODO: add pw for security purposes
+      # - ELASTIC_PASSWORD=<password>
+    networks:
+      - elastic
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    env_file:
+      - .env
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.4
+    container_name: kibana-${ENVIRONMENT}
+    platform: linux/amd64
+    environment:
+      - ELASTICSEARCH_HOSTS=["http://elasticsearch-${ENVIRONMENT}:9200"]
+    networks:
+      - elastic
+    ports:
+      - "5601:5601"
+    volumes:
+      - kibana_data:/usr/share/kibana/data
+    depends_on:
+      - elasticsearch
+    env_file:
+      - .env
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.12.0
+    user: root
+    container_name: filebeat-${ENVIRONMENT}
+    platform: linux/amd64
+    networks:
+      - elastic
+    depends_on:
+      - elasticsearch
+    volumes:
+      - filebeat_data:/usr/share/filebeat/data
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - logs:/app/logs:ro
+      - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ./filebeat/filebeat-5d-policy.json:/usr/share/filebeat/filebeat-5d-policy.json:ro
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch-${ENVIRONMENT}:9200
+    env_file:
+      - .env
+
+  tap-yfinance:
     build:
-      context: .
+      context: ./projects/financial-elt/
       dockerfile: Dockerfile
       args:
-        APP_ENV: production # change this to adjust which environments APIs are called
-    volumes:
-      - ds-core:.
+        CI: "true"
+    container_name: tap-yfinance-${ENVIRONMENT}
+    platform: linux/amd64
+    networks:
+      - elastic
     env_file:
       - .env
     environment:
-      - DOCKER_DEFAULT_PLATFORM=linux/amd64
-    ports:
-      - 5000:5000
-    deploy:
-      resources:
-        limits:
-          cpus: '6'
-          memory: 3000M
+      - FINANCIAL_ELT_TAPS_TO_RUN=tap-yfinance
+    volumes:
+      - logs:/app/logs
+      - ./projects/financial-elt/tap-yfinance/output:/app/tap-yfinance/output
+      - ./projects/financial-elt/tap-yfinance/state:/app/tap-yfinance/state
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
+  tap-polygon:
+    build:
+      context: ./projects/financial-elt/
+      dockerfile: Dockerfile
+      args:
+        CI: "true"
+    container_name: tap-polygon-${ENVIRONMENT}
+    platform: linux/amd64
+    networks:
+      - elastic
+    env_file:
+      - .env
+    environment:
+      - FINANCIAL_ELT_TAPS_TO_RUN=tap-polygon
+    volumes:
+      - logs:/app/logs
+      - ./projects/financial-elt/tap-polygon/output:/app/tap-polygon/output
+      - ./projects/financial-elt/tap-polygon/state:/app/tap-polygon/state
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536

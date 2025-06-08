@@ -1,0 +1,18 @@
+[flake8]
+
+max-line-length = 128
+
+exclude =
+    .meltano,
+    .venv,
+    venv,
+    __pycache__,
+    build,
+    dist,
+    site-packages,
+    */site-packages/*,
+    **/site-packages/*
+    **/legacy/*
+    projects/financial-elt/dbt_financial/
+
+ignore = F405, F403, W503, E203, E266
