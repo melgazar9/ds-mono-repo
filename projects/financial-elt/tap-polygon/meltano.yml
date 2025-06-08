@@ -65,7 +65,7 @@ plugins:
       - daily_ticker_summary.*
       - previous_day_bar.*
       - top_market_movers.*
-      - trades.*
+#      - trades.*
       - sma.*
       - ema.*
       - macd.*
@@ -147,7 +147,7 @@ plugins:
         path_params:
           multiplier: 30
           timespan: "minute"
-          from: "2025-01-06"
+          from: "2015-01-06"
         query_params:
           adjusted: false
           sort: "asc"
@@ -157,7 +157,7 @@ plugins:
         path_params:
           multiplier: 1
           timespan: "hour"
-          from: "2025-01-06"
+          from: "2015-01-06"
         query_params:
           adjusted: false
           sort: "asc"
@@ -167,7 +167,7 @@ plugins:
         path_params:
           multiplier: 1
           timespan: "day"
-          from: "2025-01-06"
+          from: "2015-01-06"
         query_params:
           adjusted: false
           sort: "asc"
@@ -177,7 +177,7 @@ plugins:
         path_params:
           multiplier: 1
           timespan: "week"
-          from: "2025-01-06"
+          from: "2015-01-06"
         query_params:
           adjusted: false
           sort: "asc"
@@ -187,7 +187,7 @@ plugins:
         path_params:
           multiplier: 1
           timespan: "month"
-          from: "2023-01-06"
+          from: "2015-01-06"
         query_params:
           adjusted: false
           sort: "asc"

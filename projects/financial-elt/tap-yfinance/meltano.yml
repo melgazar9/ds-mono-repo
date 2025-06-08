@@ -45,9 +45,9 @@ plugins:
 
       select:
         - all_tickers.*
-        - prices_1m.*
-        - prices_2m.*
-        - prices_5m.*
+#        - prices_1m.*
+#        - prices_2m.*
+#        - prices_5m.*
         - prices_1h.*
         - prices_1d.*
         - actions.*
@@ -61,10 +61,10 @@ plugins:
         - earnings_history.*
         - eps_revisions.*
         - eps_trend.*
-        - fast_info.*
+#        - fast_info.*
         - financials.*
         - growth_estimates.*
-        - history_metadata.*
+#        - history_metadata.*
         - info.*
         - income_stmt.*
         - insider_purchases.*
@@ -81,7 +81,7 @@ plugins:
         - sec_filings.*
         - sec_tickers.*
         - shares_full.*
-        - splits.*
+#        - splits.*
         - sustainability.*
         - ttm_cash_flow.*
         - ttm_financials.*
