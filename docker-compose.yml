@@ -92,6 +92,8 @@ services:
       nofile:
         soft: 65536
         hard: 65536
+    ports:
+      - "5000:5000"
 
   tap-polygon:
     build:
@@ -120,3 +122,5 @@ services:
       nofile:
         soft: 65536
         hard: 65536
+    ports:
+      - "5000:5000"
