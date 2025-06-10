@@ -113,9 +113,7 @@ class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
             if query.strip().lower().startswith("select"):
                 df = pd.read_sql(query, con=self.con, **read_sql_kwargs)
             elif df_type == "polars":
-                df = pl.read_database(
-                    query=query, connection=self.con, **read_sql_kwargs
-                )
+                df = pl.read_database(query=query, connection=self.con, **read_sql_kwargs)
             else:
                 raise ValueError(
                     f"df_type is set to {df_type} but only pandas and polars are supported."
