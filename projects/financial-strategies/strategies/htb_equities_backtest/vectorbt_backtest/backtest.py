@@ -15,6 +15,7 @@ CUTOFF_CST = pd.Timestamp("13:45:00").time()
 
 ### --- Functions ---
 
+
 # TODO: Broken --> fix logic
 def run_vbt(df, day):
     """
