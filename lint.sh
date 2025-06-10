@@ -1,6 +1,12 @@
+#!/usr/bin/env bash
+set -e
+
+echo "Running black..."
 black .
+echo "Running isort..."
 isort . --profile black
-flake8       # or pylint
+echo "Running flake8..."
+flake8
 
 #mypy .         # if using type hints
 
