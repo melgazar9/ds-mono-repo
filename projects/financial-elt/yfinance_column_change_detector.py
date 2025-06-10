@@ -2,9 +2,8 @@ import sys
 
 import pandas as pd
 import yfinance as yf
-from tap_yfinance.price_utils import clean_strings
-
 from ds_core.db_connectors import *
+from tap_yfinance.price_utils import clean_strings
 
 home_path = os.path.expanduser("~")
 

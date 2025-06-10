@@ -26,7 +26,7 @@ jobs:
       run: black --check .
 
       #- name: Run pylint
-      #run: pylint ds_core  # or your python package/folder
+      #run: pylint ds-core  # or your python package/folder
 
     - name: Run isort check
       run: isort --check-only .

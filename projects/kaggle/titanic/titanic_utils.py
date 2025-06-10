@@ -6,7 +6,9 @@ class TitanicFeatureCreator:
 
         features = [features] if isinstance(features, str) else features
         features = (
-            [i for i in df.columns if i != target_name] if features is None else features
+            [i for i in df.columns if i != target_name]
+            if features is None
+            else features
         )
 
         self.survival_categories = {}
@@ -44,9 +46,9 @@ class TitanicSplitter(AbstractSplitter):
     def split(self, df):
         df = df.reset_index(drop=True)
         non_submission_shape = df[df["survived"].notnull()].shape[0]
-        df.loc[0 : int(non_submission_shape * self.train_pct), self.split_colname] = (
-            "train"
-        )
+        df.loc[
+            0 : int(non_submission_shape * self.train_pct), self.split_colname
+        ] = "train"
 
         df.loc[
             int(non_submission_shape * self.train_pct)

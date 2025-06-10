@@ -113,30 +113,6 @@ def zip_dir(directory, output_loc, exclude_suffix=".dill"):
     return
 
 
-def send_email(to_addrs, from_addr=None, subject="", body="", files=None, password=None):
-    if password is None or from_addr is None:
-        email_credentials = os.environ.get("EMAIL_CREDENTIALS")
-
-        email_credentials = json_string_to_dict(email_credentials)
-
-        assert isinstance(email_credentials, dict), "Error parsing email credentials."
-
-        if from_addr is None:
-            from_addr = email_credentials["username"]
-        if password is None:
-            password = email_credentials["password"]
-
-    to_addrs = [to_addrs] if isinstance(to_addrs, str) else to_addrs
-
-    yag = yagmail.SMTP(from_addr, password)
-
-    files = [""] if files is None else files
-    files = [files] if isinstance(files, str) else files
-    contents = [body] + files
-    yag.send(to=to_addrs, subject=subject, contents=contents)
-    return
-
-
 def json_string_to_dict(json_string):
     try:
         string_as_dict = json.loads(json_string)
@@ -278,3 +254,29 @@ def clean_strings(lst):
 def clean_columns(df):
     df.columns = clean_strings(df.columns)
     return df
+
+
+def send_email(
+    to_addrs, from_addr=None, subject="", body="", files=None, password=None
+):
+    if password is None or from_addr is None:
+        email_credentials = os.environ.get("EMAIL_CREDENTIALS")
+
+        email_credentials = json_string_to_dict(email_credentials)
+
+        assert isinstance(email_credentials, dict), "Error parsing email credentials."
+
+        if from_addr is None:
+            from_addr = email_credentials["username"]
+        if password is None:
+            password = email_credentials["password"]
+
+    to_addrs = [to_addrs] if isinstance(to_addrs, str) else to_addrs
+
+    yag = yagmail.SMTP(from_addr, password)
+
+    files = [""] if files is None else files
+    files = [files] if isinstance(files, str) else files
+    contents = [body] + files
+    yag.send(to=to_addrs, subject=subject, contents=contents)
+    return

@@ -116,7 +116,9 @@ class HTBEquityBacktest:
                 self.df_splits_dividends["event_date"]
             ).dt.tz_localize(self.config.timezone)
 
-            logging.info(f"Loaded {len(self.df_splits_dividends)} split/dividend events")
+            logging.info(
+                f"Loaded {len(self.df_splits_dividends)} split/dividend events"
+            )
 
         except Exception as e:
             logging.error(f"Error loading splits/dividends data: {e}")
@@ -256,7 +258,10 @@ class HTBEquityBacktest:
             mask = (
                 valid
                 & is_split
-                & ((diff_prev <= self.config.abs_tol) | (rel_prev <= self.config.rel_tol))
+                & (
+                    (diff_prev <= self.config.abs_tol)
+                    | (rel_prev <= self.config.rel_tol)
+                )
                 & (state == "unknown")
             )
             state[mask] = "unadjusted"
@@ -265,7 +270,10 @@ class HTBEquityBacktest:
             mask = (
                 valid
                 & is_div
-                & ((diff_prev <= self.config.abs_tol) | (rel_prev <= self.config.rel_tol))
+                & (
+                    (diff_prev <= self.config.abs_tol)
+                    | (rel_prev <= self.config.rel_tol)
+                )
             )
             state[mask] = "unadjusted"
 
@@ -287,7 +295,9 @@ class HTBEquityBacktest:
         df_open["robust_open_adj_state"] = robust
 
         # Set NaN for no-event rows
-        mask_no_event = (df_open["split_ratio"] == 1.0) & (df_open["cash_amount"] == 0.0)
+        mask_no_event = (df_open["split_ratio"] == 1.0) & (
+            df_open["cash_amount"] == 0.0
+        )
         for col in [
             "pre_market_open_adj_state",
             "market_open_adj_state",
@@ -428,7 +438,9 @@ class HTBEquityBacktest:
                 split_ratio = move_data["split_ratio"]
                 cash_amount = move_data["cash_amount"]
                 adj_baseline = prev_close * split_ratio - cash_amount
-                ticker_data["adj_current_move"] = (ticker_data["high"] / adj_baseline) - 1
+                ticker_data["adj_current_move"] = (
+                    ticker_data["high"] / adj_baseline
+                ) - 1
                 qualifying_condition = (
                     ticker_data["current_move"] >= self.config.overnight_threshold
                 ) | (ticker_data["adj_current_move"] >= self.config.overnight_threshold)
@@ -868,7 +880,9 @@ class HTBEquityBacktest:
                     "error": f"Full results could not be serialized: {str(e)}",
                 }
                 with open(f"simplified_{filename}", "w") as f:
-                    json.dump(simplified_results, f, indent=2, default=serialize_objects)
+                    json.dump(
+                        simplified_results, f, indent=2, default=serialize_objects
+                    )
                 logging.info(f"Simplified results saved to simplified_{filename}")
             except Exception as e2:
                 logging.error(f"Could not save even simplified results: {e2}")

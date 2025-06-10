@@ -178,7 +178,9 @@ class SklearnMLFlow(MLFlowLogger):
 
             self.feature_transformer.instantiate_column_transformer(
                 self.df_out[self.df_out[self.split_colname] == "train"],
-                self.df_out[self.df_out[self.split_colname] == "train"][self.target_name],
+                self.df_out[self.df_out[self.split_colname] == "train"][
+                    self.target_name
+                ],
             )
 
             ### Assign feature groups ###
@@ -268,16 +270,16 @@ class SklearnMLFlow(MLFlowLogger):
         if not isinstance(self.algorithms, (tuple, list)) and hasattr(
             self.algorithms, "predict_proba"
         ):
-            self.df_out[type(self.algorithms).__name__ + "_pred"] = (
-                self.algorithms.predict_proba(self.df_out[self.output_features])[:, 1]
-            )
+            self.df_out[
+                type(self.algorithms).__name__ + "_pred"
+            ] = self.algorithms.predict_proba(self.df_out[self.output_features])[:, 1]
 
         elif not isinstance(self.algorithms, (tuple, list)) and hasattr(
             self.algorithms, "decision_function"
         ):
-            self.df_out[type(self.algorithms).__name__ + "_pred"] = (
-                algo.decision_function(self.df_out[self.output_features])[:, 1]
-            )
+            self.df_out[
+                type(self.algorithms).__name__ + "_pred"
+            ] = algo.decision_function(self.df_out[self.output_features])[:, 1]
 
         else:
             assert isinstance(self.algorithms, (tuple, list))
@@ -346,7 +348,9 @@ class SklearnMLFlow(MLFlowLogger):
         # tail might not be a good way to choose the rows, but in case the data is
         # sorted it makes sense as a default
         opt_val_indices = (
-            self.df_out[self.df_out[self.split_colname] == "val"].tail(n_val_values).index
+            self.df_out[self.df_out[self.split_colname] == "val"]
+            .tail(n_val_values)
+            .index
         )
 
         self.df_out.loc[opt_val_indices, threshold_opt_name] = True
@@ -366,7 +370,9 @@ class SklearnMLFlow(MLFlowLogger):
         fits = [i for i in self.df_out.columns if i.endswith("_pred")]
 
         splits_to_assess = (
-            [splits_to_assess] if isinstance(splits_to_assess, str) else splits_to_assess
+            [splits_to_assess]
+            if isinstance(splits_to_assess, str)
+            else splits_to_assess
         )
         splits_to_assess = (
             list(splits_to_assess)
@@ -396,9 +402,9 @@ class SklearnMLFlow(MLFlowLogger):
                 )
 
                 if self.optimizer.best_thresholds[fit].index.name != "threshold":
-                    self.optimizer.best_thresholds[fit] = self.optimizer.best_thresholds[
+                    self.optimizer.best_thresholds[
                         fit
-                    ].set_index("threshold")
+                    ] = self.optimizer.best_thresholds[fit].set_index("threshold")
 
                 thres_opt.assign_predicted_class(self.optimizer.best_thresholds[fit])
 
@@ -407,7 +413,9 @@ class SklearnMLFlow(MLFlowLogger):
     def evaluate(self, splits_to_evaluate=("train", "val", "test"), **kwargs):
         evaluator_params = {}
         for param in [
-            i for i in inspect.getfullargspec(self.evaluator.__init__).args if i != "self"
+            i
+            for i in inspect.getfullargspec(self.evaluator.__init__).args
+            if i != "self"
         ]:
             evaluator_params[param] = getattr(self.evaluator, param)
         for k in kwargs.keys():
@@ -661,7 +669,9 @@ def get_column_names_from_column_transformer(
                         else:
                             names = list(transformer.get_feature_names())
 
-                    elif hasattr(transformer, "indicator_") and transformer.add_indicator:
+                    elif (
+                        hasattr(transformer, "indicator_") and transformer.add_indicator
+                    ):
                         # is this transformer one of the imputers & did it call the
                         # MissingIndicator?
                         missing_indicator_indices = transformer.indicator_.features_
@@ -836,7 +846,8 @@ class FeatureTransformer(TransformerMixin, MLFlowLogger):
                 [
                     i
                     for i in X.columns
-                    if i not in self.preserve_vars + [self.target_name] + custom_features
+                    if i
+                    not in self.preserve_vars + [self.target_name] + custom_features
                 ]
             ]
         )
@@ -1122,7 +1133,9 @@ class FeatureTransformer(TransformerMixin, MLFlowLogger):
             )
             i = 0
             for cp in custom_pipe.keys():
-                transformers.append(("custom_pipe{}".format(str(i)), cp, custom_pipe[cp]))
+                transformers.append(
+                    ("custom_pipe{}".format(str(i)), cp, custom_pipe[cp])
+                )
                 i += 1
 
         self.column_transformer.transformers = transformers
@@ -1548,7 +1561,9 @@ class CalcMLMetrics(MLFlowLogger):
             if len(self.fits) == 1:
                 self.metrics_df = (
                     df.groupby(self.groupby_cols, dropna=drop_nas)
-                    .apply(lambda x: self.metric_fn(x[self.target_name], x[self.fits[0]]))
+                    .apply(
+                        lambda x: self.metric_fn(x[self.target_name], x[self.fits[0]])
+                    )
                     .reset_index()
                     .pipe(lambda x: x[self.groupby_cols].join(json_normalize(x[0])))
                 )
@@ -1568,7 +1583,9 @@ class CalcMLMetrics(MLFlowLogger):
 
             if groupby_col_order is not None:
                 for col in groupby_col_order.keys():
-                    col_order = pd.CategoricalDtype(groupby_col_order[col], ordered=True)
+                    col_order = pd.CategoricalDtype(
+                        groupby_col_order[col], ordered=True
+                    )
                     self.metrics_df[col] = self.metrics_df[col].astype(col_order)
 
                 self.metrics_df = self.metrics_df.sort_values(
@@ -1604,7 +1621,9 @@ class CalcMLMetrics(MLFlowLogger):
 
         if self.groupby_cols is None:
             metrics_df = metrics_output.reset_index().melt(id_vars="index")
-            metrics_df = metrics_df.rename(columns={"index": "metric", "variable": "fit"})
+            metrics_df = metrics_df.rename(
+                columns={"index": "metric", "variable": "fit"}
+            )
         else:
             metrics_df = metrics_output.melt(
                 id_vars=list(set(self.groupby_cols + ["fit"]))
@@ -1754,7 +1773,9 @@ class ThresholdOptimizer(MLFlowLogger):
         self.df.loc[:, self.pred_class_col] = 0
 
         if groupby_cols is None:
-            threshold_cutoff = best_threshold_df.index.get_level_values("threshold").min()
+            threshold_cutoff = best_threshold_df.index.get_level_values(
+                "threshold"
+            ).min()
             self.df.loc[
                 self.df[self.pred_column] >= threshold_cutoff, self.pred_class_col
             ] = 1
@@ -1869,7 +1890,9 @@ class ScoreThresholdOptimizer(ThresholdOptimizer):
         self.threshold_df = self.threshold_df if threshold_df is None else threshold_df
 
         if isinstance(self.threshold_df.index, pd.MultiIndex):
-            groupby_cols = [i for i in self.threshold_df.index.names if i != "threshold"]
+            groupby_cols = [
+                i for i in self.threshold_df.index.names if i != "threshold"
+            ]
             if minimize_or_maximize.lower() == "maximize":
                 best_score = self.threshold_df.groupby(groupby_cols).apply(
                     lambda x: x[x["score"] == x["score"].max()]

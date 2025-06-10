@@ -111,6 +111,7 @@ for f in csv_files:
 
 print(f"Processed {len(csv_files)} files in {time.monotonic() - start:.2f} seconds")
 
+
 # Save the results to a CSV file
 summaries.to_csv(
     PROCESSED_DIR

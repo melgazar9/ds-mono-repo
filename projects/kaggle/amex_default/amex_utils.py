@@ -73,7 +73,9 @@ class AmexFeatureCreator:
                             )
                         )
                     else:
-                        raise ValueError(f"Could not find column {col} or {cleaned_col}")
+                        raise ValueError(
+                            f"Could not find column {col} or {cleaned_col}"
+                        )
 
         self.id_col = input_mapping.get("id_col")[0]
         self.datetime_cols = input_mapping["datetime_cols"]
@@ -178,7 +180,9 @@ def find_abnormal_features(df, pct_na_thres=0.85, copy=True):
         if pct_nas >= pct_na_thres:
             excessive_na_cols[col] = pct_nas
 
-    return dict(single_value_cols=single_value_cols, excessive_na_cols=excessive_na_cols)
+    return dict(
+        single_value_cols=single_value_cols, excessive_na_cols=excessive_na_cols
+    )
 
 
 def create_customer_history(
@@ -318,7 +322,9 @@ class CalcAmexMetrics:
             df["gini"] = (df["lorentz"] - df["random"]) * df["weight"]
             return df["gini"].sum()
 
-        def normalized_weighted_gini(y_true: pd.DataFrame, y_pred: pd.DataFrame) -> float:
+        def normalized_weighted_gini(
+            y_true: pd.DataFrame, y_pred: pd.DataFrame
+        ) -> float:
             y_true_pred = y_true.copy()
             y_true_pred.name = "prediction"
             return weighted_gini(y_true, y_pred) / weighted_gini(y_true, y_true_pred)
@@ -589,7 +595,9 @@ def amex_loss():
             four_pct_cutoff = int(0.04 * df["weight"].sum())
             df["weight_cumsum"] = df["weight"].cumsum()
             df_cutoff = df.loc[df["weight_cumsum"] <= four_pct_cutoff]
-            return (df_cutoff[y_true_s.name] == 1).sum() / (df[y_true_s.name] == 1).sum()
+            return (df_cutoff[y_true_s.name] == 1).sum() / (
+                df[y_true_s.name] == 1
+            ).sum()
 
         def weighted_gini(y_true: pd.DataFrame, y_pred: pd.DataFrame) -> float:
 
@@ -609,7 +617,9 @@ def amex_loss():
             df["gini"] = (df["lorentz"] - df["random"]) * df["weight"]
             return df["gini"].sum()
 
-        def normalized_weighted_gini(y_true: pd.DataFrame, y_pred: pd.DataFrame) -> float:
+        def normalized_weighted_gini(
+            y_true: pd.DataFrame, y_pred: pd.DataFrame
+        ) -> float:
             # y_true_pred = y_true.copy()
             # y_true_pred.name = 'prediction'
             return weighted_gini(y_true, y_pred) / weighted_gini(y_true, y_true)
@@ -632,9 +642,9 @@ class AmexSplitter(AbstractSplitter):
         df = df.reset_index(drop=True)
         non_submission_shape = df[df[target_name].notnull()].shape[0]
 
-        df.loc[0 : int(non_submission_shape * self.train_pct), self.split_colname] = (
-            "train"
-        )
+        df.loc[
+            0 : int(non_submission_shape * self.train_pct), self.split_colname
+        ] = "train"
 
         df.loc[
             int(non_submission_shape * self.train_pct)

@@ -53,7 +53,9 @@ def main():
             dirs[:] = [d for d in dirs if d not in ignore_items]
             files[:] = [f for f in files if f not in ignore_items]
         elif any(
-            ignored_item in root for ignored_item in ignore_items if ignored_item in root
+            ignored_item in root
+            for ignored_item in ignore_items
+            if ignored_item in root
         ):
             continue
 

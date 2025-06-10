@@ -80,7 +80,9 @@ class HTBEquityBacktest:
 
             # Convert timestamp to datetime
             df["timestamp_utc"] = pd.to_datetime(df["timestamp"], utc=True)
-            df["timestamp_cst"] = df["timestamp_utc"].dt.tz_convert(self.config.timezone)
+            df["timestamp_cst"] = df["timestamp_utc"].dt.tz_convert(
+                self.config.timezone
+            )
             df["date"] = df["timestamp_cst"].dt.normalize()
 
             # Sort by time and ticker
@@ -104,7 +106,9 @@ class HTBEquityBacktest:
         # Get last price for each ticker (closing price)
         closing_prices = prev_data.groupby("ticker")["close"].last().to_dict()
 
-        logging.info(f"Loaded {len(closing_prices)} closing prices from {prev_file.name}")
+        logging.info(
+            f"Loaded {len(closing_prices)} closing prices from {prev_file.name}"
+        )
         return closing_prices
 
     def calculate_overnight_moves(
@@ -138,7 +142,9 @@ class HTBEquityBacktest:
         return overnight_moves
 
     def find_entry_opportunities(
-        self, current_data: pd.DataFrame, overnight_moves: Dict[str, Tuple[float, float]]
+        self,
+        current_data: pd.DataFrame,
+        overnight_moves: Dict[str, Tuple[float, float]],
     ) -> List[Dict]:
         """Find tickers that meet entry criteria"""
         opportunities = []

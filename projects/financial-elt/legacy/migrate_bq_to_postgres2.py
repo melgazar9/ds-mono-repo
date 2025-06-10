@@ -165,7 +165,9 @@ def get_bq_table_schema(table_name: str):
         print(f"Fetched schema for BigQuery table: {table_name}")
         return table.schema
     except Exception as e:
-        print(f"❌ Error fetching BigQuery schema for {table_name}: {e}", file=sys.stderr)
+        print(
+            f"❌ Error fetching BigQuery schema for {table_name}: {e}", file=sys.stderr
+        )
         raise
 
 
@@ -504,7 +506,8 @@ def process_table(table_name: str):
             with conn.cursor() as cur:
                 cur.execute(
                     sql.SQL("SELECT COUNT(*) FROM {schema}.{table}").format(
-                        schema=sql.Identifier(PG_SCHEMA), table=sql.Identifier(table_name)
+                        schema=sql.Identifier(PG_SCHEMA),
+                        table=sql.Identifier(table_name),
                     )
                 )
                 rows_in_pg = cur.fetchone()[0]
