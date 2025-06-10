@@ -3,8 +3,8 @@ set -e
 
 echo "Running black..."
 black .
-echo "Running isort..."
-isort . --profile black
+#echo "Running isort..."
+#isort . --profile black
 echo "Running flake8..."
 flake8
 

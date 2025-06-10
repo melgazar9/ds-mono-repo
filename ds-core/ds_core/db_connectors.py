@@ -2,11 +2,10 @@ import os
 
 import pandas as pd
 import polars as pl
+from ds_core.ds_utils import MetaclassMethodEnforcer
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
 from sqlalchemy.exc import SQLAlchemyError
-
-from ds_core.ds_utils import MetaclassMethodEnforcer
 
 # from pymongo import MongoClient  # remove requirement for now
 # import snowflake.connector  # remove requirement for now
