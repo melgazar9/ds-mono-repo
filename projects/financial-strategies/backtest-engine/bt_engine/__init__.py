@@ -6,15 +6,10 @@ A comprehensive backtesting framework for financial strategies.
 """
 
 # Import core data structures
-from .engine import (
-    Order,
-    Signal,
-)
+from .engine import Order, Signal
 
 # Import helper classes
-from .helpers import (
-    PolygonBarLoader,
-)
+from .helpers import PolygonBarLoader
 
 # Package metadata
 __version__ = "0.1.0"
