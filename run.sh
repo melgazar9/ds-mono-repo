@@ -7,7 +7,7 @@ set -e
 sudo docker compose build && \
 sudo docker compose up -d
 
-# get the url with code to access kibana
-sudo docker compose logs kibana | grep Go
-
+sleep 3
 ./setup_filebeat.sh
+sleep 2
+sudo docker compose logs kibana | grep Go  # get the url with code to access kibana
