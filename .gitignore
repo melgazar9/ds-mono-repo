@@ -55,3 +55,5 @@ etc/
 lib/
 pyvenv.cfg
 logs/
+
+*.python-version
