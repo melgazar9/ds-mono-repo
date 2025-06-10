@@ -256,9 +256,7 @@ def clean_columns(df):
     return df
 
 
-def send_email(
-    to_addrs, from_addr=None, subject="", body="", files=None, password=None
-):
+def send_email(to_addrs, from_addr=None, subject="", body="", files=None, password=None):
     if password is None or from_addr is None:
         email_credentials = os.environ.get("EMAIL_CREDENTIALS")
 

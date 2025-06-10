@@ -110,9 +110,7 @@ class RunModel:
                     set(
                         [
                             i
-                            for i in self.X_train.select_dtypes(
-                                include=np.number
-                            ).columns
+                            for i in self.X_train.select_dtypes(include=np.number).columns
                             if i in self.features
                         ]
                     )
@@ -155,9 +153,7 @@ class RunModel:
             # (e.g. list(inspect.getfullargspec(RandomForestClassifier.fit))[0] must have all params inside fit_params)
 
             ds_print(
-                "\nUsing a validation set for "
-                + type(self.algorithm).__name__
-                + "...\n"
+                "\nUsing a validation set for " + type(self.algorithm).__name__ + "...\n"
             )
 
             if self.use_eval_set_when_possible and self.eval_set is not None:
@@ -181,13 +177,9 @@ class RunModel:
         ):
 
             ds_print(
-                "\nUsing a validation set for "
-                + type(self.algorithm).__name__
-                + "...\n"
+                "\nUsing a validation set for " + type(self.algorithm).__name__ + "...\n"
             )
-            model = self.algorithm.fit(
-                self.X_train, self.y_train, eval_set=self.eval_set
-            )
+            model = self.algorithm.fit(self.X_train, self.y_train, eval_set=self.eval_set)
 
         else:
             ds_print(
@@ -206,9 +198,7 @@ class RunModel:
         X_test : a pandas dataframe or np.array-like object to perform predictions on
         """
 
-        if ("predict_params" in self.kwargs) and (
-            len(self.kwargs["predict_params"]) > 0
-        ):
+        if ("predict_params" in self.kwargs) and (len(self.kwargs["predict_params"]) > 0):
 
             if not self.predict_proba:
                 predictions = model.predict(
@@ -237,9 +227,9 @@ class RunModel:
                     predictions = model.predict_proba(self.X_test[self.features])[:, 1]
                 except:
                     try:
-                        predictions = model.decision_function(
-                            self.X_test[self.features]
-                        )[:, 1]
+                        predictions = model.decision_function(self.X_test[self.features])[
+                            :, 1
+                        ]
                     except:
                         ds_print(
                             "model does not have predict_proba or decision_function attribute"
