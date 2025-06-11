@@ -99,30 +99,30 @@ class PolygonBarLoader(DataLoader):
 
     def load_and_clean_data(self, cur_day_file: str) -> [pd.DataFrame, pl.DataFrame]:
         """Assumes self.df_prev is attached to the class"""
-        self.df_cur = self.load_raw_intraday_bars(cur_day_file)
+        self.df = self.load_raw_intraday_bars(cur_day_file)
         self.pull_splits_dividends()  # does nothing if class already has attribute self.df_splits_dividends
 
         if (
             self.load_method == "polars"
         ):  # TODO: integrate polars functionality across methods
             logging.debug(
-                "Temporarily converting self.df_cur, self.df_prev, and self.df_splits_dividends to pandas."
+                "Temporarily converting self.df, self.df_prev, and self.df_splits_dividends to pandas."
             )
-            self.df_cur = self.df_cur.to_pandas()
+            self.df = self.df.to_pandas()
             self.df_prev = self.df_prev.to_pandas()
             self.df_splits_dividends = self.df_splits_dividends.to_pandas()
             logging.debug(
-                "self.df_cur, self.df_prev, and self.df_splits_dividends are now pandas dfs."
+                "self.df, self.df_prev, and self.df_splits_dividends are now pandas dfs."
             )
 
         # pandas syntax
         self.df_adj_chg = self._price_gap_with_split_or_dividend(
-            self.df_prev, self.df_cur, self.df_splits_dividends
+            self.df_prev, self.df, self.df_splits_dividends
         )
 
-        rows_before_join = self.df_cur.shape[0]
+        rows_before_join = self.df.shape[0]
 
-        self.df_cur = self.df_cur.merge(
+        self.df = self.df.merge(
             self.df_adj_chg[
                 [
                     "ticker",
@@ -142,13 +142,13 @@ class PolygonBarLoader(DataLoader):
             how="left",
         )
         assert (
-            self.df_cur.shape[0] == rows_before_join
+            self.df.shape[0] == rows_before_join
         ), "Rows added from join --- bug in join logic!"
 
         if self.load_method == "polars":
-            self.df_cur = pl.from_pandas(self.df_cur)
+            self.df = pl.from_pandas(self.df)
             self.df_prev = pl.from_pandas(self.df_prev)
-            logging.debug("Converted self.df_cur and self.df_prev back to polars.")
+            logging.debug("Converted self.df and self.df_prev back to polars.")
         return self
 
     def _price_gap_with_split_or_dividend(
