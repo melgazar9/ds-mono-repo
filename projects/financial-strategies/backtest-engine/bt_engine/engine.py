@@ -1,140 +1,71 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+import pandas as pd
+import polars as pl
+
+"""
+Clear trading backtesting structure following actual trading workflow.
+"""
 
 
-@dataclass
-class Signal:
-    symbol: str
-    direction: str  # 'long', 'short', 'hedge'
-    confidence: float
-    metadata: Dict[str, Any] = None
-    instrument_type: str = "stock"  # 'stock', 'option', 'future'
-    legs: List[Dict] = None  # For multi-leg strategies (spreads, hedges)
-
-
-@dataclass
-class Order:
-    symbol: str
-    quantity: float
-    price: float
-    order_type: str
-    timestamp: Any
-    greeks: Dict[str, float] = None
-
-
-@dataclass
-class Fill:
-    order_id: str
-    quantity: float
-    price: float
-    timestamp: Any
-    fees: float = 0.0
-    slippage: float = 0.0
-
-
-@dataclass
-class Position:
-    symbol: str
-    quantity: float
-    avg_price: float
-    unrealized_pnl: float = 0.0
-    instrument_type: str = "stock"
-    greeks: Dict[str, float] = None
-    related_positions: List[str] = None  # For hedging
-
-
-class BaseStrategy(ABC):
+class DataLoader(ABC):
     @abstractmethod
-    def generate_signals(self, market_data, context) -> List[Signal]:
-        pass
-
-    def position_sizing(self, signal, portfolio) -> float:
-        pass
-
-    def should_hedge(self, position, market_data) -> Optional[Signal]:
-        """Override for delta hedging strategies"""
-        return None
-
-    def get_metadata(self) -> Dict[str, Any]:
+    def load_and_clean_data(self) -> [pd.DataFrame, pl.DataFrame]:
+        """Load and process/clean market data at basic level"""
         pass
 
 
-class OrderManager:
-    def create_order(self, signal: Signal, size: float, price: float) -> Order:
+class PositionManager(ABC):
+    @abstractmethod
+    def detect_trade(
+        self, df: [pd.DataFrame, pl.DataFrame]
+    ) -> (pd.DataFrame, pl.DataFrame):
+        """
+        Detect trading opportunities ---> flag when to enter, exit, hedge, roll, spread, etc.
+        """
         pass
 
-    def execute_order(self, order: Order, market_data) -> Fill:
-        pass
-
-    # New: HFT and Options support
-    def execute_hedge_order(self, hedge_signal: Signal, target_delta: float) -> Fill:
-        """Execute delta hedging orders"""
-        pass
-
-    def get_order_book_depth(self, symbol: str) -> Dict[str, Any]:
-        """For HFT strategies - get Level 2 data"""
-        pass
-
-
-class PositionManager:
-    def open_position(self, fill: Fill) -> Position:
-        pass
-
-    def close_position(self, position: Position, exit_fill: Fill) -> Dict[str, Any]:
-        pass
-
-    def mark_to_market(
-        self, positions: List[Position], prices: Dict[str, float]
-    ) -> Dict[str, Any]:
-        pass
-
-    def get_portfolio_delta(self, positions: List[Position]) -> float:
-        """Calculate total portfolio delta"""
-        pass
-
-    def group_related_positions(
-        self, positions: List[Position]
-    ) -> Dict[str, List[Position]]:
-        """Group spread/hedge positions together"""
+    @abstractmethod
+    def execute_trade(
+        self, df: [pd.DataFrame, pl.DataFrame]
+    ) -> (pd.DataFrame, pl.DataFrame):
+        """
+        Execute trade based on the result of self.detect_trade.
+        While detect_trade returns flag or string of the trade, execute_trade should update the df to contain
+        necessary columns that change the position of the trade
+        """
         pass
 
 
-class PerformanceAnalyzer:
-    def calc_trade_stats(self, closed_positions: List[Dict]) -> Dict[str, Any]:
-        pass
-
-    def generate_attribution(
-        self, positions: List[Dict], segments: List[str]
-    ) -> Dict[str, Any]:
+class StrategyEvaluator:
+    @abstractmethod
+    def evaluate(
+        self, df: [pd.DataFrame, pl.DataFrame]
+    ) -> (pd.DataFrame, pl.DataFrame):
+        """
+        Comprehensively evaluate the strategy to determine how robust it is.
+        """
         pass
 
 
 class BacktestEngine:
-    def __init__(self):
-        self.order_manager = OrderManager()
-        self.position_manager = PositionManager()
-        self.performance_analyzer = PerformanceAnalyzer()
+    def __init__(self, data_loader: DataLoader):
+        self.data_loader = data_loader
+        self.position_manager = None
+        self.strategy_evaluator = None
+        self.df_evaluation = None
 
-    def run_simulation(self, strategy: BaseStrategy, data_iterator) -> Dict[str, Any]:
-        pass
+    def run_backtest(self, position_manager, strategy_evaluator):
+        """Run the full trading simulation"""
 
+        self.df = self.data_loader.load_and_clean_data()
+        self.position_manager = position_manager()
+        self.strategy_evaluator = strategy_evaluator()
 
-# Example
-class DeltaHedgedOptionsStrategy(BaseStrategy):
-    def __init__(self, delta_threshold=0.15):
-        self.delta_threshold = delta_threshold
+        # Detect and execute trades
+        self.df = self.position_manager.detect_trade(self.df)
+        self.df = self.position_manager.execute_trade(self.df)
 
-    def generate_signals(self, market_data, context):
-        return [Signal(symbol="AAPL", direction="short", instrument_type="option")]
+        # Evaluate the strategy
+        self.df_evaluation = self.strategy_evaluator.evaluate(self.df)
 
-    def should_hedge(self, position, market_data):
-        if position.instrument_type == "option" and position.greeks:
-            if abs(position.greeks["delta"]) > self.delta_threshold:
-                return Signal(
-                    symbol=position.symbol.replace("_OPT", ""),  # Underlying
-                    direction="long" if position.greeks["delta"] < 0 else "short",
-                    confidence=1.0,
-                    metadata={"hedge_type": "delta", "target_delta": 0},
-                )
-        return None
+        return self

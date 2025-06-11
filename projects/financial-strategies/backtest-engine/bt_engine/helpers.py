@@ -1,13 +1,13 @@
 import logging
 from datetime import time as dtime
-
 import numpy as np
 import pandas as pd
 import polars as pl
 from ds_core.db_connectors import PostgresConnect
+from bt_engine.engine import DataLoader
 
 
-class PolygonBarLoader:
+class PolygonBarLoader(DataLoader):
     def __init__(self, load_method="pandas"):
         self.load_method = load_method
         if self.load_method not in ["pandas", "polars"]:
@@ -97,7 +97,7 @@ class PolygonBarLoader:
             df = df.sort(["timestamp", "ticker"])
         return df
 
-    def load_and_adjust_bars(self, cur_day_file: str) -> [pd.DataFrame, pl.DataFrame]:
+    def load_and_clean_data(self, cur_day_file: str) -> [pd.DataFrame, pl.DataFrame]:
         """Assumes self.df_prev is attached to the class"""
         self.df_cur = self.load_raw_intraday_bars(cur_day_file)
         self.pull_splits_dividends()  # does nothing if class already has attribute self.df_splits_dividends
