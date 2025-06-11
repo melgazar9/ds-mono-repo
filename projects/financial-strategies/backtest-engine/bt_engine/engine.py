@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 import pandas as pd
 import polars as pl
 
+
 """
 Clear trading backtesting structure following actual trading workflow.
 """
@@ -11,6 +12,14 @@ class DataLoader(ABC):
     @abstractmethod
     def load_and_clean_data(self) -> [pd.DataFrame, pl.DataFrame]:
         """Load and process/clean market data at basic level"""
+        pass
+
+
+class RiskManager(ABC):
+    @abstractmethod
+    def quantify_risk(
+        self, df: [pd.DataFrame, pl.DataFrame]
+    ) -> (pd.DataFrame, pl.DataFrame):
         pass
 
 
@@ -50,6 +59,7 @@ class StrategyEvaluator:
 class BacktestEngine:
     def __init__(self, data_loader: DataLoader):
         self.data_loader = data_loader
+        self.risk_manager = None
         self.position_manager = None
         self.strategy_evaluator = None
         self.df_evaluation = None
@@ -58,8 +68,12 @@ class BacktestEngine:
         """Run the full trading simulation"""
 
         self.df = self.data_loader.load_and_clean_data()
+        self.risk_manager = self.risk_manager()
         self.position_manager = position_manager()
         self.strategy_evaluator = strategy_evaluator()
+
+        # Quantify risk before deciding on position adjustments
+        self.df = self.risk_manager.quantify_risk(self.df)
 
         # Detect and execute trades
         self.df = self.position_manager.detect_trade(self.df)
