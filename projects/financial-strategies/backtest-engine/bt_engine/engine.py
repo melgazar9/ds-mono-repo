@@ -33,7 +33,7 @@ class RiskManager(metaclass=MetaRiskManagerEnforcer):
     def quantify_risk(
         self, df: [pd.DataFrame, pl.DataFrame]
     ) -> (pd.DataFrame, pl.DataFrame):
-        pass
+        return df
 
 
 meta_position_manager = MetaclassMethodEnforcer(
@@ -50,7 +50,7 @@ class PositionManager(metaclass=MetaPositionManagerEnforcer):
         """
         Detect trading opportunities ---> flag when to enter, exit, hedge, roll, spread, etc.
         """
-        pass
+        return df
 
     @abstractmethod
     def adjust_position(
@@ -59,7 +59,7 @@ class PositionManager(metaclass=MetaPositionManagerEnforcer):
         """
         Adjust overall position by executing a trade or number of trades.
         """
-        pass
+        return df
 
 
 meta_strategy_evaluator = MetaclassMethodEnforcer(
@@ -76,7 +76,7 @@ class StrategyEvaluator(metaclass=MetaStrategyEvaluatorEnforcer):
         """
         Comprehensively evaluate the strategy to determine its robustness.
         """
-        pass
+        return df
 
 
 class BacktestEngine:

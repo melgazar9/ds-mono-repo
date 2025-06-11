@@ -5,11 +5,14 @@ import pandas as pd
 import polars as pl
 from ds_core.db_connectors import PostgresConnect
 from bt_engine.engine import DataLoader
+from typing import Union
 
 
 class PolygonBarLoader(DataLoader):
-    def __init__(self, load_method="pandas"):
+    def __init__(self, load_method="pandas", cur_day_file=None, df_prev=None):
         self.load_method = load_method
+        self.cur_day_file = cur_day_file
+        self.df_prev = df_prev
         if self.load_method not in ["pandas", "polars"]:
             raise NotImplementedError(
                 f"Unknown load method {self.load_method}. Must be 'pandas' or 'polars'."
@@ -67,17 +70,19 @@ class PolygonBarLoader(DataLoader):
                 )
         return self
 
-    def load_raw_intraday_bars(self, cur_day_file: str) -> [pd.DataFrame, pl.DataFrame]:
+    def load_raw_intraday_bars(self) -> Union[pd.DataFrame, pl.DataFrame]:
         """Loads bars data (e.g. 1-minute) from polygon flat files."""
         if self.load_method == "pandas":
-            df = pd.read_csv(cur_day_file, compression="gzip", keep_default_na=False)
+            df = pd.read_csv(
+                self.cur_day_file, compression="gzip", keep_default_na=False
+            )
             df = df.rename(columns={"window_start": "timestamp"})
             df["timestamp_utc"] = pd.to_datetime(df["timestamp"], utc=True)
             df["timestamp_cst"] = df["timestamp_utc"].dt.tz_convert("America/New_York")
             df["date"] = df["timestamp_cst"].dt.normalize()
             df = df.sort_values(by=["timestamp", "ticker"])
         elif self.load_method == "polars":
-            df = pl.read_csv(cur_day_file)
+            df = pl.read_csv(self.cur_day_file)
             df = df.rename({"window_start": "timestamp"})
             df = df.with_columns(
                 [
@@ -95,18 +100,20 @@ class PolygonBarLoader(DataLoader):
             )
             df = df.with_columns([pl.col("timestamp_cst").dt.date().alias("date")])
             df = df.sort(["timestamp", "ticker"])
+        else:
+            raise ValueError(f"Unsupported load_method: {self.load_method}")
         return df
 
-    def load_and_clean_data(self, cur_day_file: str) -> [pd.DataFrame, pl.DataFrame]:
+    def load_and_clean_data(self) -> Union[pd.DataFrame, pl.DataFrame]:
         """Assumes self.df_prev is attached to the class"""
-        self.df = self.load_raw_intraday_bars(cur_day_file)
+        self.df = self.load_raw_intraday_bars()
         self.pull_splits_dividends()  # does nothing if class already has attribute self.df_splits_dividends
 
         if (
             self.load_method == "polars"
         ):  # TODO: integrate polars functionality across methods
             logging.debug(
-                "Temporarily converting self.df, self.df_prev, and self.df_splits_dividends to pandas."
+                "Temporarily converting self.df, self.df_prev, and self.df_splits_dividends to pandas dfs."
             )
             self.df = self.df.to_pandas()
             self.df_prev = self.df_prev.to_pandas()
@@ -115,47 +122,21 @@ class PolygonBarLoader(DataLoader):
                 "self.df, self.df_prev, and self.df_splits_dividends are now pandas dfs."
             )
 
+        rows_before = self.df.shape[0]
         # pandas syntax
-        self.df_adj_chg = self._price_gap_with_split_or_dividend(
-            self.df_prev, self.df, self.df_splits_dividends
-        )
-
-        rows_before_join = self.df.shape[0]
-
-        self.df = self.df.merge(
-            self.df_adj_chg[
-                [
-                    "ticker",
-                    "had_split_or_dividend",
-                    "split_from",
-                    "split_to",
-                    "split_ratio",
-                    "cash_amount",
-                    "pre_market_open",
-                    "market_open",
-                    "prev_close",
-                    "adj_pmkt_pct_chg",
-                    "adj_mkt_pct_chg",
-                ]
-            ],
-            on="ticker",
-            how="left",
-        )
+        self.df = self._price_gap_with_split_or_dividend()
         assert (
-            self.df.shape[0] == rows_before_join
-        ), "Rows added from join --- bug in join logic!"
+            self.df.shape[0] == rows_before
+        ), "Row mismatch after split and dividend validation."
 
         if self.load_method == "polars":
             self.df = pl.from_pandas(self.df)
             self.df_prev = pl.from_pandas(self.df_prev)
             logging.debug("Converted self.df and self.df_prev back to polars.")
-        return self
+        return self.df
 
     def _price_gap_with_split_or_dividend(
         self,
-        df_prev: pd.DataFrame,
-        df_cur: pd.DataFrame,
-        df_splits_dividends: pd.DataFrame,
         abs_tol=0.02,
         rel_tol=0.002,
     ):
@@ -165,150 +146,182 @@ class PolygonBarLoader(DataLoader):
                 "converted to a pandas df and converted back to polars for this step."
             )
 
-        prev_close = (
-            df_prev.groupby(["ticker", "date"], sort=False)
+        prev_after_hours_close = (
+            self.df_prev.groupby(["ticker", "date"], sort=False)
             .agg(prev_close=("close", "last"))
             .reset_index()
-            .rename(columns={"date": "prev_date"})
+            .rename(
+                columns={"date": "prev_date", "prev_close": "prev_after_hours_close"}
+            )
         )
-        pmkt_open = (
-            df_cur[df_cur["timestamp_cst"].dt.time >= dtime(3, 0)]
+
+        prev_market_close = (
+            self.df_prev[self.df_prev["timestamp_cst"].dt.time <= dtime(15, 0)]
             .groupby(["ticker", "date"], sort=False)
-            .agg(pre_market_open=("open", "first"))
+            .agg(prev_close=("close", "last"))
             .reset_index()
+            .rename(columns={"date": "prev_date", "prev_close": "prev_market_close"})
         )
-        mkt_open = (
-            df_cur[df_cur["timestamp_cst"].dt.time >= dtime(8, 30)]
-            .groupby(["ticker", "date"], sort=False)
-            .agg(market_open=("open", "first"))
-            .reset_index()
-        )
-        df_open = pd.merge(pmkt_open, mkt_open, on=["ticker", "date"], how="left")
+
         prev_dates = (
-            df_prev.groupby("ticker")["date"].max().rename("prev_date").reset_index()
+            self.df_prev.groupby("ticker")["date"]
+            .max()
+            .rename("prev_date")
+            .reset_index()
         )
-        df_open = df_open.merge(prev_dates, on=["ticker"], how="left").merge(
-            prev_close, on=["ticker", "prev_date"], how="left"
+
+        self.df = (
+            self.df.merge(prev_dates, on=["ticker"], how="left")
+            .merge(prev_after_hours_close, on=["ticker", "prev_date"], how="left")
+            .merge(prev_market_close, on=["ticker", "prev_date"], how="left")
         )
-        df_open = df_open.merge(
-            df_splits_dividends,
+
+        self.df = self.df.merge(
+            self.df_splits_dividends,
             left_on=["ticker", "date"],
             right_on=["ticker", "event_date"],
             how="left",
         )
 
-        df_open["split_from"] = df_open["split_from"].fillna(1.0)
-        df_open["split_to"] = df_open["split_to"].fillna(1.0)
-        df_open["cash_amount"] = df_open["cash_amount"].fillna(0.0)
-        df_open["split_ratio"] = df_open["split_from"] / df_open["split_to"]
-        df_open["expected_unchanged_adj_split_only"] = (
-            df_open["prev_close"] * df_open["split_ratio"]
-        )
-        df_open["expected_unchanged_adj_split_dividend"] = (
-            df_open["prev_close"] * df_open["split_ratio"] - df_open["cash_amount"]
-        )
-        df_open["had_split_or_dividend"] = df_open["event_type"].notna()
+        self.df["split_from"] = self.df["split_from"].fillna(1.0)
+        self.df["split_to"] = self.df["split_to"].fillna(1.0)
+        self.df["cash_amount"] = self.df["cash_amount"].fillna(0.0)
+        self.df["split_ratio"] = self.df["split_from"] / self.df["split_to"]
 
-        is_split = df_open["event_type"] == "split"
-        is_div = df_open["event_type"] == "dividend"
+        # Combinations
+        # 1. market close -> pre-market open
+        # 2. market close -> market open
+        # 3. after hours close -> pre-market open
+        # 4. after hours close -> market open
+        # We will detect if ticker has splits/dividends applied based from official market close --> pre-market open.
 
-        def assign_adj_state(open_col):
+        self.df["expected_unchanged_price_after_split"] = (
+            self.df["prev_market_close"] * self.df["split_ratio"]
+        )
+        self.df["expected_unchanged_price_after_split_and_dividend"] = (
+            self.df["prev_market_close"] * self.df["split_ratio"]
+            - self.df["cash_amount"]
+        )
+
+        self.df["had_split_or_dividend"] = self.df["event_type"].notna()
+
+        self.df["pre_market_open"] = (
+            self.df[self.df["timestamp_cst"].dt.time < dtime(8, 30)]
+            .groupby(["ticker", "date"])["open"]
+            .transform("first")
+        )
+        self.df["pre_market_open"] = self.df.groupby(["ticker", "date"])[
+            "pre_market_open"
+        ].ffill()
+
+        self.df["market_open"] = (
+            self.df[self.df["timestamp_cst"].dt.time >= dtime(8, 30)]
+            .groupby(["ticker", "date"])["open"]
+            .transform("first")
+        )
+
+        expected_adj = self.df["prev_market_close"] * self.df[
+            "split_ratio"
+        ] - self.df.get("cash_amount", 0.0)
+
+        self.df["adj_pmkt_pct_chg"] = np.nan
+        self.df["adj_mkt_pct_chg"] = np.nan
+        self.df.loc[
+            self.df["timestamp_cst"].dt.time < dtime(8, 30), "adj_pmkt_pct_chg"
+        ] = (self.df["open"] - expected_adj) / expected_adj
+        self.df.loc[
+            self.df["timestamp_cst"].dt.time >= dtime(8, 30), "adj_mkt_pct_chg"
+        ] = (self.df["open"] - expected_adj) / expected_adj
+
+        def assign_adj_state(
+            df,
+            open_col: str,
+            prev_close_col: str = "prev_market_close",
+            expected_col: str = "expected_unchanged_price_after_split",
+            event_col: str = "event_type",
+            abs_tol=1.0,
+            rel_tol=0.05,
+            proximity_margin=0.2,  # Require at least 20% closer to adjusted than prev_close
+        ):
+            is_split = df[event_col] == "split"
+            is_div = df[event_col] == "dividend"
             valid = (
-                ~df_open[open_col].isna()
-                & ~df_open["prev_close"].isna()
-                & ~df_open["expected_unchanged_adj_split_dividend"].isna()
+                ~df[open_col].isna()
+                & ~df[prev_close_col].isna()
+                & ~df[expected_col].isna()
             )
-            diff_adj = np.abs(
-                df_open[open_col] - df_open["expected_unchanged_adj_split_dividend"]
-            )
-            diff_prev = np.abs(df_open[open_col] - df_open["prev_close"])
-            rel_adj = diff_adj / np.maximum(
-                np.abs(df_open["expected_unchanged_adj_split_dividend"]), 1e-8
-            )
-            rel_prev = diff_prev / np.maximum(np.abs(df_open["prev_close"]), 1e-8)
+            diff_adj = np.abs(df[open_col] - df[expected_col])
+            diff_prev = np.abs(df[open_col] - df[prev_close_col])
+            rel_adj = diff_adj / np.maximum(np.abs(df[expected_col]), 1e-8)
+            rel_prev = diff_prev / np.maximum(np.abs(df[prev_close_col]), 1e-8)
+            state = np.full(df.shape[0], "unknown", dtype=object)
 
-            state = np.full(df_open.shape[0], "unknown", dtype=object)
-
-            # SPLIT: usually adjusted, but check
-            mask = valid & is_split & ((diff_adj <= abs_tol) | (rel_adj <= rel_tol))
+            # SPLIT: adjusted if much closer to adjusted than unadjusted
+            closer_to_adj = (diff_prev - diff_adj) > (
+                proximity_margin * np.abs(df[expected_col])
+            )
+            mask = valid & is_split & closer_to_adj
             state[mask] = "adjusted"
+
+            # SPLIT: unadjusted if much closer to prev close
+            closer_to_prev = (diff_adj - diff_prev) > (
+                proximity_margin * np.abs(df[prev_close_col])
+            )
+            mask = valid & is_split & closer_to_prev & (state == "unknown")
+            state[mask] = "unadjusted"
+
+            # SPLIT: also allow for very close (tight tolerance) to adjusted
             mask = (
                 valid
                 & is_split
-                & ((diff_prev <= abs_tol) | (rel_prev <= rel_tol))
+                & ((diff_adj <= abs_tol) | (rel_adj <= rel_tol))
                 & (state == "unknown")
             )
-            state[mask] = "unadjusted"
+            state[mask] = "adjusted"
 
             # DIVIDEND: almost always unadjusted
             mask = valid & is_div & ((diff_prev <= abs_tol) | (rel_prev <= rel_tol))
             state[mask] = "unadjusted"
-            # To catch rare dividend adjustment, uncomment these lines:
-            # mask = valid & is_div & ((diff_adj <= abs_tol) | (rel_adj <= rel_tol)) & (state == "unknown")
-            # state[mask] = "adjusted"
             return state
 
-        df_open["pre_market_open_adj_state"] = assign_adj_state("pre_market_open")
-        df_open["market_open_adj_state"] = assign_adj_state("market_open")
+        self.df["pre_market_open_adj_state"] = assign_adj_state(
+            self.df, "pre_market_open"
+        )
+        self.df["market_open_adj_state"] = assign_adj_state(self.df, "market_open")
 
         # Robust: prefer market open, else pre-market, else unknown
         robust = np.where(
-            df_open["market_open_adj_state"] != "unknown",
-            df_open["market_open_adj_state"],
+            self.df["market_open_adj_state"] != "unknown",
+            self.df["market_open_adj_state"],
             np.where(
-                df_open["pre_market_open_adj_state"] != "unknown",
-                df_open["pre_market_open_adj_state"],
+                self.df["pre_market_open_adj_state"] != "unknown",
+                self.df["pre_market_open_adj_state"],
                 "unknown",
             ),
         )
-        df_open["robust_open_adj_state"] = robust
+        self.df["robust_open_adj_state"] = robust
 
         # Set NaN for no-event rows in all *_adj_state columns
-        mask_no_event = (df_open["split_ratio"] == 1.0) & (
-            df_open["cash_amount"] == 0.0
+        mask_no_event = (self.df["split_ratio"] == 1.0) & (
+            self.df["cash_amount"] == 0.0
         )
         for col in [
             "pre_market_open_adj_state",
             "market_open_adj_state",
             "robust_open_adj_state",
         ]:
-            df_open.loc[mask_no_event, col] = np.nan
+            self.df.loc[mask_no_event, col] = np.nan
 
-        # Determine which baseline to use for each row
-        is_div = df_open["event_type"] == "dividend"
-        is_split = df_open["event_type"] == "split"
-        is_div_unknown = is_div & (df_open["robust_open_adj_state"] == "unknown")
-        baseline = np.where(
-            is_div_unknown,
-            df_open["prev_close"],
-            np.where(
-                is_split,
-                df_open["expected_unchanged_adj_split_only"],
-                df_open["expected_unchanged_adj_split_dividend"],
-            ),
-        )
+        self.df["adj_state"] = self.df["robust_open_adj_state"]
 
-        df_open["adj_pmkt_pct_chg"] = (df_open["pre_market_open"] - baseline) / baseline
-        df_open["adj_mkt_pct_chg"] = (df_open["market_open"] - baseline) / baseline
-
-        column_order = [
-            "ticker",
-            "date",
-            "pre_market_open",
-            "market_open",
-            "prev_close",
-            "had_split_or_dividend",
-            "event_type",
-            "split_from",
-            "split_to",
-            "cash_amount",
-            "split_ratio",
-            "expected_unchanged_adj_split_dividend",
-            "expected_unchanged_adj_split_only",
-            "pre_market_open_adj_state",
-            "market_open_adj_state",
-            "robust_open_adj_state",
-            "adj_pmkt_pct_chg",
-            "adj_mkt_pct_chg",
+        keep_columns = [
+            i
+            for i in self.df.columns
+            if i
+            not in [
+                "pre_market_open_adj_state",
+                "market_open_adj_state",
+                "robust_open_adj_state",
+            ]
         ]
-        return df_open[column_order]
+        return self.df[keep_columns]
