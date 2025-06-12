@@ -38,7 +38,4 @@ gbt = BacktestEngine(
     strategy_evaluator=GapStrategyEvaluator(),
 )
 
-
-gbt.load_and_clean_data()
-
 gbt.run_backtest()
