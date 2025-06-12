@@ -1,12 +1,12 @@
 # import os
-
 # import pandas as pd
 # import polars as pl
 
 from bt_engine.central_loaders import PolygonBarLoader
 from bt_engine.engine import BacktestEngine
+from datetime import time as dtime
 
-# import os; os.chdir('projects/financial-strategies/strategies/gap_strategy')
+# import os; os.chdir('projects/financial-strategies/strategies/gap_strategy'); pd.options.display.max_columns=100
 from gap_backtest_utils import (
     GapStrategyRiskManager,
     GapPositionManager,
@@ -33,7 +33,14 @@ gbt = BacktestEngine(
     ),
     risk_manager=GapStrategyRiskManager(),
     position_manager=GapPositionManager(
-        overnight_gap=0.1, stop_loss_pct=0.01, take_profit_pct=0.01
+        overnight_gap=0.33,
+        bet_amount=2000,
+        stop_loss_pct=0.1,
+        take_profit_pct=0.50,
+        entry_cutoff_time_cst=dtime(13, 45),
+        flatten_trade_time_cst=dtime(14, 55),
+        slippage_amount=0.61,
+        slippage_mode="partway",
     ),
     strategy_evaluator=GapStrategyEvaluator(),
 )
