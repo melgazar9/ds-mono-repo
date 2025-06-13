@@ -1,5 +1,7 @@
 import pandas as pd
 import polars as pl
+import numpy as np
+
 from datetime import time as dtime
 
 from typing import Union
@@ -87,14 +89,9 @@ class GapPositionManager(PositionManager):
         df["theoretical_sto_price"] = df["theoretical_bto_price"]
 
         # assume buy at high / sell at low if the gap happens at the open
-        df.loc[first_timestamp & df["trigger_trade_entry"], "theoretical_bto_price"] = (
-            df.loc[first_timestamp, "high"]
-        )
-        df.loc[first_timestamp & df["trigger_trade_entry"], "theoretical_sto_price"] = (
-            df.loc[first_timestamp, "low"]
-        )
-
-        # Only compute for entry bars
+        mask = first_timestamp & df["trigger_trade_entry"]
+        df.loc[mask, "theoretical_bto_price"] = df.loc[mask, "high"]
+        df.loc[mask, "theoretical_sto_price"] = df.loc[mask, "low"]
 
         entry_mask = df["trigger_trade_entry"].fillna(False)
 
@@ -122,121 +119,288 @@ class GapPositionManager(PositionManager):
             "sto_price_with_slippage"
         ].ffill()
 
-        df.loc[df["trigger_trade_entry"], "shares_long"] = (
+        df.loc[df["trigger_trade_entry"], "shares_long_first"] = (
             self.bet_amount / df["bto_price_with_slippage"]
         )
-        df.loc[df["trigger_trade_entry"], "shares_short"] = (
+        df.loc[df["trigger_trade_entry"], "shares_short_first"] = (
             self.bet_amount / df["sto_price_with_slippage"]
         )
 
         return df
 
     def _trigger_stop_loss(self, df: Union[pd.DataFrame, pl.DataFrame]):
-        # Long stop logic
-        df["long_stop_price_raw"] = df["bto_price_with_slippage"] * (
+        # Long stop logic --> Creates columns:: long_stop_hit, long_stop_exit_price, short_stop_hit, short_stop_exit_price
+        df["long_stop_limit_price_raw"] = df["bto_price_with_slippage"] * (
             1 - self.stop_loss_pct
         )
-        df["long_stop_hit_raw"] = df["low"] <= df["long_stop_price_raw"]
+        df["long_stop_hit_raw"] = df["low"] <= df["long_stop_limit_price_raw"]
         df["long_stop_hit"] = df.groupby(["ticker", "date"])[
             "long_stop_hit_raw"
         ].transform(first_true)
-        df["long_stop_price"] = df["long_stop_price_raw"].where(df["long_stop_hit"])
+
+        df["long_stop_hit_ffilled"] = df.groupby(["ticker", "date"])[
+            "long_stop_hit"
+        ].ffill()
+
+        df["long_stop_limit_price"] = df["long_stop_limit_price_raw"].where(
+            df["long_stop_hit"]
+        )
 
         # Short stop logic
-        df["short_stop_price_raw"] = df["sto_price_with_slippage"] * (
+        df["short_stop_limit_price_raw"] = df["sto_price_with_slippage"] * (
             1 + self.stop_loss_pct
         )
-        df["short_stop_hit_raw"] = df["high"] >= df["short_stop_price_raw"]
+        df["short_stop_hit_raw"] = df["high"] >= df["short_stop_limit_price_raw"]
         df["short_stop_hit"] = df.groupby(["ticker", "date"])[
             "short_stop_hit_raw"
         ].transform(first_true)
-        df["short_stop_price"] = df["short_stop_price_raw"].where(df["short_stop_hit"])
+        df["short_stop_hit_ffilled"] = df.groupby(["ticker", "date"])[
+            "short_stop_hit"
+        ].ffill()
+        df["short_stop_limit_price"] = df["short_stop_limit_price_raw"].where(
+            df["short_stop_hit"]
+        )
 
         df = df.drop(
             columns=[
-                "long_stop_price_raw",
+                "long_stop_limit_price_raw",
                 "long_stop_hit_raw",
-                "short_stop_price_raw",
+                "short_stop_limit_price_raw",
                 "short_stop_hit_raw",
             ]
         )
 
-        # Apply slippage for exit price
+        # for stopouts assume fixed pct worse than stop price
         df.loc[df["long_stop_hit"], "long_stop_exit_price"] = apply_slippage(
             df.loc[df["long_stop_hit"]],
-            price_col="long_stop_price",
-            slippage_amount=self.slippage_amount,
-            slippage_mode=self.slippage_mode,
+            price_col="long_stop_limit_price",
+            slippage_amount=0.003,
+            slippage_mode="fixed_pct",
             side="sell",
         )
 
         df.loc[df["short_stop_hit"], "short_stop_exit_price"] = apply_slippage(
             df.loc[df["short_stop_hit"]],
-            price_col="short_stop_price",
-            slippage_amount=self.slippage_amount,
-            slippage_mode=self.slippage_mode,
+            price_col="short_stop_limit_price",
+            slippage_amount=0.003,
+            slippage_mode="fixed_pct",
             side="buy",
         )
+
         return df
 
     def _trigger_take_profit(self, df: Union[pd.DataFrame, pl.DataFrame]):
-        # Long stop logic
-        df["long_tp_price_raw"] = df["bto_price_with_slippage"] * (
+        # Long tp logic --> Creates columns:: long_tp_hit, long_tp_exit_price, short_tp_hit, short_tp_exit_price
+        df["long_tp_limit_price_raw"] = df["bto_price_with_slippage"] * (
             1 + self.take_profit_pct
         )
-        df["long_tp_hit_raw"] = df["high"] >= df["long_tp_price_raw"]
+        df["long_tp_hit_raw"] = df["high"] >= df["long_tp_limit_price_raw"]
         df["long_tp_hit"] = df.groupby(["ticker", "date"])["long_tp_hit_raw"].transform(
             first_true
         )
-        df["long_tp_price"] = df["long_tp_price_raw"].where(df["long_tp_hit"])
+        df["long_tp_hit_ffilled"] = df.groupby(["ticker", "date"])[
+            "long_tp_hit"
+        ].ffill()
+
+        df["long_tp_limit_price"] = df["long_tp_limit_price_raw"].where(
+            df["long_tp_hit"]
+        )
 
         # Short tp logic
-        df["short_tp_price_raw"] = df["sto_price_with_slippage"] * (
+        df["short_tp_limit_price_raw"] = df["sto_price_with_slippage"] * (
             1 - self.take_profit_pct
         )
-        df["short_tp_hit_raw"] = df["low"] <= df["short_tp_price_raw"]
+        df["short_tp_hit_raw"] = df["low"] <= df["short_tp_limit_price_raw"]
         df["short_tp_hit"] = df.groupby(["ticker", "date"])[
             "short_tp_hit_raw"
         ].transform(first_true)
-        df["short_tp_price"] = df["short_tp_price_raw"].where(df["short_tp_hit"])
+        df["short_tp_hit_ffilled"] = df.groupby(["ticker", "date"])[
+            "short_tp_hit"
+        ].ffill()
+        df["short_tp_limit_price"] = df["short_tp_limit_price_raw"].where(
+            df["short_tp_hit"]
+        )
 
         df = df.drop(
             columns=[
-                "long_tp_price_raw",
+                "long_tp_limit_price_raw",
                 "long_tp_hit_raw",
-                "short_tp_price_raw",
+                "short_tp_limit_price_raw",
                 "short_tp_hit_raw",
             ]
         )
 
-        # Apply slippage for exit price
+        # for tp assume fixed pct worse than tp price
         df.loc[df["long_tp_hit"], "long_tp_exit_price"] = apply_slippage(
             df.loc[df["long_tp_hit"]],
-            price_col="long_tp_price",
-            slippage_amount=self.slippage_amount,
-            slippage_mode=self.slippage_mode,
+            price_col="long_tp_limit_price",
+            slippage_amount=0.003,
+            slippage_mode="fixed_pct",
             side="sell",
         )
 
         df.loc[df["short_tp_hit"], "short_tp_exit_price"] = apply_slippage(
             df.loc[df["short_tp_hit"]],
-            price_col="short_tp_price",
-            slippage_amount=self.slippage_amount,
-            slippage_mode=self.slippage_mode,
+            price_col="short_tp_limit_price",
+            slippage_amount=0.003,
+            slippage_mode="fixed_pct",
             side="buy",
         )
+        return df
+
+    @staticmethod
+    def _add_shares_ffilled(df):
+        """
+        Forward fill shares_long_first and shares_short_first from entry to exit
+        """
+        # Initialize both columns
+        df["long_shares_ffilled"] = np.nan
+        df["short_shares_ffilled"] = np.nan
+
+        for (ticker, date), group in df.groupby(["ticker", "date"]):
+
+            # === LONG POSITIONS ===
+            long_entry_mask = group["shares_long_first"].notna()
+            long_exit_mask = group["long_stop_hit"] | group["long_tp_hit"]
+
+            if long_entry_mask.any() and long_exit_mask.any():
+                long_entry_idx = long_entry_mask.idxmax()
+                long_exit_idx = long_exit_mask.idxmax()
+
+                # Fill window from entry to exit (inclusive)
+                if long_exit_idx >= long_entry_idx:
+                    long_window = (group.index >= long_entry_idx) & (
+                        group.index <= long_exit_idx
+                    )
+                    long_shares = group.loc[long_entry_idx, "shares_long_first"]
+                    df.loc[group.index[long_window], "long_shares_ffilled"] = (
+                        long_shares
+                    )
+
+            # === SHORT POSITIONS ===
+            short_entry_mask = group["shares_short_first"].notna()
+            short_exit_mask = group["short_stop_hit"] | group["short_tp_hit"]
+
+            if short_entry_mask.any() and short_exit_mask.any():
+                short_entry_idx = short_entry_mask.idxmax()
+                short_exit_idx = short_exit_mask.idxmax()
+
+                # Fill window from entry to exit (inclusive)
+                if short_exit_idx >= short_entry_idx:
+                    short_window = (group.index >= short_entry_idx) & (
+                        group.index <= short_exit_idx
+                    )
+                    short_shares = group.loc[short_entry_idx, "shares_short_first"]
+                    df.loc[group.index[short_window], "short_shares_ffilled"] = (
+                        short_shares
+                    )
+
+        return df
+
+    @staticmethod
+    def _add_exit_prices(df):
+        """Add exit prices only to rows where hits occurred"""
+        df["long_exit_price"] = np.nan
+        df["short_exit_price"] = np.nan
+
+        for (ticker, date), group in df.groupby(["ticker", "date"]):
+
+            # Process long exits
+            long_has_exit = (
+                group["long_stop_exit_price"].notna()
+                | group["long_tp_exit_price"].notna()
+            )
+            long_has_hit = group["long_stop_hit"] | group["long_tp_hit"]
+
+            if long_has_exit.any() and long_has_hit.any():
+                # Get exit price from first exit row
+                exit_idx = long_has_exit.idxmax()
+                exit_row = group.loc[exit_idx]
+                exit_price = (
+                    exit_row["long_stop_exit_price"]
+                    if pd.notna(exit_row["long_stop_exit_price"])
+                    else exit_row["long_tp_exit_price"]
+                )
+
+                # Apply to first hit row
+                hit_idx = long_has_hit.idxmax()
+                df.loc[hit_idx, "long_exit_price"] = exit_price
+
+            # Process short exits
+            short_has_exit = (
+                group["short_stop_exit_price"].notna()
+                | group["short_tp_exit_price"].notna()
+            )
+            short_has_hit = group["short_stop_hit"] | group["short_tp_hit"]
+
+            if short_has_exit.any() and short_has_hit.any():
+                exit_idx = short_has_exit.idxmax()
+                exit_row = group.loc[exit_idx]
+                exit_price = (
+                    exit_row["short_stop_exit_price"]
+                    if pd.notna(exit_row["short_stop_exit_price"])
+                    else exit_row["short_tp_exit_price"]
+                )
+
+                hit_idx = short_has_hit.idxmax()
+                df.loc[hit_idx, "short_exit_price"] = exit_price
+
+        return df
+
+    @staticmethod
+    def _add_unrealized_pnl(df):
+        """
+        Calculate unrealized PnL using (high + low) / 2 as fair value
+        """
+        # Calculate midpoint from OHLC data
+        df["midpoint"] = (df["high"] + df["low"]) / 2
+
+        df["unrealized_long_pnl"] = np.nan
+        df["unrealized_short_pnl"] = np.nan
+
+        for (ticker, date), group in df.groupby(["ticker", "date"]):
+
+            # Long PnL: (midpoint - entry) * shares
+            long_mask = group["long_shares_ffilled"].notna()
+            if long_mask.any():
+                entry_price = group.loc[long_mask, "bto_price_with_slippage"].iloc[0]
+                df.loc[group.index[long_mask], "unrealized_long_pnl"] = (
+                    group.loc[long_mask, "midpoint"] - entry_price
+                ) * group.loc[long_mask, "long_shares_ffilled"]
+
+            # Short PnL: (entry - midpoint) * shares
+            short_mask = group["short_shares_ffilled"].notna()
+            if short_mask.any():
+                entry_price = group.loc[short_mask, "sto_price_with_slippage"].iloc[0]
+                df.loc[group.index[short_mask], "unrealized_short_pnl"] = (
+                    entry_price - group.loc[short_mask, "midpoint"]
+                ) * group.loc[short_mask, "short_shares_ffilled"]
+
+        return df
+
+    def _calc_pnl(self, df: pd.DataFrame) -> Union[pd.DataFrame, pl.DataFrame]:
+        df = self._add_exit_prices(df)
+        df.loc[:, "long_realized_pnl"] = (
+            df["long_exit_price"] - df["bto_price_with_slippage"]
+        ) * df["long_shares_ffilled"]
+        df.loc[:, "short_realized_pnl"] = (
+            df["sto_price_with_slippage"] - df["short_exit_price"]
+        ) * df["short_shares_ffilled"]
         return df
 
     def _close_position(self, df: Union[pd.DataFrame, pl.DataFrame]):
         df = self._trigger_stop_loss(df)
         df = self._trigger_take_profit(df)
+        df = self._calc_pnl(df)
+        # df = self._ffill_shares(df)
+        # df = self._flatten_at_eod(df)
         return df
 
     def adjust_position(
         self, df: Union[pd.DataFrame, pl.DataFrame]
     ) -> Union[pd.DataFrame, pl.DataFrame]:
-        self._open_position(df)
-        self._close_position(df)
+        df = self._open_position(df)
+        df = self._close_position(df)
         return df
 
 
