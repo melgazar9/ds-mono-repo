@@ -5,7 +5,14 @@ import pandas as pd
 import polars as pl
 from ds_core.db_connectors import PostgresConnect
 from bt_engine.engine import DataLoader
+
 from typing import Union
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 
 class PolygonBarLoader(DataLoader):
@@ -20,8 +27,9 @@ class PolygonBarLoader(DataLoader):
 
     def pull_splits_dividends(self):
         if hasattr(self, "df_splits_dividends"):
-            logging.debug("df_splits_dividends is already loaded, no need to re-pull.")
+            logging.info("df_splits_dividends is already loaded, no need to re-pull.")
         else:
+            logging.warning("Pulling df_splits_dividends!")
             with PostgresConnect(database="financial_elt") as db:
                 self.df_splits_dividends = db.run_sql(
                     """
@@ -63,10 +71,10 @@ class PolygonBarLoader(DataLoader):
             if self.load_method == "pandas":
                 self.df_splits_dividends["event_date"] = pd.to_datetime(
                     self.df_splits_dividends["event_date"]
-                ).dt.tz_localize("America/New_York")
+                ).dt.tz_localize("America/Chicago")
             elif self.load_method == "polars":
                 self.df_splits_dividends = self.df_splits_dividends.with_columns(
-                    [pl.col("event_date").dt.convert_time_zone("America/New_York")]
+                    [pl.col("event_date").dt.convert_time_zone("America/Chicago")]
                 )
         return self
 
@@ -78,7 +86,7 @@ class PolygonBarLoader(DataLoader):
             )
             df = df.rename(columns={"window_start": "timestamp"})
             df["timestamp_utc"] = pd.to_datetime(df["timestamp"], utc=True)
-            df["timestamp_cst"] = df["timestamp_utc"].dt.tz_convert("America/New_York")
+            df["timestamp_cst"] = df["timestamp_utc"].dt.tz_convert("America/Chicago")
             df["date"] = df["timestamp_cst"].dt.normalize()
             df = df.sort_values(by=["timestamp", "ticker"])
         elif self.load_method == "polars":
@@ -94,7 +102,7 @@ class PolygonBarLoader(DataLoader):
             df = df.with_columns(
                 [
                     pl.col("timestamp_utc")
-                    .dt.convert_time_zone("America/New_York")
+                    .dt.convert_time_zone("America/Chicago")
                     .alias("timestamp_cst")
                 ]
             )
