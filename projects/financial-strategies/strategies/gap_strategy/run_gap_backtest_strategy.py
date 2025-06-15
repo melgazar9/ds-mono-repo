@@ -1,6 +1,5 @@
 import os
-from glob import glob
-from bt_engine.central_loaders import PolygonBarLoader
+from bt_engine.central_loaders import PolygonBarLoader, CSVReader
 from bt_engine.engine import BacktestEngine
 from datetime import time as dtime, datetime
 import logging
@@ -25,11 +24,19 @@ logging.basicConfig(
 # 4. All positions must be flattened by 14:55 CST if
 # 5. Segment by groups --> HTB / short interest/volume buckets, market cap bucket, industry, VIX range, etc.
 
-data_dir = "~/polygon_data/bars_1min/"
-files = sorted(glob(os.path.expanduser(f"{data_dir}bars_1m_*.csv.gz")))
+csv_reader = CSVReader(
+    local_or_remote="local",
+    host=os.getenv("NORDVPN_MESHNET_IP"),
+    username=os.getenv("NORDVPN_USERNAME"),
+)
+data_dir = "/home/melgazar9/polygon_data/us_stocks_sip/bars_1m"
+files = sorted(csv_reader.list_files(data_dir))
+
 run_timestamp = datetime.now().strftime("%Y-%m-%d__%H:%M:%S")
 
-df_prev = PolygonBarLoader(cur_day_file=files[0]).load_raw_intraday_bars()
+df_prev = PolygonBarLoader(
+    cur_day_file=f"{data_dir}/{files[0]}", local_or_remote="remote"
+).load_raw_intraday_bars()
 cur_day_file = files[1]
 header = True
 data_loader = PolygonBarLoader(load_method="pandas", df_prev=df_prev)

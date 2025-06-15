@@ -5,8 +5,12 @@ import pandas as pd
 import polars as pl
 from ds_core.db_connectors import PostgresConnect
 from bt_engine.engine import DataLoader
+import paramiko
+import os
+from glob import glob
+import io
+from typing import Union, Optional, List, Callable, Any
 
-from typing import Union
 
 logging.basicConfig(
     level=logging.INFO,
@@ -15,14 +19,206 @@ logging.basicConfig(
 )
 
 
+class CSVReader:
+    """Simple CSV reader for local and remote files with file listing"""
+
+    def __init__(
+        self,
+        local_or_remote,
+        host: Optional[str] = None,
+        username: Optional[str] = None,
+        ssh_rsa_loc: str = "~/.ssh/id_rsa",
+    ):
+        """
+        Initialize CSV reader
+
+        Args:
+            local_or_remote: "local" or "remote"
+            host: SSH host (defaults to NORDVPN_MESHNET_IP env var)
+            username: SSH username (defaults to NORDVPN_USER env var)
+            ssh_rsa_loc: Path to SSH private key
+        """
+        self.connection_type = local_or_remote
+        self.host = host or os.getenv("NORDVPN_MESHNET_IP")
+        self.username = username or os.getenv("NORDVPN_USER")
+        self.ssh_rsa_loc = ssh_rsa_loc
+
+    def _execute_ssh_operation(
+        self, operation_func: Callable[[paramiko.SSHClient], Any], operation_name: str
+    ) -> Any:
+        """
+        Execute an operation over SSH with connection management
+
+        Args:
+            operation_func: Function that takes an SSH client and returns a result
+            operation_name: Description of the operation for logging
+
+        Returns:
+            Result from operation_func
+        """
+        ssh = None
+        try:
+            logging.info(f"Connecting to {self.host} for {operation_name}")
+            ssh = paramiko.SSHClient()
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(
+                self.host,
+                username=self.username,
+                key_filename=os.path.expanduser(self.ssh_rsa_loc),
+            )
+
+            return operation_func(ssh)
+
+        except Exception as e:
+            logging.error(f"Failed {operation_name}: {str(e)}")
+            raise
+
+        finally:
+            if ssh:
+                ssh.close()
+                logging.debug("SSH connection closed")
+
+    def list_files(self, directory_path: str, pattern: str = "*") -> List[str]:
+        """
+        List files in directory (local or remote)
+
+        Args:
+            directory_path: Path to directory
+            pattern: File pattern (e.g., "*.csv", "bars_1m_*.csv.gz")
+
+        Returns:
+            List of file paths
+        """
+        if self.connection_type == "local":
+            return self._list_local_files(directory_path, pattern)
+        else:
+            return self._execute_ssh_operation(
+                lambda ssh: self._list_remote_files(ssh, directory_path, pattern),
+                f"listing files in {directory_path}",
+            )
+
+    @staticmethod
+    def _list_local_files(directory_path: str, pattern: str) -> List[str]:
+        """List local files"""
+        full_pattern = os.path.join(os.path.expanduser(directory_path), pattern)
+        files = sorted(glob(full_pattern))
+        logging.info(f"Found {len(files)} local files matching {pattern}")
+        return files
+
+    @staticmethod
+    def _list_remote_files(
+        ssh: paramiko.SSHClient, directory_path: str, pattern: str
+    ) -> List[str]:
+        """List remote files operation (called within SSH connection)"""
+        if pattern == "*":
+            command = f"ls '{directory_path}' | sort"
+        else:
+            command = f"ls '{directory_path}'/{pattern} | sort"
+
+        # Execute command
+        stdin, stdout, stderr = ssh.exec_command(command)
+
+        # Check for errors
+        error_output = stderr.read().decode("utf-8")
+        if error_output and "No such file" not in error_output:
+            logging.warning(f"Remote ls warning: {error_output}")
+
+        # Get file list
+        files_output = stdout.read().decode("utf-8").strip()
+        if not files_output:
+            files = []
+        else:
+            files = [f.strip() for f in files_output.split("\n") if f.strip()]
+
+        logging.info(f"Found {len(files)} remote files matching {pattern}")
+        return files
+
+    def read_csv(
+        self, file_path: str, timeout: int = 300, **pd_read_csv_kwargs
+    ) -> pd.DataFrame:
+        """
+        Read a single CSV file (local or remote)
+
+        Args:
+            file_path: Path to the CSV file
+            timeout: Timeout for remote operations (seconds)
+            **pd_read_csv_kwargs: Arguments passed to pd.read_csv
+
+        Returns:
+            DataFrame
+        """
+        if self.connection_type == "local":
+            return pd.read_csv(file_path, **pd_read_csv_kwargs)
+        else:
+            return self._execute_ssh_operation(
+                lambda ssh: self._read_remote_csv(
+                    ssh, file_path, timeout, **pd_read_csv_kwargs
+                ),
+                f"reading {file_path}",
+            )
+
+    @staticmethod
+    def _read_remote_csv(
+        ssh: paramiko.SSHClient, file_path: str, timeout: int, **pd_read_csv_kwargs
+    ) -> pd.DataFrame:
+        """Read remote CSV file operation - handles gzip efficiently"""
+
+        if file_path.endswith(".gz"):
+            command = f"cat '{file_path}'"  # NOT zcat - get raw bytes
+            stdin, stdout, stderr = ssh.exec_command(command, timeout=timeout)
+
+            # Check for errors
+            error_output = stderr.read().decode("utf-8")
+            if error_output:
+                raise Exception(f"Remote command error: {error_output}")
+
+            # Get raw gzip bytes
+            raw_bytes = stdout.read()
+            if not raw_bytes:
+                raise Exception(f"No data returned from {file_path}")
+            df = pd.read_csv(io.BytesIO(raw_bytes), **pd_read_csv_kwargs)
+
+        else:
+            # Regular CSV files
+            command = f"cat '{file_path}'"
+            stdin, stdout, stderr = ssh.exec_command(command, timeout=timeout)
+
+            error_output = stderr.read().decode("utf-8")
+            if error_output:
+                raise Exception(f"Remote command error: {error_output}")
+
+            csv_data = stdout.read().decode("utf-8")
+            if not csv_data.strip():
+                raise Exception(f"No data returned from {file_path}")
+
+            df = pd.read_csv(io.StringIO(csv_data), **pd_read_csv_kwargs)
+
+        logging.info(f"Successfully loaded {len(df):,} rows from remote file")
+        return df
+
+
 class PolygonBarLoader(DataLoader):
-    def __init__(self, load_method="pandas", cur_day_file=None, df_prev=None):
+    def __init__(
+        self,
+        load_method="pandas",
+        cur_day_file=None,
+        df_prev=None,
+        local_or_remote=None,
+    ):
         self.load_method = load_method
         self.cur_day_file = cur_day_file
         self.df_prev = df_prev
+        self.local_or_remote = local_or_remote
+
+        self.csv_reader = CSVReader(local_or_remote=self.local_or_remote)
+
+        assert (
+            local_or_remote is not None
+        ), "local_or_remote cannot be None. Must be set to 'local' or 'remote'"
+
         if self.load_method not in ["pandas", "polars"]:
             raise NotImplementedError(
-                f"Unknown load method {self.load_method}. Must be 'pandas' or 'polars'."
+                f"Unknown load method {self.load_method}. Must be 'pandas' or 'polars'"
             )
 
     def pull_splits_dividends(self):
@@ -81,15 +277,16 @@ class PolygonBarLoader(DataLoader):
     def load_raw_intraday_bars(self) -> Union[pd.DataFrame, pl.DataFrame]:
         """Loads bars data (e.g. 1-minute) from polygon flat files."""
         if self.load_method == "pandas":
-            df = pd.read_csv(
-                self.cur_day_file, compression="gzip", keep_default_na=False
-            )
+            df = self.csv_reader.read_csv(self.cur_day_file, compression="gzip")
             df = df.rename(columns={"window_start": "timestamp"})
             df["timestamp_utc"] = pd.to_datetime(df["timestamp"], utc=True)
             df["timestamp_cst"] = df["timestamp_utc"].dt.tz_convert("America/Chicago")
             df["date"] = df["timestamp_cst"].dt.normalize()
             df = df.sort_values(by=["timestamp", "ticker"])
         elif self.load_method == "polars":
+            logging.error(
+                "polars is currently not supported."
+            )  # TODO: Add Polars support
             df = pl.read_csv(self.cur_day_file)
             df = df.rename({"window_start": "timestamp"})
             df = df.with_columns(

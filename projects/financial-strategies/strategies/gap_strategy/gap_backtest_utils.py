@@ -3,9 +3,16 @@ import polars as pl
 import numpy as np
 
 from datetime import time as dtime
-
 from typing import Union
+
 from bt_engine.execution import apply_slippage
+from bt_engine.evaluators import (
+    calc_win_rate,
+    calc_profit_factor,
+    calc_intraday_sharpe_ratio,
+    calc_max_drawdown,
+    calc_sortino_ratio,
+)
 
 from bt_engine.engine import (
     RiskManager,
@@ -574,73 +581,6 @@ class GapStrategyEvaluator(StrategyEvaluator):
     def evaluate(
         self, df: Union[pd.DataFrame, pl.DataFrame]
     ) -> Union[pd.Series, pl.Series]:
-        def calc_win_rate(series):
-            wins = (series > 0).sum()
-            total = series.notna().sum()
-            return wins / total if total > 0 else 0
-
-        def calc_profit_factor(series):
-            profits = series[series > 0].sum()
-            losses = abs(series[series < 0].sum())
-            return profits / losses if losses > 0 else (np.inf if profits > 0 else 0)
-
-        def calc_intraday_sharpe_ratio(
-            returns: pd.Series,
-            risk_free_rate: float = 0.0525,
-            min_observations: int = 10,
-            remove_outliers: bool = True,
-            outlier_threshold: float = 3.0,
-        ) -> float:
-            if returns is None or len(returns) == 0:
-                return np.nan
-
-            clean_returns = returns.dropna()
-            clean_returns = clean_returns[np.isfinite(clean_returns)]
-
-            n_trades = len(clean_returns)
-
-            if n_trades < min_observations:
-                return np.nan
-
-            if clean_returns.std() == 0:
-                return 0.0 if clean_returns.mean() >= 0 else -np.inf
-
-            if (
-                remove_outliers and n_trades > 20
-            ):  # Only remove outliers if sufficient data
-                z_scores = np.abs(
-                    (clean_returns - clean_returns.mean()) / clean_returns.std()
-                )
-                clean_returns = clean_returns[z_scores <= outlier_threshold]
-
-                # Recheck after outlier removal
-                if len(clean_returns) < min_observations:
-                    return np.nan
-                if clean_returns.std() == 0:
-                    return 0.0 if clean_returns.mean() >= 0 else -np.inf
-
-            trading_days_per_year = 252
-            daily_rf_rate = risk_free_rate / trading_days_per_year
-
-            rf_rate_per_trade = daily_rf_rate / max(n_trades, 1)
-
-            excess_returns = clean_returns - rf_rate_per_trade
-            mean_excess_return = excess_returns.mean()
-            volatility = excess_returns.std(ddof=1)  # Sample std dev (N-1 denominator)
-
-            sharpe_ratio = mean_excess_return / volatility
-
-            if abs(sharpe_ratio) > 50:  # Suspiciously high Sharpe suggests data issues
-                return np.nan
-
-            return sharpe_ratio
-
-        def calc_max_drawdown(pnl_series):
-            cumulative = pnl_series.cumsum()
-            running_max = cumulative.expanding().max()
-            drawdown = cumulative - running_max
-            return drawdown.min()
-
         df_summary = pd.Series(
             dict(
                 # === BASIC INFO ===
@@ -681,6 +621,7 @@ class GapStrategyEvaluator(StrategyEvaluator):
                 long_intraday_sharpe=calc_intraday_sharpe_ratio(
                     df["long_realized_pnl"]
                 ),
+                long_intraday_sortino=calc_sortino_ratio(df["long_realized_pnl"]),
                 long_intraday_max_drawdown=calc_max_drawdown(df["long_realized_pnl"]),
                 # === SHORT POSITION METRICS ===
                 short_realized_pnl=df["short_realized_pnl"].sum(),
