@@ -46,7 +46,7 @@ plugins:
       select:
         - all_tickers.*
 #        - prices_1m.*
-#        - prices_2m.*
+        - prices_2m.*
 #        - prices_5m.*
         - prices_1h.*
         - prices_1d.*

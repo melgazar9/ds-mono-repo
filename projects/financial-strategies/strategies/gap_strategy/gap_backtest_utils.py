@@ -1,7 +1,7 @@
 import pandas as pd
 import polars as pl
 import numpy as np
-
+import warnings
 from datetime import time as dtime
 from typing import Union
 import logging
@@ -20,6 +20,7 @@ from bt_engine.engine import (
     PositionManager,
     StrategyEvaluator,
 )
+from ds_core.db_connectors import PostgresConnect
 
 
 def first_true(series):
@@ -294,8 +295,15 @@ class GapPositionManager(PositionManager):
 
         # EOD flatten (lowest priority - set first)
         eod_mask = df["timestamp_cst"].dt.time >= self.flatten_trade_time_cst
-        df.loc[eod_mask & df["long_position_active"], "long_exit_priority"] = 3
-        df.loc[eod_mask & df["short_position_active"], "short_exit_priority"] = 3
+
+        df["is_last_bar"] = (
+            df.groupby(["ticker", "date"]).cumcount(ascending=False) == 0
+        )
+        last_bar_exit_mask = df["is_last_bar"]
+        flatten_mask = eod_mask | last_bar_exit_mask
+
+        df.loc[flatten_mask & df["long_position_active"], "long_exit_priority"] = 3
+        df.loc[flatten_mask & df["short_position_active"], "short_exit_priority"] = 3
 
         # Take profits (2nd priority - can overwrite EOD priority)
         df.loc[df["long_tp_hit"], "long_exit_priority"] = np.minimum(
@@ -429,6 +437,7 @@ class GapPositionManager(PositionManager):
                 "short_position_active",
                 "long_exit_rank",
                 "short_exit_rank",
+                "is_last_bar",
             ],
             inplace=True,
         )
@@ -581,9 +590,36 @@ class GapStrategyRiskManager(RiskManager):
 
 
 class GapStrategyEvaluator(StrategyEvaluator):
-    def evaluate(
-        self, df: Union[pd.DataFrame, pl.DataFrame]
-    ) -> Union[pd.Series, pl.Series]:
+    def __init__(self):
+        self.daily_summary = None
+        self.daily_summary_by_ticker = None
+
+    @staticmethod
+    def _calc_daily_summary(df):
+        def safe_mean(series):
+            return series.mean() if len(series.dropna()) > 0 else np.nan
+
+        def safe_median(series):
+            return series.median() if len(series.dropna()) > 0 else np.nan
+
+        def safe_std(series):
+            return series.std() if len(series.dropna()) > 1 else np.nan
+
+        def safe_min(series):
+            return series.min() if len(series.dropna()) > 0 else np.nan
+
+        def safe_max(series):
+            return series.max() if len(series.dropna()) > 0 else np.nan
+
+        def safe_sum(series):
+            return series.sum() if len(series.dropna()) > 0 else 0
+
+        has_trades = df["trigger_trade_entry"].sum() > 0
+        has_long_pnl = df["long_realized_pnl"].notna().sum() > 0
+        has_short_pnl = df["short_realized_pnl"].notna().sum() > 0
+        has_long_exits = df["long_exit_price"].notna().sum() > 0
+        has_short_exits = df["short_exit_price"].notna().sum() > 0
+
         df_summary = pd.Series(
             dict(
                 # === BASIC INFO ===
@@ -598,7 +634,7 @@ class GapStrategyEvaluator(StrategyEvaluator):
                             | df["trigger_trade_entry_mkt"]
                         ).sum()
                     )
-                    if df["trigger_trade_entry"].sum() > 0
+                    if has_trades
                     else 0
                 ),
                 pct_entries_mkt=(
@@ -609,102 +645,164 @@ class GapStrategyEvaluator(StrategyEvaluator):
                             | df["trigger_trade_entry_mkt"]
                         ).sum()
                     )
-                    if df["trigger_trade_entry"].sum() > 0
+                    if has_trades
                     else 0
                 ),
                 # === LONG POSITION METRICS ===
-                long_realized_pnl=df["long_realized_pnl"].sum(),
-                long_win_rate=calc_win_rate(df["long_realized_pnl"]),
-                long_profit_factor=calc_profit_factor(df["long_realized_pnl"].dropna()),
-                long_avg_trade_pnl=df["long_realized_pnl"].mean(),
-                long_median_trade_pnl=df["long_realized_pnl"].median(),
-                long_max_winner=df["long_realized_pnl"].max(),
-                long_max_loser=df["long_realized_pnl"].min(),
-                long_pnl_std=df["long_realized_pnl"].std(),
-                long_intraday_sharpe=calc_intraday_sharpe_ratio(
-                    df["long_realized_pnl"]
+                long_realized_pnl=safe_sum(df["long_realized_pnl"]),
+                long_win_rate=(
+                    calc_win_rate(df["long_realized_pnl"]) if has_long_pnl else np.nan
                 ),
-                long_intraday_sortino=calc_sortino_ratio(df["long_realized_pnl"]),
-                long_intraday_max_drawdown=calc_max_drawdown(df["long_realized_pnl"]),
+                long_profit_factor=(
+                    calc_profit_factor(df["long_realized_pnl"].dropna())
+                    if has_long_pnl
+                    else np.nan
+                ),
+                long_avg_trade_pnl=safe_mean(df["long_realized_pnl"]),
+                long_median_trade_pnl=safe_median(df["long_realized_pnl"]),
+                long_max_winner=safe_max(df["long_realized_pnl"]),
+                long_max_loser=safe_min(df["long_realized_pnl"]),
+                long_pnl_std=safe_std(df["long_realized_pnl"]),
+                long_intraday_sharpe=(
+                    calc_intraday_sharpe_ratio(df["long_realized_pnl"])
+                    if has_long_pnl
+                    else np.nan
+                ),
+                long_intraday_sortino=(
+                    calc_sortino_ratio(df["long_realized_pnl"])
+                    if has_long_pnl
+                    else np.nan
+                ),
+                long_intraday_max_drawdown=(
+                    calc_max_drawdown(df["long_realized_pnl"])
+                    if has_long_pnl
+                    else np.nan
+                ),
                 # === SHORT POSITION METRICS ===
-                short_realized_pnl=df["short_realized_pnl"].sum(),
-                short_win_rate=calc_win_rate(df["short_realized_pnl"]),
-                short_profit_factor=calc_profit_factor(
-                    df["short_realized_pnl"].dropna()
+                short_realized_pnl=safe_sum(df["short_realized_pnl"]),
+                short_win_rate=(
+                    calc_win_rate(df["short_realized_pnl"]) if has_short_pnl else np.nan
                 ),
-                short_avg_trade_pnl=df["short_realized_pnl"].mean(),
-                short_median_trade_pnl=df["short_realized_pnl"].median(),
-                short_max_winner=df["short_realized_pnl"].max(),
-                short_max_loser=df["short_realized_pnl"].min(),
-                short_pnl_std=df["short_realized_pnl"].std(),
-                short_intraday_sharpe=calc_intraday_sharpe_ratio(
-                    df["short_realized_pnl"]
+                short_profit_factor=(
+                    calc_profit_factor(df["short_realized_pnl"].dropna())
+                    if has_short_pnl
+                    else np.nan
                 ),
-                short_intraday_max_drawdown=calc_max_drawdown(df["short_realized_pnl"]),
+                short_avg_trade_pnl=safe_mean(df["short_realized_pnl"]),
+                short_median_trade_pnl=safe_median(df["short_realized_pnl"]),
+                short_max_winner=safe_max(df["short_realized_pnl"]),
+                short_max_loser=safe_min(df["short_realized_pnl"]),
+                short_pnl_std=safe_std(df["short_realized_pnl"]),
+                short_intraday_sharpe=(
+                    calc_intraday_sharpe_ratio(df["short_realized_pnl"])
+                    if has_short_pnl
+                    else np.nan
+                ),
+                short_intraday_max_drawdown=(
+                    calc_max_drawdown(df["short_realized_pnl"])
+                    if has_short_pnl
+                    else np.nan
+                ),
                 # === TIMING METRICS ===
-                avg_trade_entry_timestamp=df[df["trigger_trade_entry"]][
-                    "timestamp_cst"
-                ].mean(),
-                median_trade_entry_timestamp=df[df["trigger_trade_entry"]][
-                    "timestamp_cst"
-                ].median(),
-                earliest_trade_entry=df[df["trigger_trade_entry"]][
-                    "timestamp_cst"
-                ].min(),
-                latest_trade_entry=df[df["trigger_trade_entry"]]["timestamp_cst"].max(),
-                avg_long_exit_timestamp=df[df["long_exit_price"].notnull()][
-                    "timestamp_cst"
-                ].mean(),
-                avg_short_exit_timestamp=df[df["short_exit_price"].notnull()][
-                    "timestamp_cst"
-                ].mean(),
-                median_long_exit_timestamp=df[df["long_exit_price"].notnull()][
-                    "timestamp_cst"
-                ].median(),
-                median_short_exit_timestamp=df[df["short_exit_price"].notnull()][
-                    "timestamp_cst"
-                ].median(),
+                avg_trade_entry_timestamp=(
+                    safe_mean(df[df["trigger_trade_entry"]]["timestamp_cst"])
+                    if has_trades
+                    else pd.NaT
+                ),
+                median_trade_entry_timestamp=(
+                    safe_median(df[df["trigger_trade_entry"]]["timestamp_cst"])
+                    if has_trades
+                    else pd.NaT
+                ),
+                earliest_trade_entry=(
+                    safe_min(df[df["trigger_trade_entry"]]["timestamp_cst"])
+                    if has_trades
+                    else pd.NaT
+                ),
+                latest_trade_entry=(
+                    safe_max(df[df["trigger_trade_entry"]]["timestamp_cst"])
+                    if has_trades
+                    else pd.NaT
+                ),
+                avg_long_exit_timestamp=(
+                    safe_mean(df[df["long_exit_price"].notna()]["timestamp_cst"])
+                    if has_long_exits
+                    else pd.NaT
+                ),
+                avg_short_exit_timestamp=(
+                    safe_mean(df[df["short_exit_price"].notna()]["timestamp_cst"])
+                    if has_short_exits
+                    else pd.NaT
+                ),
+                median_long_exit_timestamp=(
+                    safe_median(df[df["long_exit_price"].notna()]["timestamp_cst"])
+                    if has_long_exits
+                    else pd.NaT
+                ),
+                median_short_exit_timestamp=(
+                    safe_median(df[df["short_exit_price"].notna()]["timestamp_cst"])
+                    if has_short_exits
+                    else pd.NaT
+                ),
                 # === TIME IN TRADE ===
-                avg_time_in_long_trade=df["time_in_long_trade"].mean(),
-                avg_time_in_short_trade=df["time_in_short_trade"].mean(),
-                median_time_in_long_trade=df["time_in_long_trade"].median(),
-                median_time_in_short_trade=df["time_in_short_trade"].median(),
-                min_time_in_long_trade=df["time_in_long_trade"].min(),
-                min_time_in_short_trade=df["time_in_short_trade"].min(),
-                max_time_in_long_trade=df["time_in_long_trade"].max(),
-                max_time_in_short_trade=df["time_in_short_trade"].max(),
+                avg_time_in_long_trade=safe_mean(df["time_in_long_trade"]),
+                avg_time_in_short_trade=safe_mean(df["time_in_short_trade"]),
+                median_time_in_long_trade=safe_median(df["time_in_long_trade"]),
+                median_time_in_short_trade=safe_median(df["time_in_short_trade"]),
+                min_time_in_long_trade=safe_min(df["time_in_long_trade"]),
+                min_time_in_short_trade=safe_min(df["time_in_short_trade"]),
+                max_time_in_long_trade=safe_max(df["time_in_long_trade"]),
+                max_time_in_short_trade=safe_max(df["time_in_short_trade"]),
                 # === GAP ANALYSIS ===
-                avg_pmkt_pct_chg=df[df["trigger_trade_entry"]][
-                    "adj_pmkt_pct_chg"
-                ].mean(),
-                avg_mkt_pct_chg=df[df["trigger_trade_entry"]]["adj_mkt_pct_chg"].mean(),
-                median_pmkt_pct_chg=df[df["trigger_trade_entry"]][
-                    "adj_pmkt_pct_chg"
-                ].median(),
-                median_mkt_pct_chg=df[df["trigger_trade_entry"]][
-                    "adj_mkt_pct_chg"
-                ].median(),
-                pmkt_gap_std=df[df["trigger_trade_entry"]]["adj_pmkt_pct_chg"].std(),
-                mkt_gap_std=df[df["trigger_trade_entry"]]["adj_mkt_pct_chg"].std(),
+                avg_pmkt_pct_chg=(
+                    safe_mean(df[df["trigger_trade_entry"]]["adj_pmkt_pct_chg"])
+                    if has_trades
+                    else np.nan
+                ),
+                avg_mkt_pct_chg=(
+                    safe_mean(df[df["trigger_trade_entry"]]["adj_mkt_pct_chg"])
+                    if has_trades
+                    else np.nan
+                ),
+                median_pmkt_pct_chg=(
+                    safe_median(df[df["trigger_trade_entry"]]["adj_pmkt_pct_chg"])
+                    if has_trades
+                    else np.nan
+                ),
+                median_mkt_pct_chg=(
+                    safe_median(df[df["trigger_trade_entry"]]["adj_mkt_pct_chg"])
+                    if has_trades
+                    else np.nan
+                ),
+                pmkt_gap_std=(
+                    safe_std(df[df["trigger_trade_entry"]]["adj_pmkt_pct_chg"])
+                    if has_trades
+                    else np.nan
+                ),
+                mkt_gap_std=(
+                    safe_std(df[df["trigger_trade_entry"]]["adj_mkt_pct_chg"])
+                    if has_trades
+                    else np.nan
+                ),
                 # Gap size on actual trades
                 avg_gap_size_on_entries=(
-                    df[df["trigger_trade_entry"]]["adj_pmkt_pct_chg"].abs().mean()
-                    if df["trigger_trade_entry"].sum() > 0
+                    safe_mean(df[df["trigger_trade_entry"]]["adj_pmkt_pct_chg"].abs())
+                    if has_trades
                     else np.nan
                 ),
                 median_gap_size_on_entries=(
-                    df[df["trigger_trade_entry"]]["adj_pmkt_pct_chg"].abs().median()
-                    if df["trigger_trade_entry"].sum() > 0
+                    safe_median(df[df["trigger_trade_entry"]]["adj_pmkt_pct_chg"].abs())
+                    if has_trades
                     else np.nan
                 ),
                 min_gap_size_on_entries=(
-                    df[df["trigger_trade_entry"]]["adj_pmkt_pct_chg"].abs().min()
-                    if df["trigger_trade_entry"].sum() > 0
+                    safe_min(df[df["trigger_trade_entry"]]["adj_pmkt_pct_chg"].abs())
+                    if has_trades
                     else np.nan
                 ),
                 max_gap_size_on_entries=(
-                    df[df["trigger_trade_entry"]]["adj_pmkt_pct_chg"].abs().max()
-                    if df["trigger_trade_entry"].sum() > 0
+                    safe_max(df[df["trigger_trade_entry"]]["adj_pmkt_pct_chg"].abs())
+                    if has_trades
                     else np.nan
                 ),
                 # === EXIT TYPE ANALYSIS (if columns exist) ===
@@ -747,5 +845,68 @@ class GapStrategyEvaluator(StrategyEvaluator):
                 short_trades_loss=(df["short_realized_pnl"] < 0).sum(),
             )
         )
-
         return df_summary
+
+    def _calc_daily_summary_by_ticker(self, df):
+        traded_tickers = df[df["trigger_trade_entry"]]["ticker"].unique().tolist()
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=FutureWarning)
+
+            df_summary_by_ticker = (
+                df[df["ticker"].isin(traded_tickers)]
+                .groupby(["ticker", "date"])
+                .apply(
+                    self._calc_daily_summary
+                )  # Keep your existing function unchanged
+            )
+        return df_summary_by_ticker
+
+    @staticmethod
+    def _add_ticker_identifiers(df):
+        with PostgresConnect(database="financial_elt") as db:
+            df_ticker_map = db.run_sql("select * from polygon_core.ticker_map")
+
+        cols_to_keep = [
+            "composite_figi",
+            "cik",
+            "active",
+            "delisted_utc",
+            "locale",
+            "market",
+            "ticker_type",
+            "primary_exchange",
+            "share_class_figi",
+        ]
+
+        df_full_ticker_map = (
+            pd.concat(
+                [
+                    df_ticker_map[["ticker"] + cols_to_keep].rename(
+                        columns={"ticker": "ticker_key"}
+                    ),
+                    df_ticker_map[df_ticker_map["old_ticker"].notna()][
+                        ["old_ticker"] + cols_to_keep
+                    ].rename(columns={"old_ticker": "ticker_key"}),
+                ]
+            )
+            .drop_duplicates(subset=["ticker_key"])
+            .set_index("ticker_key")
+        )
+
+        df = df.merge(
+            df_full_ticker_map, left_on="ticker", right_index=True, how="left"
+        )
+        return df
+
+    @staticmethod
+    def _add_segments(self, df):
+        df = self._add_ticker_identifiers(df)
+        return df
+
+    def evaluate(
+        self, df: Union[pd.DataFrame, pl.DataFrame]
+    ) -> Union[pd.DataFrame, pl.DataFrame]:
+        self.daily_summary = self._calc_daily_summary(df)
+        self.daily_summary_by_ticker = self._calc_daily_summary_by_ticker(df)
+        self.daily_summary_by_ticker = self._add_segments(self.daily_summary_by_ticker)
+        return df

@@ -66,7 +66,10 @@ class GapBacktestRunner:
             remote_files = remote_files[0:30]
 
         # Setup results file
-        results_file = self.results_dir / f"summary_{self.run_timestamp}.csv"
+        daily_results_file = self.results_dir / f"summary_{self.run_timestamp}.csv"
+        results_file_by_ticker = (
+            self.results_dir / f"summary_{self.run_timestamp}_by_ticker.csv"
+        )
         header = True
 
         # Manual counter since we can't use enumerate() with async generators
@@ -77,52 +80,52 @@ class GapBacktestRunner:
             logging.info(
                 f"Processing file {i + 1}/{len(remote_files)}: {local_file_path.name}"
             )
-
-            try:
-                if i == 0:
-                    logging.info(f"Loading initial data from {local_file_path.name}")
-                    self.data_loader = PolygonBarLoader(
-                        cur_day_file=str(local_file_path), load_method="pandas"
-                    )
-                    df_prev = self.data_loader.load_raw_intraday_bars()
-
-                    self.data_loader.pull_splits_dividends()
-                    logging.info(
-                        "✅ Splits/dividends data loaded once - will be reused!"
-                    )
-
-                    # Set df_prev for next iteration
-                    self.data_loader.df_prev = df_prev
-
-                    logging.info(f"Initial data loaded: {df_prev.shape[0]} rows")
-                    i += 1
-                    continue
-
-                logging.info(f"Reusing data loader for {local_file_path.name}")
-                self.data_loader.cur_day_file = str(local_file_path)
-
-                backtest_engine = self.create_backtest_engine(self.data_loader)
-                backtest_engine.run_backtest()
-
-                # Save results
-                backtest_engine.df_evaluation.to_frame().T.to_csv(
-                    results_file,
-                    index=False,
-                    header=header,
-                    mode="a",
+            if i == 0:
+                logging.info(f"Loading initial data from {local_file_path.name}")
+                self.data_loader = PolygonBarLoader(
+                    cur_day_file=str(local_file_path), load_method="pandas"
                 )
+                df_prev = self.data_loader.load_raw_intraday_bars()
 
-                self.data_loader.df_prev = backtest_engine.df
-                header = False
+                self.data_loader.pull_splits_dividends()
+                logging.info("✅ Splits/dividends data loaded once - will be reused!")
 
-                logging.info(f"✅ Completed processing {local_file_path.name}")
+                # Set df_prev for next iteration
+                self.data_loader.df_prev = df_prev
 
-            except Exception as e:
-                logging.error(f"❌ Error processing {local_file_path.name}: {e}")
+                logging.info(f"Initial data loaded: {df_prev.shape[0]} rows")
+                i += 1
+                continue
 
+            logging.info(f"Reusing data loader for {local_file_path.name}")
+            self.data_loader.cur_day_file = str(local_file_path)
+
+            backtest_engine = self.create_backtest_engine(self.data_loader)
+            backtest_engine.run_backtest()
+
+            # Save results
+            backtest_engine.df_evaluation.to_frame().T.to_csv(
+                daily_results_file,
+                index=False,
+                header=header,
+                mode="a",
+            )
+
+            backtest_engine.df_evaluation_by_ticker.to_frame().T.to_csv(
+                results_file_by_ticker,
+                index=False,
+                header=header,
+                mode="a",
+            )
+
+            self.data_loader.df_prev = backtest_engine.df
+            header = False
+            logging.info(f"✅ Completed processing {local_file_path.name}")
             i += 1
 
-        logging.info(f"Backtest complete! Results saved to {results_file}")
+        logging.info(
+            f"Backtest complete! Results saved to {daily_results_file} and {results_file_by_ticker}."
+        )
 
 
 async def main():

@@ -112,6 +112,8 @@ plugins:
           adjusted: false
           sort: "asc"
           limit: 50000
+        other_params:
+          use_cached_tickers: true
 
       bars_30_second:
         path_params:
@@ -122,6 +124,8 @@ plugins:
           adjusted: false
           sort: "asc"
           limit: 50000
+        other_params:
+          use_cached_tickers: true
 
       bars_1_minute:
         path_params:
@@ -132,6 +136,8 @@ plugins:
           adjusted: false
           sort: "asc"
           limit: 50000
+        other_params:
+          use_cached_tickers: true
 
       bars_5_minute:
         path_params:
@@ -142,6 +148,8 @@ plugins:
           adjusted: false
           sort: "asc"
           limit: 50000
+        other_params:
+          use_cached_tickers: true
 
       bars_30_minute:
         path_params:
@@ -152,6 +160,8 @@ plugins:
           adjusted: false
           sort: "asc"
           limit: 50000
+        other_params:
+          use_cached_tickers: true
 
       bars_1_hour:
         path_params:
@@ -162,6 +172,8 @@ plugins:
           adjusted: false
           sort: "asc"
           limit: 50000
+        other_params:
+          use_cached_tickers: true
 
       bars_1_day:
         path_params:
@@ -172,6 +184,8 @@ plugins:
           adjusted: false
           sort: "asc"
           limit: 50000
+        other_params:
+          use_cached_tickers: true
 
       bars_1_week:
         path_params:
@@ -182,6 +196,8 @@ plugins:
           adjusted: false
           sort: "asc"
           limit: 50000
+        other_params:
+          use_cached_tickers: true
 
       bars_1_month:
         path_params:
@@ -192,6 +208,8 @@ plugins:
           adjusted: false
           sort: "asc"
           limit: 50000
+        other_params:
+          use_cached_tickers: true
 
       daily_market_summary:
         path_params:
@@ -201,6 +219,7 @@ plugins:
           include_otc: true
         other_params:
           loop_over_dates_gte_date: true
+
       daily_ticker_summary:
         path_params:
           date: "2015-06-01"
@@ -208,16 +227,22 @@ plugins:
           adjusted: true
         other_params:
           loop_over_dates_gte_date: true
+          use_cached_tickers: true
+
       top_market_movers:
         query_params:
           direction: "gainers"  # set to "" or "both" to get both directions
           include_otc: false
+
       trades:
         query_params:
           sort: timestamp
           order: "asc"
           timestamp__gte: "2025-06-01"
           limit: 50000
+        other_params:
+          use_cached_tickers: true
+
       sma:
         query_params:
           timestamp__gte: "2015-06-01"
@@ -227,6 +252,9 @@ plugins:
           series_type: close
           expand_underlying: true
           limit: 5000
+        other_params:
+          use_cached_tickers: true
+
       ema:
         query_params:
           timestamp__gte: "2015-06-01"
@@ -236,6 +264,9 @@ plugins:
           series_type: close
           expand_underlying: true
           limit: 5000
+        other_params:
+          use_cached_tickers: true
+
       macd:
         query_params:
           timestamp__gte: "2015-06-01"
@@ -247,6 +278,9 @@ plugins:
           series_type: close
           expand_underlying: true
           limit: 5000
+        other_params:
+          use_cached_tickers: true
+
       rsi:
         query_params:
           timestamp__gte: "2015-06-01"
@@ -256,40 +290,56 @@ plugins:
           series_type: close
           expand_underlying: true
           limit: 5000
+        other_params:
+          use_cached_tickers: true
+
       ipos:
         query_params:
           listing_date__gte: "2008-12-10"
           limit: 1000
+
       splits:
         query_params:
           execution_date__gte: "2000-01-01"
           order: "asc"
           limit: 1000
+
       dividends:
         query_params:
           ex_dividend_date__gte: "2000-08-12"
           order: "asc"
           limit: 1000
+
       financials:
         query_params:
           filing_date__gte: "2000-01-01"
           order: "asc"
           include_sources: true
           limit: 100
+
       short_interest:
         query_params:
           settlement_date__gte: "2015-06-01"
           limit: 50000
+        other_params:
+          use_cached_tickers: true
+
       short_volume:
         query_params:
           date__gte: "2015-06-01"
           order: "asc"
           limit: 50000
+        other_params:
+          use_cached_tickers: true
+
       news:
         query_params:
           published_utc__gte: "2015-06-21"
           order: "asc"
           limit: 1000
+        other_params:
+          use_cached_tickers: true
+
       treasury_yields:
         query_params:
           date__gte: "1962-01-01"

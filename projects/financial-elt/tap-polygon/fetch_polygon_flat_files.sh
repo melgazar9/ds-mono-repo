@@ -19,7 +19,7 @@ DATA_TYPE=""
 START_DATE=""
 END_DATE=""
 PREFIX=""
-ASSET_CLASS="us_stocks_sip"  # default asset class
+ASSET_CLASS=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -61,7 +61,9 @@ if [[ -z "$DATA_TYPE" || -z "$START_DATE" || -z "$END_DATE" ]]; then
 fi
 
 BASE_PATH="s3://flatfiles/${ASSET_CLASS}"
-OUTPUT_DIR="~/polygon_data/${ASSET_CLASS}/${PREFIX}"
+
+OUTPUT_DIR="$HOME/polygon_data/${ASSET_CLASS}/${PREFIX}"
+
 mkdir -p "$OUTPUT_DIR"
 
 start_sec=$(date -d "$START_DATE" +%s)
