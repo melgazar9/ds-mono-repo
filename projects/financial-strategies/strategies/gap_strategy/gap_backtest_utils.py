@@ -4,6 +4,7 @@ import numpy as np
 
 from datetime import time as dtime
 from typing import Union
+import logging
 
 from bt_engine.execution import apply_slippage
 from bt_engine.evaluators import (
@@ -57,6 +58,7 @@ class GapPositionManager(PositionManager):
         self,
         df: Union[pd.DataFrame, pl.DataFrame],
     ) -> Union[pd.DataFrame, pl.DataFrame]:
+        logging.info("*** Detecting Trade Opportunities ***")
         df.loc[
             (df["adj_pmkt_pct_chg"] >= self.overnight_gap)
             & (df["timestamp_cst"].dt.time <= self.entry_cutoff_time_cst),
@@ -565,6 +567,7 @@ class GapPositionManager(PositionManager):
     def adjust_position(
         self, df: Union[pd.DataFrame, pl.DataFrame]
     ) -> Union[pd.DataFrame, pl.DataFrame]:
+        logging.info("*** Adjusting Positions ***")
         df = self._open_position(df)
         df = self._close_position(df)
         return df

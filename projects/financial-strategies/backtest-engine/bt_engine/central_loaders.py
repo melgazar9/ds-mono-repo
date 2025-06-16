@@ -1,15 +1,15 @@
 import logging
+import os
 from datetime import time as dtime
 import numpy as np
 import pandas as pd
 import polars as pl
 from ds_core.db_connectors import PostgresConnect
 from bt_engine.engine import DataLoader
-import paramiko
-import os
-from glob import glob
-import io
-from typing import Union, Optional, List, Callable, Any
+from typing import Union, List
+from pathlib import Path
+
+import asyncio
 
 
 logging.basicConfig(
@@ -19,182 +19,185 @@ logging.basicConfig(
 )
 
 
-class CSVReader:
-    """Simple CSV reader for local and remote files with file listing"""
-
+class StreamingFileProcessor:
     def __init__(
         self,
-        local_or_remote,
-        host: Optional[str] = None,
-        username: Optional[str] = None,
-        ssh_rsa_loc: str = "~/.ssh/id_rsa",
+        remote_host,
+        remote_user,
+        cache_dir=os.path.expanduser("~/.cache/file_cache/"),
+        max_concurrent_downloads=3,
+        max_cached_files=10,
     ):
-        """
-        Initialize CSV reader
+        self.remote_host = remote_host
+        self.remote_user = remote_user
+        self.cache_dir = Path(cache_dir)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-        Args:
-            local_or_remote: "local" or "remote"
-            host: SSH host (defaults to NORDVPN_MESHNET_IP env var)
-            username: SSH username (defaults to NORDVPN_USER env var)
-            ssh_rsa_loc: Path to SSH private key
-        """
-        self.connection_type = local_or_remote
-        self.host = host or os.getenv("NORDVPN_MESHNET_IP")
-        self.username = username or os.getenv("NORDVPN_USER")
-        self.ssh_rsa_loc = ssh_rsa_loc
+        # Control concurrent downloads and cache size
+        self.download_semaphore = asyncio.Semaphore(max_concurrent_downloads)
+        self.cache_semaphore = asyncio.Semaphore(max_cached_files)
 
-    def _execute_ssh_operation(
-        self, operation_func: Callable[[paramiko.SSHClient], Any], operation_name: str
-    ) -> Any:
-        """
-        Execute an operation over SSH with connection management
+        # Queue for ready files
+        self.ready_files = asyncio.Queue()
+        self.download_tasks = {}
+        self.active_downloads = set()
 
-        Args:
-            operation_func: Function that takes an SSH client and returns a result
-            operation_name: Description of the operation for logging
+    async def download_file(self, remote_path, file_index):
+        """Download a single file and put it in the ready queue when done"""
+        async with self.download_semaphore:  # Limit concurrent downloads
+            filename = Path(remote_path).name
+            local_path = self.cache_dir / filename
 
-        Returns:
-            Result from operation_func
-        """
-        ssh = None
-        try:
-            logging.info(f"Connecting to {self.host} for {operation_name}")
-            ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(
-                self.host,
-                username=self.username,
-                key_filename=os.path.expanduser(self.ssh_rsa_loc),
+            if local_path.exists():
+                await self.ready_files.put((file_index, local_path))
+                return
+
+            logging.info(f"🔄 Starting download: {filename}")
+
+            cmd = [
+                "rsync",
+                "-avz",
+                f"{self.remote_user}@{self.remote_host}:{remote_path}",
+                str(local_path),
+            ]
+            proc = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            await proc.communicate()
+
+            if proc.returncode == 0:
+                logging.info(f"✅ Downloaded: {filename}")
+                await self.ready_files.put((file_index, local_path))
+            else:
+                logging.error(f"❌ Failed to download: {filename}")
+                await self.ready_files.put((file_index, None))
+
+    async def start_downloads(self, remote_files):
+        """Start downloading files in batches, respecting max_cached_files limit"""
+        # Only start downloads up to max_cached_files
+        max_to_start = min(
+            len(remote_files), self.cache_semaphore._value
+        )  # max_cached_files
+
+        for i in range(max_to_start):
+            if i < len(remote_files):
+                task = asyncio.create_task(self.download_file(remote_files[i], i))
+                self.download_tasks[i] = task
+                self.active_downloads.add(i)
+
+        logging.info(
+            f"Started {max_to_start} initial downloads (max_cached_files={self.cache_semaphore._value})"
+        )
+
+    async def start_next_download(self, remote_files, next_index):
+        """Start the next download when a slot becomes available"""
+        if next_index < len(remote_files) and next_index not in self.download_tasks:
+            task = asyncio.create_task(
+                self.download_file(remote_files[next_index], next_index)
+            )
+            self.download_tasks[next_index] = task
+            self.active_downloads.add(next_index)
+            logging.info(
+                f"🔄 Started download {next_index + 1}: {Path(remote_files[next_index]).name}"
             )
 
-            return operation_func(ssh)
-
-        except Exception as e:
-            logging.error(f"Failed {operation_name}: {str(e)}")
-            raise
-
-        finally:
-            if ssh:
-                ssh.close()
-                logging.debug("SSH connection closed")
-
-    def list_files(self, directory_path: str, pattern: str = "*") -> List[str]:
-        """
-        List files in directory (local or remote)
-
-        Args:
-            directory_path: Path to directory
-            pattern: File pattern (e.g., "*.csv", "bars_1m_*.csv.gz")
-
-        Returns:
-            List of file paths
-        """
-        if self.connection_type == "local":
-            return self._list_local_files(directory_path, pattern)
+    async def get_files(self, remote_files_or_path, pattern="*"):
+        """Stream files as they become ready, in order"""
+        # Handle both list of files and directory + pattern
+        if isinstance(remote_files_or_path, list):
+            files = sorted(remote_files_or_path)
+            logging.info(f"📋 Processing {len(files)} provided files")
         else:
-            return self._execute_ssh_operation(
-                lambda ssh: self._list_remote_files(ssh, directory_path, pattern),
-                f"listing files in {directory_path}",
-            )
+            files = await self.list_remote_files(remote_files_or_path, pattern)
 
-    @staticmethod
-    def _list_local_files(directory_path: str, pattern: str) -> List[str]:
-        """List local files"""
-        full_pattern = os.path.join(os.path.expanduser(directory_path), pattern)
-        files = sorted(glob(full_pattern))
-        logging.info(f"Found {len(files)} local files matching {pattern}")
-        return files
+        if not files:
+            logging.warning("No files found!")
+            return
 
-    @staticmethod
-    def _list_remote_files(
-        ssh: paramiko.SSHClient, directory_path: str, pattern: str
+        # Start downloading initial batch
+        await self.start_downloads(files)
+
+        # Keep track of what we've processed
+        next_file_index = 0
+        next_download_index = min(
+            len(files), self.cache_semaphore._value
+        )  # Start with batch size
+        cached_files = {}  # {index: local_path}
+        total_files = len(files)
+
+        logging.info(
+            f"Processing {total_files} files with max {self.cache_semaphore._value} cached..."
+        )
+
+        while next_file_index < total_files:
+            # Wait for the next file we need (in order)
+            while next_file_index not in cached_files:
+                try:
+                    # Get the next ready file
+                    file_index, local_path = await asyncio.wait_for(
+                        self.ready_files.get(), timeout=60
+                    )
+
+                    if local_path:  # Successfully downloaded
+                        cached_files[file_index] = local_path
+                        logging.info(
+                            f"📦 Cached file {file_index + 1}/{total_files}: {local_path.name}"
+                        )
+
+                        # Start next download if available
+                        if next_download_index < total_files:
+                            await self.start_next_download(files, next_download_index)
+                            next_download_index += 1
+
+                    else:  # Download failed
+                        logging.warning(f"⚠️ Skipping failed file {file_index + 1}")
+                        cached_files[file_index] = None
+
+                except asyncio.TimeoutError:
+                    logging.error("⏰ Timeout waiting for file download")
+                    break
+
+            # Process the next file in order if available
+            if next_file_index in cached_files:
+                local_path = cached_files[next_file_index]
+
+                if local_path and local_path.exists():
+                    yield local_path
+
+                    # Clean up
+                    local_path.unlink()
+                    logging.info(f"🗑️ Deleted: {local_path.name}")
+
+                # Remove from cache and move to next
+                del cached_files[next_file_index]
+                next_file_index += 1
+
+        # Clean up remaining tasks
+        for task in self.download_tasks.values():
+            if not task.done():
+                task.cancel()
+
+    async def list_remote_files(
+        self, remote_path: str, pattern: str = "*"
     ) -> List[str]:
-        """List remote files operation (called within SSH connection)"""
-        if pattern == "*":
-            command = f"ls '{directory_path}' | sort"
-        else:
-            command = f"ls '{directory_path}'/{pattern} | sort"
+        """List files in remote directory with pattern"""
+        cmd = [
+            "ssh",
+            f"{self.remote_user}@{self.remote_host}",
+            f"ls {remote_path}/{pattern}",
+        ]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE
+        )
+        stdout, _ = await proc.communicate()
 
-        # Execute command
-        stdin, stdout, stderr = ssh.exec_command(command)
-
-        # Check for errors
-        error_output = stderr.read().decode("utf-8")
-        if error_output and "No such file" not in error_output:
-            logging.warning(f"Remote ls warning: {error_output}")
-
-        # Get file list
-        files_output = stdout.read().decode("utf-8").strip()
-        if not files_output:
-            files = []
-        else:
-            files = [f.strip() for f in files_output.split("\n") if f.strip()]
-
-        logging.info(f"Found {len(files)} remote files matching {pattern}")
-        return files
-
-    def read_csv(
-        self, file_path: str, timeout: int = 300, **pd_read_csv_kwargs
-    ) -> pd.DataFrame:
-        """
-        Read a single CSV file (local or remote)
-
-        Args:
-            file_path: Path to the CSV file
-            timeout: Timeout for remote operations (seconds)
-            **pd_read_csv_kwargs: Arguments passed to pd.read_csv
-
-        Returns:
-            DataFrame
-        """
-        if self.connection_type == "local":
-            return pd.read_csv(file_path, **pd_read_csv_kwargs)
-        else:
-            return self._execute_ssh_operation(
-                lambda ssh: self._read_remote_csv(
-                    ssh, file_path, timeout, **pd_read_csv_kwargs
-                ),
-                f"reading {file_path}",
-            )
-
-    @staticmethod
-    def _read_remote_csv(
-        ssh: paramiko.SSHClient, file_path: str, timeout: int, **pd_read_csv_kwargs
-    ) -> pd.DataFrame:
-        """Read remote CSV file operation - handles gzip efficiently"""
-
-        if file_path.endswith(".gz"):
-            command = f"cat '{file_path}'"  # NOT zcat - get raw bytes
-            stdin, stdout, stderr = ssh.exec_command(command, timeout=timeout)
-
-            # Check for errors
-            error_output = stderr.read().decode("utf-8")
-            if error_output:
-                raise Exception(f"Remote command error: {error_output}")
-
-            # Get raw gzip bytes
-            raw_bytes = stdout.read()
-            if not raw_bytes:
-                raise Exception(f"No data returned from {file_path}")
-            df = pd.read_csv(io.BytesIO(raw_bytes), **pd_read_csv_kwargs)
-
-        else:
-            # Regular CSV files
-            command = f"cat '{file_path}'"
-            stdin, stdout, stderr = ssh.exec_command(command, timeout=timeout)
-
-            error_output = stderr.read().decode("utf-8")
-            if error_output:
-                raise Exception(f"Remote command error: {error_output}")
-
-            csv_data = stdout.read().decode("utf-8")
-            if not csv_data.strip():
-                raise Exception(f"No data returned from {file_path}")
-
-            df = pd.read_csv(io.StringIO(csv_data), **pd_read_csv_kwargs)
-
-        logging.info(f"Successfully loaded {len(df):,} rows from remote file")
-        return df
+        if proc.returncode == 0:
+            files = [
+                f.strip() for f in stdout.decode().strip().split("\n") if f.strip()
+            ]
+            logging.info(f"📋 Found {len(files)} files")
+            return sorted(files)
+        return []
 
 
 class PolygonBarLoader(DataLoader):
@@ -203,18 +206,10 @@ class PolygonBarLoader(DataLoader):
         load_method="pandas",
         cur_day_file=None,
         df_prev=None,
-        local_or_remote=None,
     ):
         self.load_method = load_method
         self.cur_day_file = cur_day_file
         self.df_prev = df_prev
-        self.local_or_remote = local_or_remote
-
-        self.csv_reader = CSVReader(local_or_remote=self.local_or_remote)
-
-        assert (
-            local_or_remote is not None
-        ), "local_or_remote cannot be None. Must be set to 'local' or 'remote'"
 
         if self.load_method not in ["pandas", "polars"]:
             raise NotImplementedError(
@@ -277,7 +272,7 @@ class PolygonBarLoader(DataLoader):
     def load_raw_intraday_bars(self) -> Union[pd.DataFrame, pl.DataFrame]:
         """Loads bars data (e.g. 1-minute) from polygon flat files."""
         if self.load_method == "pandas":
-            df = self.csv_reader.read_csv(self.cur_day_file, compression="gzip")
+            df = pd.read_csv(self.cur_day_file, compression="gzip")
             df = df.rename(columns={"window_start": "timestamp"})
             df["timestamp_utc"] = pd.to_datetime(df["timestamp"], utc=True)
             df["timestamp_cst"] = df["timestamp_utc"].dt.tz_convert("America/Chicago")
