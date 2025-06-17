@@ -10,7 +10,6 @@ authors = ["Matt Elgazar <melgazar9@gmail.com>"]
 readme = "README.md"
 packages = [{include = "ds_core"}]
 
-
 ### Core Group --> Always Installed ###
 
 [tool.poetry.dependencies]
