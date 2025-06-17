@@ -67,7 +67,13 @@ TIMESERIES_TABLES = {
         8,
     ),
     "daily_ticker_summary": (["from", "symbol"], "from", "90 days", "365 days", 8),
-    "previous_day_bar": (["timestamp", "ticker"], "timestamp", "90 days", "365 days", 8),
+    "previous_day_bar": (
+        ["timestamp", "ticker"],
+        "timestamp",
+        "90 days",
+        "365 days",
+        8,
+    ),
     "top_market_movers": (["updated", "ticker"], "updated", "90 days", "365 days", 8),
     "trades": (
         ["ticker", "exchange", "id"],
@@ -452,7 +458,13 @@ YF_TIMESERIES_TABLES = {
     "dividends": (["timestamp", "ticker"], "timestamp", "365 days", "1095 days", 4),
     "splits": (["timestamp", "ticker"], "timestamp", "365 days", "1095 days", 4),
     # Earnings, news
-    "earnings_dates": (["timestamp", "ticker"], "timestamp", "365 days", "1095 days", 2),
+    "earnings_dates": (
+        ["timestamp", "ticker"],
+        "timestamp",
+        "365 days",
+        "1095 days",
+        2,
+    ),
     "news": (
         ["timestamp_extracted", "ticker"],
         "timestamp_extracted",

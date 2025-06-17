@@ -69,7 +69,9 @@ class MeltanoTap:
                 f"You must set at least one of {env_prefix}_DB_TARGET or {env_prefix}_FILE_TARGET in your environment."
             )
 
-        self.base_run_command = f"meltano --environment={ENVIRONMENT} el {self.tap_name}"
+        self.base_run_command = (
+            f"meltano --environment={ENVIRONMENT} el {self.tap_name}"
+        )
         self.cwd = os.path.join(app.root_path, project_dir)
 
         self.task_chunks = (
@@ -169,7 +171,9 @@ def run_tap_route(tap_name):
     with app.app_context():
         start = time.monotonic()
 
-        num_workers = int(os.getenv(f"{tap_name.upper().replace('-', '_')}_NUM_WORKERS"))
+        num_workers = int(
+            os.getenv(f"{tap_name.upper().replace('-', '_')}_NUM_WORKERS")
+        )
         target = os.getenv(f"{tap_name.upper().replace('-', '_')}_TARGET")
 
         tap = MeltanoTap(

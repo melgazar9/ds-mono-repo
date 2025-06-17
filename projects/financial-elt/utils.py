@@ -289,7 +289,9 @@ def get_run_commands(base_run_command: str, task_chunks_dict: dict, tap_name: st
             )
         run_command = f"{base_run_command} target-{target_name}"
         for chunk in task_chunks:
-            assert isinstance(chunk, list), "Invalid datatype task_chunks. Must be list."
+            assert isinstance(
+                chunk, list
+            ), "Invalid datatype task_chunks. Must be list."
             state_id = (
                 " ".join(chunk)
                 .replace("--select ", "")
@@ -392,8 +394,12 @@ def execute_command_stg(run_command, cwd):
         identifier_parts.append("__".join(selected_streams))
 
     command_identifier = "__".join(identifier_parts)
-    stdout_log_path = os.path.join(subprocess_log_dir, f"{command_identifier}_stdout.log")
-    stderr_log_path = os.path.join(subprocess_log_dir, f"{command_identifier}_stderr.log")
+    stdout_log_path = os.path.join(
+        subprocess_log_dir, f"{command_identifier}_stdout.log"
+    )
+    stderr_log_path = os.path.join(
+        subprocess_log_dir, f"{command_identifier}_stderr.log"
+    )
     logging.info(f"Executing command: {' '.join(run_command)}")
     logging.info(f"Stdout redirected to: {stdout_log_path}")
     logging.info(f"Stderr redirected to: {stderr_log_path}")
@@ -518,7 +524,9 @@ def run_meltano_task(run_command, cwd, concurrency_semaphore=None, return_queue=
     return_code = 1
     try:
         result = execute_command(
-            run_command=run_command, cwd=cwd, concurrency_semaphore=concurrency_semaphore
+            run_command=run_command,
+            cwd=cwd,
+            concurrency_semaphore=concurrency_semaphore,
         )
         return_code = result.returncode
     except subprocess.TimeoutExpired:

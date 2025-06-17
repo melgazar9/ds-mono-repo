@@ -1,17 +1,15 @@
 ### Imports ###
 
 import os
-from datetime import time
+import time
+from datetime import datetime as dt
+from datetime import time as dtime
 from pathlib import Path
 
 import pandas as pd
+from utils import SingleDayBacktest, create_file_pairs
 
 # os.chdir('projects/financial-strategies/htb_equities')
-from utils import SingleDayBacktest
-
-# import polars as pl
-# from polars import col, lit, when, plr
-
 pd.set_option("future.no_silent_downcasting", True)
 
 
@@ -22,11 +20,11 @@ pd.set_option("future.no_silent_downcasting", True)
 
 ### Steps ###
 
-# 1. Set a starting bankroll
+# 1. Set a starting current_bankroll
 # 2. Set a fixed bet amount per trade
-# 3. Set a fixed dollar stop-loss amount
-# 4. Set a time to flatten all positions at the end of the day
-# 5. Set a percentage change trigger to enter trades
+# 3. Iterate over dollar stop-loss amounts
+# 4. Set a time to flatten all positions (i.e. at the end of the day)
+# 5. Iterate over percentage change triggers to enter trades
 # 6. The above calculates strategy results for one specific combinations of parameters. We need to iterate over these
 # parameters to find the optimal combination (e.g. best returns, lowest drawdown, lowest variance, highest Sharp, etc.).
 # 7. Define a method that applies this strategy to a single trading day (requires intraday data).
@@ -56,18 +54,66 @@ END_DATE = "2023-01-01"
 
 STARTING_BANKROLL = 100000
 BET_AMOUNT = 2000
-STOP_LOSS_AMOUNT = 4000
-TIME_TO_FLATTEN_POSITIONS = time(14, 55)
+STOP_LOSS_PCT = 0.10
+TIME_TO_FLATTEN_POSITIONS = dtime(14, 55)
 PCT_CHANGE_TRIGGER_TO_ENTER = 0.33
 
 DATA_DIR = os.path.expanduser("~/polygon_data/bars_1min/")
 PROCESSED_DIR = os.path.expanduser("~/processed_strategy_results/")
 os.makedirs(PROCESSED_DIR, exist_ok=True)
-all_csv_files = sorted(Path(DATA_DIR).glob("*.csv.gz"))
+
+csv_files = create_file_pairs(Path(DATA_DIR))
+
 
 ### --- Run Backtest --- ###
 
-first_day_file = all_csv_files[0]
+summaries = pd.DataFrame()
 
+start = time.monotonic()
 bt = SingleDayBacktest()
-bt.run_backtest(cur_day_file=all_csv_files[1], prev_day_file=all_csv_files[0])
+
+first_day_backtest = True
+
+for f in csv_files:
+    start_i = time.monotonic()
+    cur_day_file = f["cur_day_file"]
+    prev_day_file = f["prev_day_file"]
+    print(f"Processing {cur_day_file} (prev_day_file = {prev_day_file})")
+    if first_day_backtest:
+        long_strategy_starting_bankroll = STARTING_BANKROLL
+        short_strategy_starting_bankroll = STARTING_BANKROLL
+
+    bt.run_backtest(
+        cur_day_file=cur_day_file,
+        prev_day_file=prev_day_file,
+        long_strategy_starting_bankroll=long_strategy_starting_bankroll,
+        short_strategy_starting_bankroll=short_strategy_starting_bankroll,
+        bet_amount=BET_AMOUNT,
+        close_trade_timestamp_cst=TIME_TO_FLATTEN_POSITIONS,
+        stop_loss_pct=STOP_LOSS_PCT,
+        pre_market_pct_chg_range=(0.01, 1),
+        market_pct_chg_range=(0.01, 1),
+        trigger_condition="or",
+        direction="both",
+        slippage_pct=0.1,
+        slippage_method="partway",
+    )
+
+    summaries = pd.concat([summaries, bt.summary])
+    end_i = time.monotonic()
+    first_day_backtest = False
+    long_strategy_starting_bankroll = (
+        bt.long_strategy_starting_bankroll
+    )  # update for next iteration
+    short_strategy_starting_bankroll = bt.short_strategy_starting_bankroll
+    print(f"Processed {cur_day_file} in {end_i - start_i:.2f} seconds")
+
+
+print(f"Processed {len(csv_files)} files in {time.monotonic() - start:.2f} seconds")
+
+
+# Save the results to a CSV file
+summaries.to_csv(
+    PROCESSED_DIR
+    + f"htb_equities_backtest_summary_{dt.now().strftime('%Y%m%d_%H%M%S')}.csv"
+)

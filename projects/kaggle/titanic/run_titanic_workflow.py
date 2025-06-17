@@ -1,11 +1,10 @@
 ## imports ##
 
 import kagglehub
-from titanic_utils import *  # noqa: F403, F405
-
 from ds_core.ds_imports import *  # noqa: F403, F405
 from ds_core.ds_utils import *  # noqa: F403, F405
 from ds_core.sklearn_workflow.ml_utils import *  # noqa: F403, F405
+from titanic_utils import *  # noqa: F403, F405
 
 ## global variables ##
 
@@ -109,7 +108,9 @@ df_catboost = mlf.df_out[mlf.df_out["dataset_split"] == "submission"][
 
 df_xgb = mlf.df_out[mlf.df_out["dataset_split"] == "submission"][
     ["passenger_id", "XGBClassifier_pred_class"]
-].rename(columns={"passenger_id": "PassengerId", "XGBClassifier_pred_class": "Survived"})
+].rename(
+    columns={"passenger_id": "PassengerId", "XGBClassifier_pred_class": "Survived"}
+)
 
 # df_catboost.to_csv(TRAIN_LOC.replace("train.csv", "df_catboost.csv"), index=False)
 # df_xgb.to_csv(TRAIN_LOC.replace("train.csv", "df_xgb.csv"), index=False)

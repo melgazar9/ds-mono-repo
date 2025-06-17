@@ -1,5 +1,4 @@
 import psycopg2
-
 from ds_core.db_connectors import *
 
 POSTGRES_HOST = os.getenv("POSTGRES_HOST")

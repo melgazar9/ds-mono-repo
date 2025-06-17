@@ -1,223 +1,112 @@
 sources:
-  - name: tap_yfinance_dev
-    schema: tap_yfinance_dev
+  - name: tap_yfinance_production
+    schema: tap_yfinance_production
     database: financial_elt
     loaded_at_field: _sdc_batched_at
-    freshness:
-      error_after:
-        count: 1
-        period: day
-    tables:
-      - name: actions
-      - name: balance_sheet
-      - name: calendar
-      - name: cash_flow
-      - name: crypto_prices_1d
-      - name: crypto_prices_1h
-      - name: crypto_prices_1m
-      - name: crypto_prices_2m
-      - name: crypto_prices_5m
-      - name: crypto_tickers
-      - name: crypto_tickers_top_250
-      - name: dividends
-      - name: earnings_dates
-      - name: fast_info
-      - name: financials
-      - name: forex_prices_1m
-      - name: forex_prices_2m
-      - name: forex_prices_5m
-      - name: forex_prices_1h
-      - name: forex_prices_1d
-      - name: forex_tickers
-      - name: futures_prices_1m
-      - name: futures_prices_2m
-      - name: futures_prices_5m
-      - name: futures_prices_1h
-      - name: futures_prices_1d
-      - name: futures_tickers
-      - name: history_metadata
-      - name: income_stmt
-      - name: insider_purchases
-      - name: insider_roster_holders
-      - name: insider_transactions
-      - name: institutional_holders
-      - name: major_holders
-      - name: mutualfund_holders
-      - name: news
-      - name: option_chain
-      - name: options
-      - name: quarterly_balance_sheet
-      - name: quarterly_cash_flow
-      - name: quarterly_financials
-      - name: quarterly_income_stmt
-      - name: recommendations
-      - name: shares_full
-      - name: splits
-      - name: stock_prices_1m
-      - name: stock_prices_2m
-      - name: stock_prices_5m
-      - name: stock_prices_1h
-      - name: stock_prices_1d
-      - name: stock_tickers
-      - name: upgrades_downgrades
-  - name: tap_yfinance_prod
-    schema: tap_yfinance_dev
-    database: financial_elt
-    loaded_at_field: _sdc_batched_at
-    freshness:
-      error_after:
-        count: 1
-        period: day
-    tables:
-      - name: actions
-      - name: balance_sheet
-      - name: calendar
-      - name: cash_flow
-      - name: crypto_prices_1d
-      - name: crypto_prices_1h
-      - name: crypto_prices_1m
-      - name: crypto_prices_2m
-      - name: crypto_prices_5m
-      - name: crypto_tickers
-      - name: crypto_tickers_top_250
-      - name: dividends
-      - name: earnings_dates
-      - name: fast_info
-      - name: financials
-      - name: forex_prices_1d
-      - name: forex_prices_1h
-      - name: forex_prices_1m
-      - name: forex_prices_2m
-      - name: forex_prices_5m
-      - name: forex_tickers
-      - name: futures_prices_1d
-      - name: futures_prices_1h
-      - name: futures_prices_1m
-      - name: futures_prices_2m
-      - name: futures_prices_5m
-      - name: futures_tickers
-      - name: history_metadata
-      - name: income_stmt
-      - name: insider_purchases
-      - name: insider_roster_holders
-      - name: insider_transactions
-      - name: institutional_holders
-      - name: major_holders
-      - name: mutualfund_holders
-      - name: news
-      - name: option_chain
-      - name: options
-      - name: quarterly_balance_sheet
-      - name: quarterly_cash_flow
-      - name: quarterly_financials
-      - name: quarterly_income_stmt
-      - name: recommendations
-      - name: shares_full
-      - name: splits
-      - name: stock_prices_1d
-      - name: stock_prices_1h
-      - name: stock_prices_1m
-      - name: stock_prices_2m
-      - name: stock_prices_5m
-      - name: stock_tickers
-      - name: upgrades_downgrades
-
-models:
-  - name: yf_stock_prices_1m
-    description: "Yahoo finance stock prices deduped by timestamp interval and ticker"
     config:
-      contract:
-        enforced: true
-    constraints:
-      - type: primary_key
-        columns:
-          - timestamp
-          - ticker
-    columns:
-      - name: ticker
-        data_type: text
-        constraints:
-          - type:
-              not_null
-      - name: timestamp
-        data_type: timestamp
-        constraints:
-          - type: not_null
-      - name: timestamp_tz_aware
-        data_type: text
-      - name: timezone
-        data_type: text
-      - name: open
-        data_type: decimal(18, 2)
-      - name: high
-        data_type: decimal(18, 2)
-      - name: low
-        data_type: decimal(18, 2)
-      - name: close
-        data_type: decimal(18, 2)
-      - name: volume
-        data_type: decimal(18, 2)
+      freshness:
+        warn_after:
+          count: 12
+          period: hour
+        error_after:
+          count: 1
+          period: day
+    tables:
+      - name: all_tickers
+      - name: prices_1m
+      - name: prices_2m
+      - name: prices_5m
+      - name: prices_1h
+      - name: prices_1d
+      - name: actions
+      - name: analyst_price_targets
+      - name: balance_sheet
+      - name: calendar
+      - name: cash_flow
       - name: dividends
-        data_type: decimal(18, 2)
-      - name: stock_splits
-        data_type: decimal(18, 2)
-      - name: repaired
-        data_type: boolean
-      - name: replication_key
-        data_type: text
+      - name: earnings_dates
+      - name: earnings_estimate
+      - name: earnings_history
+      - name: eps_revisions
+      - name: eps_trend
+      - name: fast_info
+      - name: financials
+      - name: growth_estimates
+      - name: history_metadata
+      - name: info
+      - name: income_stmt
+      - name: insider_purchases
+      - name: insider_roster_holders
+      - name: insider_transactions
+      - name: institutional_holders
+      - name: isin
+      - name: major_holders
+      - name: mutualfund_holders
+      - name: news
+      - name: recommendations
+      - name: recommendations_summary
+      - name: revenue_estimate
+      - name: sec_filings
+      - name: sec_tickers
+      - name: shares_full
+      - name: splits
+      - name: sustainability
+      - name: ttm_cash_flow
+      - name: ttm_financials
+      - name: ttm_income_stmt
+      - name: option_chain
+      - name: options
+      - name: quarterly_balance_sheet
+      - name: quarterly_cash_flow
+      - name: quarterly_financials
+      - name: quarterly_income_stmt
+      - name: upgrades_downgrades
+      - name: private_companies_tickers
+      - name: etf_tickers
+      - name: bonds_tickers
+      - name: mutual_fund_tickers
+      - name: world_indices_tickers
+      - name: sectors
+      - name: stock_tickers_pts
 
-  - name: yf_actions
-  - name: yf_balance_sheet
-  - name: yf_calendar
-  - name: yf_cash_flow
-  - name: yf_crypto_prices_1d
-  - name: yf_crypto_prices_1h
-  - name: yf_crypto_prices_1m
-  - name: yf_crypto_prices_2m
-  - name: yf_crypto_prices_5m
-#  - name: yf_crypto_tickers
-#  - name: yf_crypto_tickers_top_250
-#  - name: yf_dividends
-#  - name: yf_earnings_dates
-#  - name: yf_fast_info
-#  - name: yf_financials
-  - name: yf_forex_prices_1m
-  - name: yf_forex_prices_2m
-  - name: yf_forex_prices_5m
-  - name: yf_forex_prices_1h
-  - name: yf_forex_prices_1d
-#  - name: yf_forex_tickers
-  - name: yf_futures_prices_1m
-  - name: yf_futures_prices_2m
-  - name: yf_futures_prices_5m
-  - name: yf_futures_prices_1h
-  - name: yf_futures_prices_1d
-#  - name: yf_futures_tickers
-#  - name: yf_history_metadata
-#  - name: yf_income_stmt
-#  - name: yf_insider_purchases
-#  - name: yf_insider_roster_holders
-#  - name: yf_insider_transactions
-#  - name: yf_institutional_holders
-#  - name: yf_major_holders
-#  - name: yf_mutualfund_holders
-#  - name: yf_news
-#  - name: yf_option_chain
-#  - name: yf_options
-#  - name: yf_quarterly_balance_sheet
-#  - name: yf_quarterly_cash_flow
-#  - name: yf_quarterly_financials
-#  - name: yf_quarterly_income_stmt
-#  - name: yf_recommendations
-#  - name: yf_shares_full
-#  - name: yf_splits
-  - name: yf_stock_prices_2m
-    extends: yf_stock_prices_1m
-  - name: yf_stock_prices_5m
-    extends: yf_stock_prices_1m
-  - name: yf_stock_prices_1h
-    extends: yf_stock_prices_1m
-  - name: yf_stock_prices_1d
-    extends: yf_stock_prices_1m
-  - name: yf_stock_tickers
-  - name: yf_upgrades_downgrades
+
+  - name: tap_polygon_production
+    schema: tap_polygon_production
+    database: financial_elt
+    loaded_at_field: _sdc_batched_at
+    config:
+      freshness:
+        warn_after:
+          count: 12
+          period: hour
+        error_after:
+          count: 1
+          period: day
+    tables:
+      - name: tickers
+      - name: ticker_details
+      - name: ticker_types
+      - name: related_companies
+      - name: exchanges
+      - name: market_holidays
+      - name: market_status
+      - name: condition_codes
+      - name: ipos
+      - name: splits
+      - name: dividends
+      - name: bars_1_minute
+      - name: bars_5_minute
+      - name: bars_1_hour
+      - name: bars_1_day
+      - name: bars_1_week
+      - name: bars_1_month
+      - name: ticker_events
+      - name: financials
+      - name: short_interest
+      - name: short_volume
+      - name: news
+      - name: treasury_yields
+      - name: daily_market_summary
+      - name: daily_ticker_summary
+      - name: previous_day_bar
+      - name: top_market_movers

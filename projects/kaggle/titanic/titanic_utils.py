@@ -6,7 +6,9 @@ class TitanicFeatureCreator:
 
         features = [features] if isinstance(features, str) else features
         features = (
-            [i for i in df.columns if i != target_name] if features is None else features
+            [i for i in df.columns if i != target_name]
+            if features is None
+            else features
         )
 
         self.survival_categories = {}
