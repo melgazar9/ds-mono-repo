@@ -16,6 +16,13 @@ TAP_CONFIGS = {
         "parallelism_method": os.getenv("TAP_YFINANCE_PARALLELISM_METHOD"),
         "semaphore": int(os.getenv("TAP_YFINANCE_MP_SEMAPHORE", "8")),
     },
+    "tap-yahooquery": {
+        "file_target": os.getenv("TAP_YAHOOQUERY_FILE_TARGET"),
+        "db_target": os.getenv("TAP_YAHOOQUERY_DB_TARGET"),
+        "num_workers": int(os.getenv("TAP_YAHOOQUERY_NUM_WORKERS")),
+        "parallelism_method": os.getenv("TAP_YAHOOQUERY_PARALLELISM_METHOD"),
+        "semaphore": int(os.getenv("TAP_YAHOOQUERY_MP_SEMAPHORE", "8")),
+    },
     "tap-polygon": {
         "file_target": os.getenv("TAP_POLYGON_FILE_TARGET"),
         "db_target": os.getenv("TAP_POLYGON_DB_TARGET"),
