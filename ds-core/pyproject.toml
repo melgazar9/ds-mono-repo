@@ -23,6 +23,9 @@ tqdm = "^4.66.2"
 ### DB Group ###
 yagmail = "^0.15.293"
 pandas = "^2.3.0"
+polars = "^1.30.0"
+sqlalchemy = "^2.0.41"
+psycopg2 = "^2.9.10"
 
 [tool.poetry.group.db]
 optional = true
