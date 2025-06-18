@@ -123,7 +123,7 @@ services:
         soft: 65536
         hard: 65536
     ports:
-      - "5000:5000"
+      - "5001:5000"
 
   tap-polygon:
     build:
@@ -153,4 +153,4 @@ services:
         soft: 65536
         hard: 65536
     ports:
-      - "5001:5000"
+      - "5002:5000"
