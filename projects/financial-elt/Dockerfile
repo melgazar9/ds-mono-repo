@@ -14,12 +14,12 @@ RUN apt-get update && \
     rm -rf /var/lib/{apt,dpkg,cache,log}/ && \
     pip install --no-cache-dir -U pip pipx && \
     pipx ensurepath && \
-    pipx install poetry==2.1.3
+    pipx install poetry==2.1.3 && \
+    poetry install
 
 RUN ulimit -c unlimited
 
 WORKDIR $APP_HOME/tap-yfinance
-
 RUN pipx install "meltano==3.7.8" && meltano install
 
 WORKDIR $APP_HOME/tap-yahooquery
@@ -27,12 +27,11 @@ RUN meltano install
 
 WORKDIR $APP_HOME/tap-polygon
 RUN meltano install
-
 WORKDIR $APP_HOME
 
 # Create directories to hold the symlinked state files
-RUN mkdir -p /app/tap-yfinance/state & \
-    mkdir -p /app/tap-yahooquery/state & \
+RUN mkdir -p /app/tap-yfinance/state && \
+    mkdir -p /app/tap-yahooquery/state && \
     mkdir -p /app/tap-polygon/state
 
 COPY entrypoint.sh /app/entrypoint.sh
