@@ -18,18 +18,21 @@ RUN apt-get update && \
 
 RUN ulimit -c unlimited
 
-WORKDIR /app/tap-yfinance
+WORKDIR $APP_HOME/tap-yfinance
 
-RUN pipx install "meltano==3.7.3" && \
-    poetry install && \
-    meltano install
+RUN pipx install "meltano==3.7.3" && meltano install
+
+WORKDIR $APP_HOME/tap-yahooquery
+RUN meltano install
 
 WORKDIR $APP_HOME/tap-polygon
 RUN meltano install
+
 WORKDIR $APP_HOME
 
 # Create directories to hold the symlinked state files
 RUN mkdir -p /app/tap-yfinance/state & \
+    mkdir -p /app/tap-yahooquery/state & \
     mkdir -p /app/tap-polygon/state
 
 COPY entrypoint.sh /app/entrypoint.sh

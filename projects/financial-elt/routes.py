@@ -192,7 +192,6 @@ def run_tap_route(tap_name):
             f"({round(total_seconds / 60, 2)} minutes,"
             f"{round(total_seconds / 3600, 2)} hours) ***"
         )
-
         return make_response(
             f"Last ran project {tap_name}-{ENVIRONMENT} target {target} at {cur_timestamp()}.",
             200,
@@ -202,6 +201,11 @@ def run_tap_route(tap_name):
 @app.route(f"/financial-elt/tap-yfinance-{ENVIRONMENT}", methods=["GET"])
 def tap_yfinance():
     return run_tap_route("tap-yfinance")
+
+
+@app.route(f"/financial-elt/tap-yahooquery-{ENVIRONMENT}", methods=["GET"])
+def tap_yahooquery():
+    return run_tap_route("tap-yahooquery")
 
 
 @app.route(f"/financial-elt/tap-polygon-{ENVIRONMENT}", methods=["GET"])

@@ -30,6 +30,13 @@ if __name__ == "__main__":
         scheduler.add_job(tap_yfinance, trigger="cron", **tap_yfinance_cron, jitter=120)
         logging.info(f"Added tap-yfinance job with cron: {tap_yfinance_cron}")
 
+    if "tap-yahooquery" in os.getenv("FINANCIAL_ELT_TAPS_TO_RUN"):
+        tap_yahooquery_cron = json.loads(os.getenv("TAP_yahooquery_CRON"))
+        scheduler.add_job(
+            tap_yahooquery, trigger="cron", **tap_yahooquery_cron, jitter=120
+        )
+        logging.info(f"Added tap-yahooquery job with cron: {tap_yahooquery_cron}")
+
     if "tap-polygon" in os.getenv("FINANCIAL_ELT_TAPS_TO_RUN"):
         tap_polygon_cron = json.loads(os.getenv("TAP_POLYGON_CRON"))
         scheduler.add_job(tap_polygon, trigger="cron", **tap_polygon_cron, jitter=120)
