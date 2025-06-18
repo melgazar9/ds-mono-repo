@@ -54,7 +54,7 @@ plugins:
       - ticker_details.*
       - ticker_types.*
       - related_companies.*
-      - bars_1_second.*
+#      - bars_1_second.*
       - bars_1_minute.*
       - bars_5_minute.*
       - bars_1_hour.*

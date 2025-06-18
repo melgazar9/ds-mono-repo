@@ -14,7 +14,6 @@ bt_engine = { path = "../../../financial-strategies/backtest-engine", develop = 
 ds_core = { path = "../../../../ds-core/", develop = true }
 psycopg2 = "^2.9.10"
 polars = "^1.30.0"
-paramiko = "^3.5.1"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
