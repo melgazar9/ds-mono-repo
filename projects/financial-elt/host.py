@@ -31,7 +31,7 @@ if __name__ == "__main__":
         logging.info(f"Added tap-yfinance job with cron: {tap_yfinance_cron}")
 
     if "tap-yahooquery" in os.getenv("FINANCIAL_ELT_TAPS_TO_RUN"):
-        tap_yahooquery_cron = json.loads(os.getenv("TAP_yahooquery_CRON"))
+        tap_yahooquery_cron = json.loads(os.getenv("TAP_YAHOOQUERY_CRON"))
         scheduler.add_job(
             tap_yahooquery, trigger="cron", **tap_yahooquery_cron, jitter=120
         )
