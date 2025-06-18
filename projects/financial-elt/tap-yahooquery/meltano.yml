@@ -1,0 +1,75 @@
+version: 1
+send_anonymous_usage_stats: true
+project_id: "tap-yahooquery"
+default_environment: test
+
+environments:
+  - name: dev
+    config:
+      plugins:
+        loaders:
+          - name: target-postgres
+            config:
+              default_target_schema: tap_yahooquery_dev
+
+  - name: production
+    config:
+      plugins:
+        loaders:
+          - name: target-postgres
+            config:
+              default_target_schema: tap_yahooquery_production
+plugins:
+  extractors:
+  - name: "tap-yahooquery"
+    namespace: "tap_yahooquery"
+    pip_url: git+https://github.com/melgazar9/tap-yahooquery.git
+    capabilities:
+    - state
+    - catalog
+    - discover
+    - about
+    - stream-maps
+
+    select:
+      - tickers.*
+      - all_financial_data.*
+      - sec_filings.*
+      - income_stmt.*
+
+    config:
+      start_date: '1990-01-01T00:00:00Z'
+
+      tickers:
+        select_tickers:
+          - "*"
+
+      all_financial_data:
+        use_cached_tickers: true
+
+      sec_filings:
+        use_cached_tickers: true
+
+      income_stmt:
+        use_cached_tickers: true
+
+
+  loaders:
+  - name: target-jsonl
+    variant: andyh1203
+    pip_url: target-jsonl
+
+  - name: target-postgres
+    variant: meltanolabs
+    pip_url: git+https://github.com/MeltanoLabs/target-postgres
+    config:
+      host: ${POSTGRES_HOST}
+      port: ${POSTGRES_PORT}
+      user: ${POSTGRES_USER}
+      password: ${POSTGRES_PASSWORD}
+      dialect: ${POSTGRES_DIALECT}
+      database: financial_elt
+      max_batch_size: 10000
+      load_method: upsert  # for the first run set to append-only --> much faster loading
+      use_copy: true  # Faster bulk loadingcd
+      add_record_metadata: true

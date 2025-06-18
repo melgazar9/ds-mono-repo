@@ -33,6 +33,8 @@ filebeat.inputs:
               - contains:
                   container.name: "tap-yfinance-"
               - contains:
+                  container.name: "tap-yahooquery-"
+              - contains:
                   container.name: "tap-polygon-"
     - rename:
         fields:

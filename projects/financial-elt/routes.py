@@ -16,6 +16,13 @@ TAP_CONFIGS = {
         "parallelism_method": os.getenv("TAP_YFINANCE_PARALLELISM_METHOD"),
         "semaphore": int(os.getenv("TAP_YFINANCE_MP_SEMAPHORE", "8")),
     },
+    "tap-yahooquery": {
+        "file_target": os.getenv("TAP_YAHOOQUERY_FILE_TARGET"),
+        "db_target": os.getenv("TAP_YAHOOQUERY_DB_TARGET"),
+        "num_workers": int(os.getenv("TAP_YAHOOQUERY_NUM_WORKERS")),
+        "parallelism_method": os.getenv("TAP_YAHOOQUERY_PARALLELISM_METHOD"),
+        "semaphore": int(os.getenv("TAP_YAHOOQUERY_MP_SEMAPHORE", "8")),
+    },
     "tap-polygon": {
         "file_target": os.getenv("TAP_POLYGON_FILE_TARGET"),
         "db_target": os.getenv("TAP_POLYGON_DB_TARGET"),
@@ -96,7 +103,7 @@ class MeltanoTap:
                         if select_param
                         else "unknown"
                     )
-                    state_id = f"{self.tap_name.replace('-', '_')}_{ENVIRONMENT}_{target}__{select_id}"
+                    state_id = f"{self.tap_name.replace('-', '_')}_{target}_{ENVIRONMENT}__{select_id}"
                     run_command = (
                         f"{self.base_run_command} target-{target} --state-id {state_id} {select_param}"
                     ).split(" ")
@@ -192,7 +199,6 @@ def run_tap_route(tap_name):
             f"({round(total_seconds / 60, 2)} minutes,"
             f"{round(total_seconds / 3600, 2)} hours) ***"
         )
-
         return make_response(
             f"Last ran project {tap_name}-{ENVIRONMENT} target {target} at {cur_timestamp()}.",
             200,
@@ -202,6 +208,11 @@ def run_tap_route(tap_name):
 @app.route(f"/financial-elt/tap-yfinance-{ENVIRONMENT}", methods=["GET"])
 def tap_yfinance():
     return run_tap_route("tap-yfinance")
+
+
+@app.route(f"/financial-elt/tap-yahooquery-{ENVIRONMENT}", methods=["GET"])
+def tap_yahooquery():
+    return run_tap_route("tap-yahooquery")
 
 
 @app.route(f"/financial-elt/tap-polygon-{ENVIRONMENT}", methods=["GET"])

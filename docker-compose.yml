@@ -95,6 +95,36 @@ services:
     ports:
       - "5000:5000"
 
+  tap-yahooquery:
+    build:
+      context: ./projects/financial-elt/
+      dockerfile: Dockerfile
+      args:
+        CI: "true"
+    container_name: tap-yahooquery-${ENVIRONMENT}
+    platform: linux/amd64
+    networks:
+      - elastic
+    env_file:
+      - .env
+    environment:
+      - FINANCIAL_ELT_TAPS_TO_RUN=tap-yahooquery
+    volumes:
+      - logs:/app/logs
+      - ./projects/financial-elt/tap-yahooquery/output:/app/tap-yahooquery/output
+      - ./projects/financial-elt/tap-yahooquery/state:/app/tap-yahooquery/state
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "5001:5000"
+
   tap-polygon:
     build:
       context: ./projects/financial-elt/
@@ -123,4 +153,4 @@ services:
         soft: 65536
         hard: 65536
     ports:
-      - "5001:5000"
+      - "5002:5000"

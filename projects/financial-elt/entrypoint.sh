@@ -11,5 +11,8 @@ for arg in "$@"; do
   elif [[ "$arg" == "tap-yfinance" ]]; then
     find state/*/state.json -exec ln -sf {} /app/tap-yfinance/state/state.json \;
     break
+  elif [[ "$arg" == "tap-yahooquery" ]]; then
+    find state/*/state.json -exec ln -sf {} /app/tap-yahooquery/state/state.json \;
+    break
   fi
 done
