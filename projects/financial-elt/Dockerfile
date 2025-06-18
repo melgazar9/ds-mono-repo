@@ -20,7 +20,7 @@ RUN ulimit -c unlimited
 
 WORKDIR $APP_HOME/tap-yfinance
 
-RUN pipx install "meltano==3.7.3" && meltano install
+RUN pipx install "meltano==3.7.8" && meltano install
 
 WORKDIR $APP_HOME/tap-yahooquery
 RUN meltano install

@@ -23,7 +23,7 @@ plugins:
   extractors:
   - name: "tap-yahooquery"
     namespace: "tap_yahooquery"
-    pip_url: https://github.com/melgazar9/tap-yahooquery.git
+    pip_url: git+https://github.com/melgazar9/tap-yahooquery.git
     capabilities:
     - state
     - catalog
