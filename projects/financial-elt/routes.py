@@ -103,7 +103,7 @@ class MeltanoTap:
                         if select_param
                         else "unknown"
                     )
-                    state_id = f"{self.tap_name.replace('-', '_')}_{ENVIRONMENT}_{target}__{select_id}"
+                    state_id = f"{self.tap_name.replace('-', '_')}_{target}_{ENVIRONMENT}__{select_id}"
                     run_command = (
                         f"{self.base_run_command} target-{target} --state-id {state_id} {select_param}"
                     ).split(" ")
