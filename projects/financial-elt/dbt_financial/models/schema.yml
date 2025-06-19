@@ -69,6 +69,24 @@ sources:
       - name: sectors
       - name: stock_tickers_pts
 
+  - name: tap_yahooquery_production
+    schema: tap_yahooquery_production
+    database: financial_elt
+    loaded_at_field: _sdc_batched_at
+    config:
+      freshness:
+        warn_after:
+          count: 12
+          period: hour
+        error_after:
+          count: 1
+          period: day
+    tables:
+      - name: tickers
+      - name: all_financial_data
+      - name: sec_filings
+      - name: income_stmt
+
 
   - name: tap_polygon_production
     schema: tap_polygon_production
