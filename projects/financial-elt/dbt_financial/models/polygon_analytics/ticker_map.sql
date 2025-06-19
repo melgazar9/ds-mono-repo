@@ -1,6 +1,6 @@
 {{ config(
     materialized='table',
-    schema='polygon_core',
+    schema='polygon_analytics',
     indexes=[
         {'columns': ['old_ticker'], 'unique': false},
         {'columns': ['ticker'], 'unique': false},

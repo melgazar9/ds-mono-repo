@@ -1,4 +1,4 @@
-{{ config(materialized='table', schema='yahoo_core') }}
+{{ config(materialized='table', schema='yahoo_analytics') }}
 
 with cte_union as (
     select
