@@ -36,23 +36,18 @@ plugins:
       - all_financial_data.*
       - sec_filings.*
       - income_stmt.*
+      - corporate_events.*
+      - calendar_events.*
+      - dividend_history.*
+      - corporate_guidance.*
+      - company_officers.*
 
     config:
-      start_date: '1990-01-01T00:00:00Z'
+      start_date: '1900-01-01T00:00:00Z'
 
       tickers:
         select_tickers:
           - "*"
-
-      all_financial_data:
-        use_cached_tickers: true
-
-      sec_filings:
-        use_cached_tickers: true
-
-      income_stmt:
-        use_cached_tickers: true
-
 
   loaders:
   - name: target-jsonl

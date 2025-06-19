@@ -245,7 +245,7 @@ class PolygonBarLoader(DataLoader):
                             else 4
                             end as priority
                  from
-                    tap_yfinance_production.sec_filings
+                    yahoo_core.yahoo_sec_filings
                  where
                     type in ('DEFM14A', 'SC TO-T', 'SC TO-T/A', '425')
               )
