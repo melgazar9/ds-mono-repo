@@ -953,9 +953,22 @@ class GapStrategyEvaluator(StrategyEvaluator):
         df = df.merge(df_vix_1d, how="left", on="date")
         return df
 
+    @staticmethod
+    def _add_volume_bucket(df):
+        volume_buckets = [0, 1_000_000, 10_000_000, 100_000_000, 1_000_000_000, np.inf]
+        bucket_labels = ["Very Low", "Low", "Medium", "High", "Very High"]
+
+        df["dollar_volume"] = df["volume"].fillna(0) * df["close"].fillna(0)
+
+        df["volume_bucket"] = pd.cut(
+            df["dollar_volume"], bins=volume_buckets, labels=bucket_labels, right=True
+        )
+        return df
+
     def _add_segments(self, df):
         df = self._add_ticker_identifiers(df)
         df = self._add_vix_buckets(df)
+        df = self._add_volume_bucket(df)
         return df
 
     def _calc_daily_summary_by_segment(self, df):

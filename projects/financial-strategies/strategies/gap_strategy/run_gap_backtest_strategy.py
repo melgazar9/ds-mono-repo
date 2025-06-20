@@ -40,7 +40,7 @@ class GapBacktestRunner(BacktestEngine):
                 slippage_mode="partway",
             ),
             strategy_evaluator=GapStrategyEvaluator(
-                segment_cols=["market", "vix_bucket"]
+                segment_cols=["market", "vix_bucket", "volume_bucket"]
             ),
         )
 
