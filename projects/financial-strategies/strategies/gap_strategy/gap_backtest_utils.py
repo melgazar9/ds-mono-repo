@@ -994,6 +994,7 @@ class GapStrategyEvaluator(StrategyEvaluator):
     def evaluate_strategy(
         self, df: Union[pd.DataFrame, pl.DataFrame]
     ) -> Union[pd.DataFrame, pl.DataFrame]:
+        logging.info("📈 Evaluating strategy...")
         rows_before = df.shape[0]
         df = self._add_segments(df)
         assert (

@@ -12,6 +12,8 @@ from typing import Union, List
 from pathlib import Path
 import asyncio
 
+import backoff
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,11 +30,13 @@ class StreamingFileProcessor:
         cache_dir=os.path.expanduser("~/.cache/file_cache/"),
         max_concurrent_downloads=3,
         max_cached_files=10,
+        timeout=120,
     ):
         self.remote_host = remote_host
         self.remote_user = remote_user
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.timeout = timeout
 
         # Control concurrent downloads and cache size
         self.download_semaphore = asyncio.Semaphore(max_concurrent_downloads)
@@ -43,6 +47,12 @@ class StreamingFileProcessor:
         self.download_tasks = {}
         self.active_downloads = set()
 
+    @backoff.on_exception(
+        backoff.expo,
+        (asyncio.TimeoutError, Exception),
+        max_tries=3,
+        jitter=backoff.full_jitter,
+    )
     async def download_file(self, remote_path, file_index):
         """Download a single file and put it in the ready queue when done"""
         async with self.download_semaphore:  # Limit concurrent downloads
@@ -61,17 +71,30 @@ class StreamingFileProcessor:
                 f"{self.remote_user}@{self.remote_host}:{remote_path}",
                 str(local_path),
             ]
-            proc = await asyncio.create_subprocess_exec(
-                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-            )
-            await proc.communicate()
+            try:
+                proc = await asyncio.wait_for(
+                    asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    ),
+                    timeout=self.timeout,
+                )
+                await proc.communicate()
 
-            if proc.returncode == 0:
-                logging.info(f"✅ Downloaded: {filename}")
-                await self.ready_files.put((file_index, local_path))
-            else:
-                logging.error(f"❌ Failed to download: {filename}")
-                await self.ready_files.put((file_index, None))
+                if proc.returncode == 0:
+                    logging.info(f"✅ Downloaded: {filename}")
+                    await self.ready_files.put((file_index, local_path))
+                else:
+                    logging.error(f"❌ Failed to download: {filename}")
+                    await self.ready_files.put((file_index, None))
+                    raise Exception(f"Failed to download {filename}")
+            except asyncio.TimeoutError:
+                logging.error(f"⏰ Timeout while downloading: {filename}")
+                raise
+            except Exception as e:
+                logging.error(f"⚠️ Error downloading {filename}: {e}")
+                raise
 
     async def start_downloads(self, remote_files):
         """Start downloading files in batches, respecting max_cached_files limit"""
@@ -136,7 +159,7 @@ class StreamingFileProcessor:
                 try:
                     # Get the next ready file
                     file_index, local_path = await asyncio.wait_for(
-                        self.ready_files.get(), timeout=60
+                        self.ready_files.get(), timeout=self.timeout
                     )
 
                     if local_path:  # Successfully downloaded
@@ -186,18 +209,28 @@ class StreamingFileProcessor:
             f"{self.remote_user}@{self.remote_host}",
             f"ls {remote_path}/{pattern}",
         ]
-        proc = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.PIPE
-        )
-        stdout, _ = await proc.communicate()
 
-        if proc.returncode == 0:
-            files = [
-                f.strip() for f in stdout.decode().strip().split("\n") if f.strip()
-            ]
-            logging.info(f"📋 Found {len(files)} files")
-            return sorted(files)
-        return []
+        try:
+            proc = await asyncio.wait_for(
+                asyncio.create_subprocess_exec(
+                    *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                ),
+                timeout=self.timeout,
+            )
+            stdout, _ = await proc.communicate()
+
+            if proc.returncode == 0:
+                files = [
+                    f.strip() for f in stdout.decode().strip().split("\n") if f.strip()
+                ]
+                logging.info(f"📋 Found {len(files)} files")
+                return sorted(files)
+            return []
+        except asyncio.TimeoutError:
+            logging.error(
+                f"⏰ Timeout while listing files in remote path: {remote_path}"
+            )
+            return []
 
 
 class PolygonBarLoader(DataLoader):

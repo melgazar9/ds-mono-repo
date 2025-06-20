@@ -81,7 +81,7 @@ class GapBacktestRunner(BacktestEngine):
         logging.info(f"Found {len(remote_files)} files to process")
 
         if DEBUG:
-            remote_files = remote_files[0:30]
+            remote_files = remote_files[-30:]
 
         simplified_results_file = (
             self.results_dir / f"simplified_summary__{self.run_timestamp}.csv"
