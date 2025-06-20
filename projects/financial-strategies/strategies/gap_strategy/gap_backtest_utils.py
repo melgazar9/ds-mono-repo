@@ -22,6 +22,8 @@ from bt_engine.engine import (
 )
 from ds_core.db_connectors import PostgresConnect
 
+pd.set_option("future.no_silent_downcasting", True)
+
 
 def first_true(series):
     idx = series.idxmax() if series.any() else None
@@ -86,6 +88,8 @@ class GapPositionManager(PositionManager):
             "trigger_trade_entry"
         ].transform(first_true)
 
+        df["trigger_trade_entry"] = df["trigger_trade_entry"].fillna(False)
+
         df = df.drop(
             columns=["trigger_trade_entry_pmkt_raw", "trigger_trade_entry_mkt_raw"]
         )
@@ -111,6 +115,7 @@ class GapPositionManager(PositionManager):
             .cumcount()
             == 0
         )
+
         df.loc[df["trigger_trade_entry"], "theoretical_bto_price"] = df[
             "prev_market_close"
         ] * (1 + self.overnight_gap)
@@ -121,7 +126,7 @@ class GapPositionManager(PositionManager):
         df.loc[mask, "theoretical_bto_price"] = df.loc[mask, "high"]
         df.loc[mask, "theoretical_sto_price"] = df.loc[mask, "low"]
 
-        entry_mask = df["trigger_trade_entry"].fillna(False)
+        entry_mask = df["trigger_trade_entry"]
 
         df.loc[entry_mask, "bto_price_with_slippage"] = apply_slippage(
             df.loc[entry_mask],
@@ -170,6 +175,8 @@ class GapPositionManager(PositionManager):
             df["long_stop_hit"]
         )
 
+        df["long_stop_hit"] = df["long_stop_hit"].fillna(False)
+
         # Short stop logic
         df["short_stop_limit_price_raw"] = df["sto_price_with_slippage"] * (
             1 + self.stop_loss_pct
@@ -181,6 +188,8 @@ class GapPositionManager(PositionManager):
         df["short_stop_limit_price"] = df["short_stop_limit_price_raw"].where(
             df["short_stop_hit"]
         )
+
+        df["short_stop_hit"] = df["short_stop_hit"].fillna(False)
 
         df = df.drop(
             columns=[
@@ -227,6 +236,8 @@ class GapPositionManager(PositionManager):
             df["long_tp_hit"]
         )
 
+        df["long_tp_hit"] = df["long_tp_hit"].fillna(False)
+
         # Short tp logic
         df["short_tp_limit_price_raw"] = df["sto_price_with_slippage"] * (
             1 - self.take_profit_pct
@@ -241,6 +252,8 @@ class GapPositionManager(PositionManager):
         df["short_tp_limit_price"] = df["short_tp_limit_price_raw"].where(
             df["short_tp_hit"]
         )
+
+        df["short_tp_hit"] = df["short_tp_hit"].fillna(False)
 
         df = df.drop(
             columns=[

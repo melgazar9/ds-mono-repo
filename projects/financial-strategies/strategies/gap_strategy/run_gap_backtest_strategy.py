@@ -30,10 +30,10 @@ class GapBacktestRunner(BacktestEngine):
             data_loader=None,  # set dynamically
             risk_manager=GapStrategyRiskManager(),
             position_manager=GapPositionManager(
-                overnight_gap=0.33,
+                overnight_gap=0.125,
                 bet_amount=2000,
-                stop_loss_pct=1.0,
-                take_profit_pct=1.0,
+                stop_loss_pct=0.20,
+                take_profit_pct=0.33,
                 entry_cutoff_time_cst=dtime(13, 45),
                 flatten_trade_time_cst=dtime(14, 55),
                 slippage_amount=0.61,
