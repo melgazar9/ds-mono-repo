@@ -22,6 +22,9 @@ logging.basicConfig(
 
 
 class GapBacktestRunner(BacktestEngine):
+    # Class-level shared corporate actions data
+    _df_corporate_actions = None
+
     def __init__(self):
         super().__init__(
             data_loader=None,  # set dynamically
@@ -56,6 +59,18 @@ class GapBacktestRunner(BacktestEngine):
         self.data_loader = PolygonBarLoader(
             cur_day_file=file_path, load_method="pandas", df_prev=df_prev
         )
+
+        if GapBacktestRunner._df_corporate_actions is not None:
+            self.data_loader.df_corporate_actions = (
+                GapBacktestRunner._df_corporate_actions
+            )
+            logging.info("✅ Reusing shared corporate actions data")
+        else:
+            self.data_loader.pull_cached_corporate_actions()
+            GapBacktestRunner._df_corporate_actions = (
+                self.data_loader.df_corporate_actions
+            )
+            logging.info("✅ Corporate actions loaded and cached for reuse")
 
     async def run_backtest_sequence(self):
         """Run the complete backtest sequence using streaming files"""
