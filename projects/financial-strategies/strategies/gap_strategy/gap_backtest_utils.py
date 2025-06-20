@@ -648,6 +648,43 @@ class GapStrategyEvaluator(StrategyEvaluator):
                     if has_trades
                     else 0
                 ),
+                # === GAP ANALYSIS ===
+                avg_gap_pct_chg_on_entry=(
+                    safe_mean(
+                        df[df["trigger_trade_entry"]]["adj_pmkt_pct_chg"]
+                        .abs()
+                        .fillna(df[df["trigger_trade_entry"]]["adj_mkt_pct_chg"].abs())
+                    )
+                    if has_trades
+                    else np.nan
+                ),
+                median_gap_pct_chg_on_entry=(
+                    safe_median(
+                        df[df["trigger_trade_entry"]]["adj_pmkt_pct_chg"]
+                        .abs()
+                        .fillna(df[df["trigger_trade_entry"]]["adj_mkt_pct_chg"].abs())
+                    )
+                    if has_trades
+                    else np.nan
+                ),
+                min_gap_size_on_entries=(
+                    safe_min(
+                        df[df["trigger_trade_entry"]]["adj_pmkt_pct_chg"]
+                        .abs()
+                        .fillna(df[df["trigger_trade_entry"]]["adj_mkt_pct_chg"].abs())
+                    )
+                    if has_trades
+                    else np.nan
+                ),
+                max_gap_size_on_entries=(
+                    safe_max(
+                        df[df["trigger_trade_entry"]]["adj_pmkt_pct_chg"]
+                        .abs()
+                        .fillna(df[df["trigger_trade_entry"]]["adj_mkt_pct_chg"].abs())
+                    )
+                    if has_trades
+                    else np.nan
+                ),
                 # === LONG POSITION METRICS ===
                 long_realized_pnl=safe_sum(df["long_realized_pnl"]),
                 long_win_rate=(
@@ -703,7 +740,7 @@ class GapStrategyEvaluator(StrategyEvaluator):
                     if has_short_pnl
                     else np.nan
                 ),
-                # === TIMING METRICS ===
+                # === ENTRY/EXIT TIMESTAMPS ===
                 avg_trade_entry_timestamp=(
                     safe_mean(df[df["trigger_trade_entry"]]["timestamp_cst"])
                     if has_trades
@@ -753,59 +790,7 @@ class GapStrategyEvaluator(StrategyEvaluator):
                 min_time_in_short_trade=safe_min(df["time_in_short_trade"]),
                 max_time_in_long_trade=safe_max(df["time_in_long_trade"]),
                 max_time_in_short_trade=safe_max(df["time_in_short_trade"]),
-                # === GAP ANALYSIS ===
-                avg_pmkt_pct_chg=(
-                    safe_mean(df[df["trigger_trade_entry"]]["adj_pmkt_pct_chg"])
-                    if has_trades
-                    else np.nan
-                ),
-                avg_mkt_pct_chg=(
-                    safe_mean(df[df["trigger_trade_entry"]]["adj_mkt_pct_chg"])
-                    if has_trades
-                    else np.nan
-                ),
-                median_pmkt_pct_chg=(
-                    safe_median(df[df["trigger_trade_entry"]]["adj_pmkt_pct_chg"])
-                    if has_trades
-                    else np.nan
-                ),
-                median_mkt_pct_chg=(
-                    safe_median(df[df["trigger_trade_entry"]]["adj_mkt_pct_chg"])
-                    if has_trades
-                    else np.nan
-                ),
-                pmkt_gap_std=(
-                    safe_std(df[df["trigger_trade_entry"]]["adj_pmkt_pct_chg"])
-                    if has_trades
-                    else np.nan
-                ),
-                mkt_gap_std=(
-                    safe_std(df[df["trigger_trade_entry"]]["adj_mkt_pct_chg"])
-                    if has_trades
-                    else np.nan
-                ),
-                # Gap size on actual trades
-                avg_gap_size_on_entries=(
-                    safe_mean(df[df["trigger_trade_entry"]]["adj_pmkt_pct_chg"].abs())
-                    if has_trades
-                    else np.nan
-                ),
-                median_gap_size_on_entries=(
-                    safe_median(df[df["trigger_trade_entry"]]["adj_pmkt_pct_chg"].abs())
-                    if has_trades
-                    else np.nan
-                ),
-                min_gap_size_on_entries=(
-                    safe_min(df[df["trigger_trade_entry"]]["adj_pmkt_pct_chg"].abs())
-                    if has_trades
-                    else np.nan
-                ),
-                max_gap_size_on_entries=(
-                    safe_max(df[df["trigger_trade_entry"]]["adj_pmkt_pct_chg"].abs())
-                    if has_trades
-                    else np.nan
-                ),
-                # === EXIT TYPE ANALYSIS (if columns exist) ===
+                # === EXIT TYPE ANALYSIS ===
                 n_long_stop_exits=df[
                     (df["long_exit_price"].notna())
                     & (df.get("long_exit_priority", pd.Series()) == 1)
@@ -838,11 +823,9 @@ class GapStrategyEvaluator(StrategyEvaluator):
                 ]["ticker"].nunique(),
                 # === INTRADAY PERFORMANCE DISTRIBUTION ===
                 long_trades_profitable=(df["long_realized_pnl"] > 0).sum(),
-                long_trades_breakeven=(df["long_realized_pnl"] == 0).sum(),
-                long_trades_loss=(df["long_realized_pnl"] < 0).sum(),
+                long_trades_losses=(df["long_realized_pnl"] < 0).sum(),
                 short_trades_profitable=(df["short_realized_pnl"] > 0).sum(),
-                short_trades_breakeven=(df["short_realized_pnl"] == 0).sum(),
-                short_trades_loss=(df["short_realized_pnl"] < 0).sum(),
+                short_trades_losses=(df["short_realized_pnl"] < 0).sum(),
             )
         )
         return df_summary
@@ -851,62 +834,116 @@ class GapStrategyEvaluator(StrategyEvaluator):
         traded_tickers = df[df["trigger_trade_entry"]]["ticker"].unique().tolist()
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=FutureWarning)
-
             df_summary_by_ticker = (
                 df[df["ticker"].isin(traded_tickers)]
                 .groupby(["ticker", "date"])
-                .apply(
-                    self._calc_daily_summary
-                )  # Keep your existing function unchanged
+                .apply(self._calc_daily_summary)
             )
+            df_summary_by_ticker = df_summary_by_ticker.drop(
+                columns=["date"]
+            ).reset_index()
         return df_summary_by_ticker
 
     @staticmethod
     def _add_ticker_identifiers(df):
         with PostgresConnect(database="financial_elt") as db:
-            df_ticker_map = db.run_sql("select * from polygon_core.ticker_map")
-
-        cols_to_keep = [
-            "composite_figi",
-            "cik",
-            "active",
-            "delisted_utc",
-            "locale",
-            "market",
-            "ticker_type",
-            "primary_exchange",
-            "share_class_figi",
-        ]
-
-        df_full_ticker_map = (
-            pd.concat(
-                [
-                    df_ticker_map[["ticker"] + cols_to_keep].rename(
-                        columns={"ticker": "ticker_key"}
-                    ),
-                    df_ticker_map[df_ticker_map["old_ticker"].notna()][
-                        ["old_ticker"] + cols_to_keep
-                    ].rename(columns={"old_ticker": "ticker_key"}),
-                ]
+            df_ticker_map = db.run_sql(
+                """
+                select distinct
+                    composite_figi,
+                    share_class_figi,
+                    cik,
+                    ticker,
+                    active,
+                    delisted_utc,
+                    locale,
+                    market,
+                    ticker_type,
+                    primary_exchange
+                from
+                    polygon_analytics.polygon_ticker_map
+            """
             )
-            .drop_duplicates(subset=["ticker_key"])
-            .set_index("ticker_key")
-        )
 
-        df = df.merge(
-            df_full_ticker_map, left_on="ticker", right_index=True, how="left"
-        )
+        rows_before_merge = df.shape[0]
+        df = df.merge(df_ticker_map, how="left")
+        assert (
+            rows_before_merge == df.shape[0]
+        ), "additional rows joined after merging tickers!"
         return df
 
     @staticmethod
+    def _add_vix_buckets(df):
+        with PostgresConnect(database="financial_elt") as db:
+            df_vix_1d = db.run_sql(
+                """
+                select date(timestamp) as date, open as vix_open from tap_yfinance_production.prices_1d where ticker = '^VIX'
+            """
+            )
+
+        # vix_mean = df_vix_1d["open"].mean()
+        # vix_median = df_vix_1d["open"].median()
+        # vix_std = df_vix_1d["open"].std()
+        # vix_buckets = [
+        #     0,
+        #     vix_median - vix_std * 1.5,
+        #     vix_mean - vix_std,
+        #     vix_mean - vix_std * 0.5,
+        #     vix_median + vix_std * 0.5,
+        #     vix_median + vix_std,
+        #     vix_median + vix_std * 1.5,
+        #     vix_median + vix_std * 2,
+        #     vix_median + vix_std * 2.5,
+        #     vix_median + vix_std * 3,
+        #     vix_median + vix_std * 3.5
+        # ]
+
+        min_vix, max_vix, multiplier, epsilon = (
+            df_vix_1d["vix_open"].min(),
+            df_vix_1d["vix_open"].max(),
+            1.333,
+            0.01,
+        )
+
+        bins = sorted(
+            list(
+                set(
+                    [max(0, min_vix - epsilon)]
+                    + [
+                        min_vix * (multiplier**i)
+                        for i in range(25)
+                        if min_vix * (multiplier**i) > max(0, min_vix - epsilon)
+                        and min_vix * (multiplier**i) < max_vix + epsilon
+                    ]
+                    + [max_vix + epsilon]
+                )
+            )
+        )
+        bins = [bins[0]] + [
+            bins[i] for i in range(1, len(bins)) if bins[i] - bins[i - 1] > 0.001
+        ]
+
+        df_vix_1d["vix_bucket"] = pd.cut(
+            df_vix_1d["vix_open"],
+            bins=bins,
+            labels=[f"VIX {b1:.2f}-{b2:.2f}" for b1, b2 in zip(bins[:-1], bins[1:])],
+            right=False,
+        )
+        df_vix_1d["date"] = pd.to_datetime(df_vix_1d["date"]).dt.tz_localize(
+            "America/Chicago"
+        )
+        df = df.merge(df_vix_1d, how="left", on="date")
+        return df
+
     def _add_segments(self, df):
         df = self._add_ticker_identifiers(df)
+        df = self._add_vix_buckets(df)
         return df
 
     def evaluate(
         self, df: Union[pd.DataFrame, pl.DataFrame]
     ) -> Union[pd.DataFrame, pl.DataFrame]:
         self.daily_summary = self._calc_daily_summary(df)
-        self.daily_summary_by_ticker = self._calc_daily_summary_by_ticker(df)
-        self.daily_summary_by_ticker = self._add_segments(self.daily_summary_by_ticker)
+        self.df_summary_by_ticker = self._calc_daily_summary_by_ticker(df)
+        self.df_summary_by_ticker = self._add_segments(self.df_summary_by_ticker)
         return df

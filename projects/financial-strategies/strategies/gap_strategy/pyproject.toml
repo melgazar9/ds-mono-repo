@@ -14,6 +14,8 @@ bt_engine = { path = "../../../financial-strategies/backtest-engine", develop = 
 ds_core = { path = "../../../../ds-core/", develop = true }
 psycopg2 = "^2.9.10"
 polars = "^1.30.0"
+matplotlib = "^3.10.3"
+plotly = "^6.1.2"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

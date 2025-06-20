@@ -87,9 +87,6 @@ class GapBacktestRunner:
                 )
                 df_prev = self.data_loader.load_raw_intraday_bars()
 
-                self.data_loader.pull_splits_dividends()
-                logging.info("✅ Splits/dividends data loaded once - will be reused!")
-
                 # Set df_prev for next iteration
                 self.data_loader.df_prev = df_prev
 

@@ -158,7 +158,6 @@ class StreamingFileProcessor:
                     logging.error("⏰ Timeout waiting for file download")
                     break
 
-            # Process the next file in order if available
             if next_file_index in cached_files:
                 local_path = cached_files[next_file_index]
 
@@ -207,163 +206,94 @@ class PolygonBarLoader(DataLoader):
         load_method="pandas",
         cur_day_file=None,
         df_prev=None,
-        remove_acquisitions=True,
+        remove_ma_tickers_from_intraday_bars=True,
     ):
         self.load_method = load_method
         self.cur_day_file = cur_day_file
         self.df_prev = df_prev
 
-        self.remove_acquisitions = remove_acquisitions
+        self.remove_ma_tickers_from_intraday_bars = remove_ma_tickers_from_intraday_bars
 
         if self.load_method not in ["pandas", "polars"]:
             raise NotImplementedError(
                 f"Unknown load method {self.load_method}. Must be 'pandas' or 'polars'"
             )
 
-    def _pull_acquisition_events(self):
-        """Pull acquisition events from SEC filings - YFinance optimized"""
-        with PostgresConnect(database="financial_elt") as db:
-            self.df_acquisitions = db.run_sql(
-                """
-                with acquisition_events as (
-                    select
-                        ticker,
-                        date as event_date,
-                        type as filing_type,
-                        case
-                            when type = 'DEFM14A' then 'definitive_merger'
-                            when type in ('SC TO-T', 'SC TO-T/A') then 'tender_offer'
-                            when type = '425' then 'merger_communication'
-                            else 'other'
-                            end as event_type,
-                        title,
-                        
-                        case
-                            when type = 'DEFM14A' then 1
-                            when type in ('SC TO-T', 'SC TO-T/A') then 2
-                            when type = '425' then 3
-                            else 4
-                            end as priority
-                 from
-                    yahoo_core.yahoo_sec_filings
-                 where
-                    type in ('DEFM14A', 'SC TO-T', 'SC TO-T/A', '425')
-              )
-
-              select distinct on (ticker, event_date)
-                  ticker,
-                  event_date,
-                  filing_type,
-                  event_type,
-                  title
-              from
-                  acquisition_events
-              order by ticker, event_date, priority;
-              """,
-                df_type=self.load_method,
-            )
-
-            logging.info(
-                f"Found {len(self.df_acquisitions)} acquisition events (all historical):"
-            )
-            logging.info(
-                f" - Definitive mergers: {(self.df_acquisitions['event_type'] == 'definitive_merger').sum()}"
-            )
-            logging.info(
-                f" - Tender offers: {(self.df_acquisitions['event_type'] == 'tender_offer').sum()}"
-            )
-            logging.info(
-                f" - Merger communications: {(self.df_acquisitions['event_type'] == 'merger_communication').sum()}"
-            )
-            logging.info(
-                f" - Unique tickers: {self.df_acquisitions['ticker'].nunique()}"
-            )
-        self.df_acquisitions["event_date"] = self.df_acquisitions["event_date"].dt.date
-        return self
-
-    def pull_splits_dividends(self):
-        if hasattr(self, "df_splits_dividends"):
-            logging.info("df_splits_dividends is already loaded, no need to re-pull.")
+    def pull_corporate_actions(self):
+        if hasattr(self, "df_corporate_actions"):
+            logging.info("df_corporate_actions is already loaded, no need to re-pull.")
         else:
             logging.warning(
-                "Pulling df_splits_dividends with historical ticker mapping."
+                "Pulling df_corporate_actions with historical ticker mapping."
             )
-            self._pull_acquisition_events()
             with PostgresConnect(database="financial_elt") as db:
                 self.df_corporate_actions = db.run_sql(
                     """
-                    with cte_dividends as (
-                        select
-                            ticker,
-                            ex_dividend_date,
-                            sum(cash_amount) as cash_amount
-                       from
-                            tap_polygon_production.dividends
-                       where
-                            upper(currency) = 'usd'
-                       group by 1, 2
-                    ),
-                     combined_events as (
-                         select
-                             coalesce(s.ticker, d.ticker) as current_ticker,
-                             coalesce(s.execution_date, d.ex_dividend_date) as event_date,
-                            s.split_from,
-                            s.split_to,
-                            d.cash_amount,
-                            case
-                                when s.ticker is not null and d.ticker is not null
-                                    then 'split_dividend'
-                                when s.ticker is not null then 'split'
-                                when d.ticker is not null then 'dividend'
-                                else null
-                                end as event_type
-                        from
-                             tap_polygon_production.splits s
-                        full join
-                             cte_dividends d
-                        on
-                            s.ticker = d.ticker and s.execution_date = d.ex_dividend_date)
-                    
                     select
-                        case
-                            when tm.event_date is not null
-                                and ce.event_date < tm.event_date
-                                and tm.old_ticker is not null
-                                then tm.old_ticker
-                            
-                            when tm.event_date is not null
-                                and ce.event_date >= tm.event_date  
-                                then tm.ticker        
-                            else ce.current_ticker
-                        end as ticker,
-                       ce.event_date,
-                       ce.split_from,
-                       ce.split_to,
-                       ce.cash_amount,
-                       ce.event_type
+                        composite_figi,
+                        cik,
+                        ticker,
+                        event_date,
+                        event_type,
+                        cash_amount,
+                        currency,
+                        split_from,
+                        split_to,
+                        split_ratio,
+                        filing_type,
+                        requires_price_adjustment,
+                        potential_delisting,
+                        data_quality_score
                     from
-                        combined_events ce
-                    left join polygon_core.ticker_map tm on ce.current_ticker = tm.ticker
-                    order by ticker, event_date;
-                    """,
+                        financial_analytics.corporate_actions
+                """,
                     df_type=self.load_method,
                 )
+                logging.info("✅ Corporate actions data loaded - will be across tests.")
 
             if self.load_method == "pandas":
-                self.df_corporate_actions = pd.concat(
-                    [self.df_corporate_actions, self.df_acquisitions]
-                )
+                self.df_corporate_actions["event_date_raw"] = self.df_corporate_actions[
+                    "event_date"
+                ]
                 self.df_corporate_actions["event_date"] = pd.to_datetime(
                     self.df_corporate_actions["event_date"]
                 ).dt.tz_localize("America/Chicago")
             elif self.load_method == "polars":
                 self.df_corporate_actions = self.df_corporate_actions.with_columns(
-                    [pl.col("event_date").dt.convert_time_zone("America/Chicago")]
-                )
-                self.df_corporate_actions = self.df_corporate_actions.merge(
-                    self.df_acquisitions
+                    [
+                        pl.col("event_date").alias("event_date_raw"),
+                        pl.col("event_date")
+                        .str.to_datetime(format="%Y-%m-%d %H:%M:%S")
+                        .dt.replace_time_zone("America/Chicago")
+                        .alias("event_date"),
+                    ]
                 )
         return self
+
+    def _get_ma_ticker_dates(self):
+        if hasattr(self, "df_ma_events"):
+            return
+        self.df_ma_events = self.df_corporate_actions[
+            (self.df_corporate_actions["requires_price_adjustment"])
+            & (
+                ~self.df_corporate_actions["event_type"].isin(
+                    ["dividend", "split", "reverse_split"]
+                )
+            )
+        ][["ticker", "event_date"]]
+
+    def _remove_ma_records(self):
+        filter_keys = self.data_loader.df_ma_events[["ticker", "event_date"]].rename(
+            columns={"event_date": "date"}
+        )
+        merged = self.df.merge(
+            filter_keys, on=["ticker", "date"], how="left", indicator=True
+        )
+        removed_records = merged[merged["_merge"] == "both"].drop(columns=["_merge"])
+        logging.info(
+            f"Removed {len(removed_records)} records from df from corporate actions:."
+        )
+        self.df = merged[merged["_merge"] == "left_only"].drop(columns=["_merge"])
 
     def load_raw_intraday_bars(self) -> Union[pd.DataFrame, pl.DataFrame]:
         """Loads bars data (e.g. 1-minute) from polygon flat files."""
@@ -374,13 +304,6 @@ class PolygonBarLoader(DataLoader):
             df["timestamp_cst"] = df["timestamp_utc"].dt.tz_convert("America/Chicago")
             df["date"] = df["timestamp_cst"].dt.normalize()
             df = df.sort_values(by=["timestamp", "ticker"])
-
-            if self.remove_acquisitions:
-                if not hasattr(self, "df_acquisitions"):
-                    logging.warning(
-                        "df_acquisitions not loaded yet, pulling from tap_yfinance."
-                    )
-                    self._pull_acquisition_events()
 
         elif self.load_method == "polars":
             logging.error(
@@ -410,8 +333,14 @@ class PolygonBarLoader(DataLoader):
 
     def load_and_clean_data(self) -> Union[pd.DataFrame, pl.DataFrame]:
         """Assumes self.df_prev is attached to the class"""
+        self.pull_corporate_actions()  # does nothing if class already has attribute self.df_corporate_actions
         self.df = self.load_raw_intraday_bars()
-        self.pull_splits_dividends()  # does nothing if class already has attribute self.df_corporate_actions
+        if self.remove_ma_tickers_from_intraday_bars:
+            if not hasattr(self, "df_corporate_actions"):
+                # these will not pull if they're already loaded
+                self.pull_corporate_actions()
+                self._get_ma_ticker_dates()
+                self._remove_ma_records()
 
         if (
             self.load_method == "polars"
@@ -427,7 +356,6 @@ class PolygonBarLoader(DataLoader):
             )
 
         rows_before = self.df.shape[0]
-        # pandas syntax
         self.df = self._price_gap_with_split_or_dividend()
         assert (
             self.df.shape[0] == rows_before
@@ -439,11 +367,7 @@ class PolygonBarLoader(DataLoader):
             logging.debug("Converted self.df and self.df_prev back to polars.")
         return self.df
 
-    def _price_gap_with_split_or_dividend(
-        self,
-        abs_tol=0.02,
-        rel_tol=0.002,
-    ):
+    def _price_gap_with_split_or_dividend(self):
         if self.load_method == "polars":
             logging.debug(
                 "load_method polars not implemented yet for detecting splits/dividends price gap. Data will be"
@@ -497,7 +421,7 @@ class PolygonBarLoader(DataLoader):
         # 2. market close -> market open
         # 3. after hours close -> pre-market open
         # 4. after hours close -> market open
-        # We will detect if ticker has splits/dividends applied based from official market close --> pre-market open.
+        # For simplicity, only detect if ticker has splits/dividends applied from official market close --> pre-market open.
 
         self.df["expected_unchanged_price_after_split"] = (
             self.df["prev_market_close"] * self.df["split_ratio"]
