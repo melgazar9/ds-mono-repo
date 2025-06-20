@@ -586,13 +586,17 @@ class GapStrategyRiskManager(RiskManager):
     def quantify_risk(
         self, df: Union[pd.DataFrame, pl.DataFrame]
     ) -> Union[pd.DataFrame, pl.DataFrame]:
+        """Should implement more realistic risk managing, like trailing stops and/or profits."""
         return df
 
 
 class GapStrategyEvaluator(StrategyEvaluator):
-    def __init__(self):
-        self.daily_summary = None
+    def __init__(self, segment_cols=None):
+        self.simplified_daily_summary = None
         self.daily_summary_by_ticker = None
+        self.daily_summary_with_segments = None
+        self.daily_summary_by_ticker_and_segment = None
+        self.segment_cols = segment_cols
 
     @staticmethod
     def _calc_daily_summary(df):
@@ -834,15 +838,15 @@ class GapStrategyEvaluator(StrategyEvaluator):
         traded_tickers = df[df["trigger_trade_entry"]]["ticker"].unique().tolist()
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=FutureWarning)
-            df_summary_by_ticker = (
+            daily_summaray_by_ticker = (
                 df[df["ticker"].isin(traded_tickers)]
                 .groupby(["ticker", "date"])
                 .apply(self._calc_daily_summary)
             )
-            df_summary_by_ticker = df_summary_by_ticker.drop(
+            daily_summaray_by_ticker = daily_summaray_by_ticker.drop(
                 columns=["date"]
             ).reset_index()
-        return df_summary_by_ticker
+        return daily_summaray_by_ticker
 
     @staticmethod
     def _add_ticker_identifiers(df):
@@ -867,9 +871,23 @@ class GapStrategyEvaluator(StrategyEvaluator):
 
         rows_before_merge = df.shape[0]
         df = df.merge(df_ticker_map, how="left")
+        identifier_cols = [
+            "composite_figi",
+            "share_class_figi",
+            "cik",
+            "active",
+            "delisted_utc",
+            "locale",
+            "market",
+            "ticker_type",
+            "primary_exchange",
+        ]
+
         assert (
             rows_before_merge == df.shape[0]
         ), "additional rows joined after merging tickers!"
+
+        df[identifier_cols] = df[identifier_cols].fillna("unknown")
         return df
 
     @staticmethod
@@ -926,7 +944,7 @@ class GapStrategyEvaluator(StrategyEvaluator):
         df_vix_1d["vix_bucket"] = pd.cut(
             df_vix_1d["vix_open"],
             bins=bins,
-            labels=[f"VIX {b1:.2f}-{b2:.2f}" for b1, b2 in zip(bins[:-1], bins[1:])],
+            labels=[f"{b1:.2f}-{b2:.2f}" for b1, b2 in zip(bins[:-1], bins[1:])],
             right=False,
         )
         df_vix_1d["date"] = pd.to_datetime(df_vix_1d["date"]).dt.tz_localize(
@@ -940,10 +958,44 @@ class GapStrategyEvaluator(StrategyEvaluator):
         df = self._add_vix_buckets(df)
         return df
 
-    def evaluate(
+    def _calc_daily_summary_by_segment(self, df):
+        df_summary = (
+            df.groupby(self.segment_cols)
+            .apply(self._calc_daily_summary)
+            .dropna(how="all")
+            .reset_index()
+        )
+        return df_summary
+
+    def _calc_daily_summary_by_ticker_and_segment(self, df):
+        df_summary = (
+            df.groupby(list(set(["ticker"] + self.segment_cols)))
+            .apply(self._calc_daily_summary)
+            .dropna(how="all")
+            .reset_index()
+        )
+        return df_summary
+
+    def evaluate_strategy(
         self, df: Union[pd.DataFrame, pl.DataFrame]
     ) -> Union[pd.DataFrame, pl.DataFrame]:
-        self.daily_summary = self._calc_daily_summary(df)
-        self.df_summary_by_ticker = self._calc_daily_summary_by_ticker(df)
-        self.df_summary_by_ticker = self._add_segments(self.df_summary_by_ticker)
+        rows_before = df.shape[0]
+        df = self._add_segments(df)
+        assert (
+            df.shape[0] == rows_before
+        ), "Mismatch in rows after adding segments in evaluation."
+
+        tickers_traded = df[df["trigger_trade_entry"]]["ticker"].unique()
+        self.simplified_daily_summary = self._calc_daily_summary(df)
+        self.daily_summary_by_ticker = self._calc_daily_summary_by_ticker(df)
+
+        if self.segment_cols:
+            self.daily_summary_with_segments = self._calc_daily_summary_by_segment(
+                df[df["ticker"].isin(tickers_traded)]
+            ).dropna(how="all")
+            self.daily_summary_by_ticker_and_segment = (
+                self._calc_daily_summary_by_ticker_and_segment(
+                    df[df["ticker"].isin(tickers_traded)]
+                ).dropna(how="all")
+            )
         return df

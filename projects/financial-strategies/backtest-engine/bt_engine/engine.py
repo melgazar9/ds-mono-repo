@@ -63,14 +63,14 @@ class PositionManager(metaclass=MetaPositionManagerEnforcer):
 
 
 meta_strategy_evaluator = MetaclassMethodEnforcer(
-    required_methods=["evaluate"], parent_class="StrategyEvaluator"
+    required_methods=["evaluate_strategy"], parent_class="StrategyEvaluator"
 )
 MetaStrategyEvaluatorEnforcer = meta_strategy_evaluator.enforce()
 
 
 class StrategyEvaluator(metaclass=MetaStrategyEvaluatorEnforcer):
     @abstractmethod
-    def evaluate(
+    def evaluate_strategy(
         self, df: [pd.DataFrame, pl.DataFrame]
     ) -> (pd.DataFrame, pl.DataFrame):
         """
@@ -107,7 +107,7 @@ class BacktestEngine:
 
     def evaluate_strategy(self) -> (pd.DataFrame, pl.DataFrame):
         # Evaluate the strategy
-        self.df_evaluation = self.strategy_evaluator.evaluate(self.df)
+        self.df_evaluation = self.strategy_evaluator.evaluate_strategy(self.df)
 
     def run_backtest(self):
         """Run the full trading simulation"""

@@ -51,7 +51,9 @@ class GapBacktestRunner:
                 slippage_amount=0.61,
                 slippage_mode="partway",
             ),
-            strategy_evaluator=GapStrategyEvaluator(),
+            strategy_evaluator=GapStrategyEvaluator(
+                segment_cols=["market", "vix_bucket"]
+            ),
         )
 
     async def run_backtest_sequence(self):
@@ -66,10 +68,20 @@ class GapBacktestRunner:
             remote_files = remote_files[0:30]
 
         # Setup results file
-        daily_results_file = self.results_dir / f"summary_{self.run_timestamp}.csv"
-        results_file_by_ticker = (
-            self.results_dir / f"summary_{self.run_timestamp}_by_ticker.csv"
+        simplified_results_file = (
+            self.results_dir / f"simplified_summary__{self.run_timestamp}.csv"
         )
+        results_file_by_ticker = (
+            self.results_dir / f"summary_by_ticker__{self.run_timestamp}.csv"
+        )
+        results_file_by_segment = (
+            self.results_dir / f"summary_by_segment__{self.run_timestamp}.csv"
+        )
+        results_file_by_ticker_and_segment = (
+            self.results_dir
+            / f"summary_by_ticker_and_segment__{self.run_timestamp}.csv"
+        )
+
         header = True
 
         # Manual counter since we can't use enumerate() with async generators
@@ -101,15 +113,29 @@ class GapBacktestRunner:
             backtest_engine.run_backtest()
 
             # Save results
-            backtest_engine.df_evaluation.to_frame().T.to_csv(
-                daily_results_file,
+            backtest_engine.strategy_evaluator.simplified_daily_summary.to_frame().T.to_csv(
+                simplified_results_file,
                 index=False,
                 header=header,
                 mode="a",
             )
 
-            backtest_engine.df_evaluation_by_ticker.to_frame().T.to_csv(
+            backtest_engine.strategy_evaluator.daily_summary_by_ticker.to_csv(
                 results_file_by_ticker,
+                index=False,
+                header=header,
+                mode="a",
+            )
+
+            backtest_engine.strategy_evaluator.daily_summary_by_ticker.to_csv(
+                results_file_by_segment,
+                index=False,
+                header=header,
+                mode="a",
+            )
+
+            backtest_engine.strategy_evaluator.daily_summary_by_ticker.to_csv(
+                results_file_by_ticker_and_segment,
                 index=False,
                 header=header,
                 mode="a",
@@ -121,7 +147,14 @@ class GapBacktestRunner:
             i += 1
 
         logging.info(
-            f"Backtest complete! Results saved to {daily_results_file} and {results_file_by_ticker}."
+            f"""
+            Backtest complete! Results saved to {self.results_dir}.
+            Files:
+            - Simplified Results: {simplified_results_file}
+            - Results by Ticker: {results_file_by_ticker}
+            - Results by Segment: {results_file_by_segment}
+            - Results by Ticker and Segment: {results_file_by_ticker_and_segment}
+            """
         )
 
 
