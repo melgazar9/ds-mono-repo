@@ -212,6 +212,7 @@ class PolygonBarLoader(DataLoader):
         self.cur_day_file = cur_day_file
         self.df_prev = df_prev
 
+        self.df_corporate_actions = None
         self.remove_ma_tickers_from_intraday_bars = remove_ma_tickers_from_intraday_bars
 
         if self.load_method not in ["pandas", "polars"]:
@@ -219,8 +220,8 @@ class PolygonBarLoader(DataLoader):
                 f"Unknown load method {self.load_method}. Must be 'pandas' or 'polars'"
             )
 
-    def pull_corporate_actions(self):
-        if hasattr(self, "df_corporate_actions"):
+    def pull_cached_corporate_actions(self):
+        if isinstance(self.df_corporate_actions, (pd.DataFrame, pl.DataFrame)):
             logging.info("df_corporate_actions is already loaded, no need to re-pull.")
         else:
             logging.warning(
@@ -229,7 +230,47 @@ class PolygonBarLoader(DataLoader):
             with PostgresConnect(database="financial_elt") as db:
                 self.df_corporate_actions = db.run_sql(
                     """
-                    select
+                    with cte_ranked as (
+                        select
+                            composite_figi,
+                            cik,
+                            ticker,
+                            event_date,
+                            event_type,
+                            cash_amount,
+                            currency,
+                            split_from,
+                            split_to,
+                            split_ratio,
+                            filing_type,
+                            requires_price_adjustment,
+                            potential_delisting,
+                            data_quality_score,
+                            row_number() over (partition by ticker, event_date order by data_quality_score desc nulls last) as rn
+                        from
+                            financial_analytics.corporate_actions
+                    ),
+                    cte_agg as (
+                        select
+                            ticker,
+                            event_date,
+                            first_value(composite_figi) over (partition by ticker, event_date order by data_quality_score desc nulls last) as composite_figi,
+                            first_value(cik) over (partition by ticker, event_date order by data_quality_score desc nulls last) as cik,
+                            first_value(event_type) over (partition by ticker, event_date order by data_quality_score desc nulls last) as event_type,
+                            sum(coalesce(cash_amount, 0)) over (partition by ticker, event_date) as cash_amount,
+                            first_value(currency) over (partition by ticker, event_date order by data_quality_score desc nulls last) as currency,
+                            exp(sum(ln(coalesce(nullif(split_from, 0), 1))) over (partition by ticker, event_date)) as split_from,
+                            exp(sum(ln(coalesce(nullif(split_to, 0), 1))) over (partition by ticker, event_date)) as split_to,
+                            exp(sum(ln(coalesce(nullif(split_ratio, 0), 1))) over (partition by ticker, event_date)) as split_ratio,
+                            first_value(filing_type) over (partition by ticker, event_date order by data_quality_score desc nulls last) as filing_type,
+                            bool_or(coalesce(requires_price_adjustment, false)) over (partition by ticker, event_date) as requires_price_adjustment,
+                            bool_or(coalesce(potential_delisting, false)) over (partition by ticker, event_date) as potential_delisting,
+                            max(coalesce(data_quality_score, 0)) over (partition by ticker, event_date) as data_quality_score,
+                            row_number() over (partition by ticker, event_date order by data_quality_score desc nulls last) as rn
+                        from
+                            cte_ranked
+                    )
+                    select 
                         composite_figi,
                         cik,
                         ticker,
@@ -245,7 +286,9 @@ class PolygonBarLoader(DataLoader):
                         potential_delisting,
                         data_quality_score
                     from
-                        financial_analytics.corporate_actions
+                        cte_agg
+                    where
+                        rn = 1
                 """,
                     df_type=self.load_method,
                 )
@@ -271,8 +314,10 @@ class PolygonBarLoader(DataLoader):
         return self
 
     def _get_ma_ticker_dates(self):
+        self.pull_cached_corporate_actions()
         if hasattr(self, "df_ma_events"):
             return
+
         self.df_ma_events = self.df_corporate_actions[
             (self.df_corporate_actions["requires_price_adjustment"])
             & (
@@ -283,7 +328,7 @@ class PolygonBarLoader(DataLoader):
         ][["ticker", "event_date"]]
 
     def _remove_ma_records(self):
-        filter_keys = self.data_loader.df_ma_events[["ticker", "event_date"]].rename(
+        filter_keys = self.df_ma_events[["ticker", "event_date"]].rename(
             columns={"event_date": "date"}
         )
         merged = self.df.merge(
@@ -291,7 +336,7 @@ class PolygonBarLoader(DataLoader):
         )
         removed_records = merged[merged["_merge"] == "both"].drop(columns=["_merge"])
         logging.info(
-            f"Removed {len(removed_records)} records from df from corporate actions:."
+            f"Removed {len(removed_records)} records from df from M&A corporate actions."
         )
         self.df = merged[merged["_merge"] == "left_only"].drop(columns=["_merge"])
 
@@ -333,14 +378,8 @@ class PolygonBarLoader(DataLoader):
 
     def load_and_clean_data(self) -> Union[pd.DataFrame, pl.DataFrame]:
         """Assumes self.df_prev is attached to the class"""
-        self.pull_corporate_actions()  # does nothing if class already has attribute self.df_corporate_actions
+        self.pull_cached_corporate_actions()  # does nothing if class already has attribute self.df_corporate_actions
         self.df = self.load_raw_intraday_bars()
-        if self.remove_ma_tickers_from_intraday_bars:
-            if not hasattr(self, "df_corporate_actions"):
-                # these will not pull if they're already loaded
-                self.pull_corporate_actions()
-                self._get_ma_ticker_dates()
-                self._remove_ma_records()
 
         if (
             self.load_method == "polars"
@@ -350,16 +389,19 @@ class PolygonBarLoader(DataLoader):
             )
             self.df = self.df.to_pandas()
             self.df_prev = self.df_prev.to_pandas()
-            self.df_corporate_actions = self.df_corporate_actions.to_pandas()
             logging.debug(
                 "self.df, self.df_prev, and self.df_corporate_actions are now pandas dfs."
             )
+
+        if self.remove_ma_tickers_from_intraday_bars:
+            self._get_ma_ticker_dates()
+            self._remove_ma_records()
 
         rows_before = self.df.shape[0]
         self.df = self._price_gap_with_split_or_dividend()
         assert (
             self.df.shape[0] == rows_before
-        ), "Row mismatch after split and dividend validation."
+        ), f"Row mismatch after split and dividend validation: {rows_before} -> {self.df.shape[0]}"
 
         if self.load_method == "polars":
             self.df = pl.from_pandas(self.df)

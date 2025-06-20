@@ -59,7 +59,7 @@ class GapPositionManager(PositionManager):
         self,
         df: Union[pd.DataFrame, pl.DataFrame],
     ) -> Union[pd.DataFrame, pl.DataFrame]:
-        logging.info("*** Detecting Trade Opportunities ***")
+        logging.info("🔍Detecting Trade Opportunities")
         df.loc[
             (df["adj_pmkt_pct_chg"] >= self.overnight_gap)
             & (df["timestamp_cst"].dt.time <= self.entry_cutoff_time_cst),
@@ -576,7 +576,7 @@ class GapPositionManager(PositionManager):
     def adjust_position(
         self, df: Union[pd.DataFrame, pl.DataFrame]
     ) -> Union[pd.DataFrame, pl.DataFrame]:
-        logging.info("*** Adjusting Positions ***")
+        logging.info("⚖️ Adjusting Positions")
         df = self._open_position(df)
         df = self._close_position(df)
         return df
@@ -838,15 +838,15 @@ class GapStrategyEvaluator(StrategyEvaluator):
         traded_tickers = df[df["trigger_trade_entry"]]["ticker"].unique().tolist()
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=FutureWarning)
-            daily_summaray_by_ticker = (
+            daily_summary_by_ticker = (
                 df[df["ticker"].isin(traded_tickers)]
-                .groupby(["ticker", "date"])
+                .groupby(["ticker", "date"], observed=True)
                 .apply(self._calc_daily_summary)
             )
-            daily_summaray_by_ticker = daily_summaray_by_ticker.drop(
+            daily_summary_by_ticker = daily_summary_by_ticker.drop(
                 columns=["date"]
             ).reset_index()
-        return daily_summaray_by_ticker
+        return daily_summary_by_ticker
 
     @staticmethod
     def _add_ticker_identifiers(df):
@@ -959,21 +959,23 @@ class GapStrategyEvaluator(StrategyEvaluator):
         return df
 
     def _calc_daily_summary_by_segment(self, df):
-        df_summary = (
-            df.groupby(self.segment_cols)
-            .apply(self._calc_daily_summary)
-            .dropna(how="all")
-            .reset_index()
-        )
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=FutureWarning)
+            df_summary = (
+                df.groupby(self.segment_cols, observed=True)
+                .apply(self._calc_daily_summary)
+                .reset_index()
+            )
         return df_summary
 
     def _calc_daily_summary_by_ticker_and_segment(self, df):
-        df_summary = (
-            df.groupby(list(set(["ticker"] + self.segment_cols)))
-            .apply(self._calc_daily_summary)
-            .dropna(how="all")
-            .reset_index()
-        )
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=FutureWarning)
+            df_summary = (
+                df.groupby(list(set(["ticker"] + self.segment_cols)), observed=True)
+                .apply(self._calc_daily_summary)
+                .reset_index()
+            )
         return df_summary
 
     def evaluate_strategy(
@@ -992,10 +994,10 @@ class GapStrategyEvaluator(StrategyEvaluator):
         if self.segment_cols:
             self.daily_summary_with_segments = self._calc_daily_summary_by_segment(
                 df[df["ticker"].isin(tickers_traded)]
-            ).dropna(how="all")
+            )
             self.daily_summary_by_ticker_and_segment = (
                 self._calc_daily_summary_by_ticker_and_segment(
                     df[df["ticker"].isin(tickers_traded)]
-                ).dropna(how="all")
+                )
             )
         return df

@@ -21,25 +21,10 @@ logging.basicConfig(
 )
 
 
-class GapBacktestRunner:
+class GapBacktestRunner(BacktestEngine):
     def __init__(self):
-        self.processor = StreamingFileProcessor(
-            os.getenv("NORDVPN_MESHNET_IP"),
-            os.getenv("NORDVPN_USER"),
-            max_concurrent_downloads=3,
-            max_cached_files=10,
-        )
-        self.run_timestamp = datetime.now().strftime("%Y-%m-%d__%H-%M-%S")
-        self.results_dir = Path.home() / "gap_backtrade_results"
-        self.results_dir.mkdir(exist_ok=True)
-
-        self.data_loader = None
-
-    @staticmethod
-    def create_backtest_engine(data_loader):
-        """Create a backtest engine with standard parameters"""
-        return BacktestEngine(
-            data_loader=data_loader,
+        super().__init__(
+            data_loader=None,  # set dynamically
             risk_manager=GapStrategyRiskManager(),
             position_manager=GapPositionManager(
                 overnight_gap=0.33,
@@ -56,6 +41,22 @@ class GapBacktestRunner:
             ),
         )
 
+        self.processor = StreamingFileProcessor(
+            os.getenv("NORDVPN_MESHNET_IP"),
+            os.getenv("NORDVPN_USER"),
+            max_concurrent_downloads=3,
+            max_cached_files=10,
+        )
+        self.run_timestamp = datetime.now().strftime("%Y-%m-%d__%H-%M-%S")
+        self.results_dir = Path.home() / "gap_backtrade_results"
+        self.results_dir.mkdir(exist_ok=True)
+
+    def setup_data_loader(self, file_path: str, df_prev=None):
+        """Set up the data loader with current file and previous data"""
+        self.data_loader = PolygonBarLoader(
+            cur_day_file=file_path, load_method="pandas", df_prev=df_prev
+        )
+
     async def run_backtest_sequence(self):
         """Run the complete backtest sequence using streaming files"""
         remote_files = await self.processor.list_remote_files(
@@ -67,7 +68,6 @@ class GapBacktestRunner:
         if DEBUG:
             remote_files = remote_files[0:30]
 
-        # Setup results file
         simplified_results_file = (
             self.results_dir / f"simplified_summary__{self.run_timestamp}.csv"
         )
@@ -83,65 +83,59 @@ class GapBacktestRunner:
         )
 
         header = True
-
-        # Manual counter since we can't use enumerate() with async generators
         i = 0
+        df_prev = None
 
-        # Use the streaming file processor to get files as they're downloaded
         async for local_file_path in self.processor.get_files(remote_files):
             logging.info(
                 f"Processing file {i + 1}/{len(remote_files)}: {local_file_path.name}"
             )
+
             if i == 0:
                 logging.info(f"Loading initial data from {local_file_path.name}")
-                self.data_loader = PolygonBarLoader(
-                    cur_day_file=str(local_file_path), load_method="pandas"
-                )
+                self.setup_data_loader(str(local_file_path))
                 df_prev = self.data_loader.load_raw_intraday_bars()
-
-                # Set df_prev for next iteration
-                self.data_loader.df_prev = df_prev
-
                 logging.info(f"Initial data loaded: {df_prev.shape[0]} rows")
                 i += 1
                 continue
 
-            logging.info(f"Reusing data loader for {local_file_path.name}")
-            self.data_loader.cur_day_file = str(local_file_path)
+            logging.info(f"Processing backtest for {local_file_path.name}")
+            self.setup_data_loader(str(local_file_path), df_prev)
 
-            backtest_engine = self.create_backtest_engine(self.data_loader)
-            backtest_engine.run_backtest()
+            # Run backtest using inherited methods
+            self.run_backtest()
 
-            # Save results
-            backtest_engine.strategy_evaluator.simplified_daily_summary.to_frame().T.to_csv(
+            # Save results using inherited strategy_evaluator
+            self.strategy_evaluator.simplified_daily_summary.to_frame().T.to_csv(
                 simplified_results_file,
                 index=False,
                 header=header,
                 mode="a",
             )
 
-            backtest_engine.strategy_evaluator.daily_summary_by_ticker.to_csv(
+            self.strategy_evaluator.daily_summary_by_ticker.to_csv(
                 results_file_by_ticker,
                 index=False,
                 header=header,
                 mode="a",
             )
 
-            backtest_engine.strategy_evaluator.daily_summary_by_ticker.to_csv(
+            self.strategy_evaluator.daily_summary_with_segments.to_csv(
                 results_file_by_segment,
                 index=False,
                 header=header,
                 mode="a",
             )
 
-            backtest_engine.strategy_evaluator.daily_summary_by_ticker.to_csv(
+            self.strategy_evaluator.daily_summary_by_ticker_and_segment.to_csv(
                 results_file_by_ticker_and_segment,
                 index=False,
                 header=header,
                 mode="a",
             )
 
-            self.data_loader.df_prev = backtest_engine.df
+            # Set df_prev for next iteration using inherited df attribute
+            df_prev = self.df
             header = False
             logging.info(f"✅ Completed processing {local_file_path.name}")
             i += 1
