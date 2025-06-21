@@ -752,6 +752,11 @@ class GapStrategyEvaluator(StrategyEvaluator):
                     if has_short_pnl
                     else np.nan
                 ),
+                short_intraday_sortino=(
+                    calc_sortino_ratio(df["short_realized_pnl"])
+                    if has_short_pnl
+                    else np.nan
+                ),
                 short_intraday_max_drawdown=(
                     calc_max_drawdown(df["short_realized_pnl"])
                     if has_short_pnl
