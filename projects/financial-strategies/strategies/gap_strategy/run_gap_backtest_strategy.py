@@ -5,9 +5,9 @@ from bt_engine.central_loaders import PolygonBarLoader, StreamingFileProcessor
 from bt_engine.engine import BacktestEngine
 from datetime import time as dtime, datetime
 import logging
-from typing import Optional, List
+from typing import Optional, List, Dict
 import pandas as pd
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, Future
 import shutil
 
 from dataclasses import dataclass
@@ -168,7 +168,7 @@ class GapBacktestRunner(BacktestEngine):
         self.processing_dir = self.results_dir / f"processing_{self.run_timestamp}"
         self.processing_dir.mkdir(exist_ok=True)
 
-    def _load_corporate_actions_once(self):
+    def _load_corporate_actions(self) -> pd.DataFrame:
         """Load corporate actions data once and cache it"""
         if GapBacktestRunner._df_corporate_actions is None:
             logging.info("🔄 Loading corporate actions data once for all workers...")
@@ -198,7 +198,7 @@ class GapBacktestRunner(BacktestEngine):
             )
             logging.info("✅ Corporate actions loaded and cached for reuse")
 
-    def _get_result_file_paths(self) -> dict:
+    def _get_result_file_paths(self) -> Dict[str, Path]:
         """Centralized result file path generation"""
         return {
             "simplified": self.results_dir
@@ -211,7 +211,9 @@ class GapBacktestRunner(BacktestEngine):
             / f"summary_by_ticker_and_segment__{self.run_timestamp}.csv",
         }
 
-    def _save_results_to_files(self, result_files: dict, header: bool = False):
+    def _save_results_to_files(
+        self, result_files: Dict[str, Path], header: bool = False
+    ):
         """Centralized result saving logic"""
         self.strategy_evaluator.simplified_daily_summary.to_frame().T.to_csv(
             result_files["simplified"],
@@ -241,7 +243,7 @@ class GapBacktestRunner(BacktestEngine):
             mode="a",
         )
 
-    def _save_combined_results(self, all_results: List[dict], result_files: dict):
+    def _save_results(self, all_results: List[dict], result_files: Dict[str, Path]):
         """Centralized result saving logic - combines all results and saves once"""
         combined_results = {
             "simplified": [],
@@ -262,6 +264,56 @@ class GapBacktestRunner(BacktestEngine):
                 combined_df = pd.concat(df_list, ignore_index=True)
                 combined_df.to_csv(result_files[key], index=False)
                 logging.info(f"✅ Saved {len(combined_df)} rows to {result_files[key]}")
+
+    def _process_completed_futures(
+        self,
+        completed_futures: List[Future],
+        active_futures: Dict[Future, int],
+        all_results: List[dict],
+        protected_files: Dict[int, Path],
+    ) -> None:
+        """
+        DRY helper method to process completed futures and clean up files.
+        This eliminates the duplicate code that PyCharm was complaining about.
+        """
+        for future in completed_futures:
+            completed_file_index = active_futures.pop(future)
+            try:
+                result = future.result()
+                all_results.append(result)
+                logging.info(f"✅ Collected result for file {completed_file_index + 1}")
+
+                # Clean up old protected files (keep only what we need)
+                self._cleanup_old_protected_file(
+                    completed_file_index, protected_files, active_futures
+                )
+
+            except Exception as e:
+                logging.error(f"❌ Error in file {completed_file_index + 1}: {e}")
+
+    def _cleanup_old_protected_file(
+        self,
+        completed_file_index: int,
+        protected_files: Dict[int, Path],
+        active_futures: Dict[Future, int],
+    ) -> None:
+        """
+        DRY helper method to clean up old protected files.
+        Only deletes files that are no longer needed by any active workers.
+        """
+        cleanup_index = completed_file_index - 1
+        if cleanup_index in protected_files and cleanup_index > 0:
+            # Check if any active workers still need this file
+            still_needed = any(
+                other_index - 1 == cleanup_index
+                for other_index in active_futures.values()
+            )
+
+            if not still_needed:
+                old_file = protected_files.pop(cleanup_index)
+                if old_file.exists():
+                    old_file.unlink()
+                    logging.info(f"🗑️ Cleaned up protected file: {old_file.name}")
 
     async def run_backtest_sequence(self):
         """Run the complete backtest sequence using streaming files"""
@@ -291,7 +343,9 @@ class GapBacktestRunner(BacktestEngine):
                 shutil.rmtree(self.processing_dir)
                 logging.info("🗑️ Cleaned up processing directory")
 
-    async def _run_sequential(self, remote_files: List[str], result_files: dict):
+    async def _run_sequential(
+        self, remote_files: List[str], result_files: Dict[str, Path]
+    ):
         """Run backtest sequentially (ORIGINAL BEHAVIOR - EXACT SAME LOGIC)"""
         header = True
         i = 0
@@ -326,13 +380,13 @@ class GapBacktestRunner(BacktestEngine):
             i += 1
 
     async def _run_parallel_with_file_protection(
-        self, remote_files: List[str], result_files: dict
+        self, remote_files: List[str], result_files: Dict[str, Path]
     ):
         """
-        FINAL FIX: Run backtest in parallel by immediately copying files to protected directory
+        Run backtest in parallel by immediately copying files to protected directory
         before they can be deleted by the StreamingFileProcessor
         """
-        corporate_actions_data = self._load_corporate_actions_once()
+        corporate_actions_data = self._load_corporate_actions()
 
         logging.info(f"🚀 Starting parallel processing with {self.num_workers} workers")
         logging.info(
@@ -340,14 +394,14 @@ class GapBacktestRunner(BacktestEngine):
         )
 
         all_results = []
-        protected_files = {}
+        protected_files: Dict[int, Path] = {}
 
         loop = asyncio.get_event_loop()
         params = BacktestParams()
 
         with ProcessPoolExecutor(max_workers=self.num_workers) as executor:
             file_index = 0
-            active_futures = {}
+            active_futures: Dict[Future, int] = {}
 
             # Process files as they stream in with protection
             async for local_file_path in self.processor.get_files(remote_files):
@@ -355,20 +409,25 @@ class GapBacktestRunner(BacktestEngine):
                     f"📥 Received file {file_index + 1}/{len(remote_files)}: {local_file_path.name}"
                 )
 
+                # Immediately protect file from deletion
                 protected_path = self.processing_dir / local_file_path.name
                 shutil.copy2(local_file_path, protected_path)
                 protected_files[file_index] = protected_path
                 logging.info(f"🛡️ Protected file: {protected_path.name}")
 
+                # Skip first file (just for initial data loading context)
                 if file_index == 0:
                     file_index += 1
                     continue
 
-                if file_index - 1 in protected_files and file_index not in {
-                    f for f in active_futures.values()
-                }:
+                # Submit file for processing if previous file is available
+                if (
+                    file_index - 1 in protected_files
+                    and file_index not in active_futures.values()
+                ):
                     current_file = str(protected_files[file_index])
                     previous_file = str(protected_files[file_index - 1])
+
                     future = loop.run_in_executor(
                         executor,
                         run_single_backtest_worker,
@@ -378,43 +437,15 @@ class GapBacktestRunner(BacktestEngine):
                         corporate_actions_data,
                     )
                     active_futures[future] = file_index
-
                     logging.info(f"🔄 Submitted file {file_index + 1} for processing")
 
+                # Process any immediately completed futures
                 completed_futures = [f for f in active_futures.keys() if f.done()]
+                self._process_completed_futures(
+                    completed_futures, active_futures, all_results, protected_files
+                )
 
-                for future in completed_futures:
-                    completed_file_index = active_futures.pop(future)
-                    try:
-                        result = future.result()
-                        all_results.append(result)
-                        logging.info(
-                            f"✅ Collected result for file {completed_file_index + 1}"
-                        )
-
-                        # Clean up old protected files (keep only what we need)
-                        cleanup_index = completed_file_index - 1
-                        if cleanup_index in protected_files and cleanup_index > 0:
-                            # Check if any active workers still need this file
-                            still_needed = False
-                            for other_index in active_futures.values():
-                                if other_index - 1 == cleanup_index:
-                                    still_needed = True
-                                    break
-
-                            if not still_needed:
-                                old_file = protected_files.pop(cleanup_index)
-                                if old_file.exists():
-                                    old_file.unlink()
-                                    logging.info(
-                                        f"🗑️ Cleaned up protected file: {old_file.name}"
-                                    )
-
-                    except Exception as e:
-                        logging.error(
-                            f"❌ Error in file {completed_file_index + 1}: {e}"
-                        )
-
+                # Wait if we have too many active workers
                 while len(active_futures) >= self.num_workers:
                     done, pending = await asyncio.wait(
                         active_futures.keys(),
@@ -422,38 +453,14 @@ class GapBacktestRunner(BacktestEngine):
                         timeout=0.1,
                     )
 
-                    for future in done:
-                        completed_file_index = active_futures.pop(future)
-                        try:
-                            result = future.result()
-                            all_results.append(result)
-                            logging.info(
-                                f"✅ Collected result for file {completed_file_index + 1}"
-                            )
-
-                            cleanup_index = completed_file_index - 1
-                            if cleanup_index in protected_files and cleanup_index > 0:
-                                still_needed = False
-                                for other_index in active_futures.values():
-                                    if other_index - 1 == cleanup_index:
-                                        still_needed = True
-                                        break
-
-                                if not still_needed:
-                                    old_file = protected_files.pop(cleanup_index)
-                                    if old_file.exists():
-                                        old_file.unlink()
-                                        logging.info(
-                                            f"🗑️ Cleaned up protected file: {old_file.name}"
-                                        )
-
-                        except Exception as e:
-                            logging.error(
-                                f"❌ Error in file {completed_file_index + 1}: {e}"
-                            )
+                    # Process completed futures using DRY method
+                    self._process_completed_futures(
+                        list(done), active_futures, all_results, protected_files
+                    )
 
                 file_index += 1
 
+            # Wait for remaining futures to complete
             if active_futures:
                 logging.info(
                     f"⏳ Waiting for {len(active_futures)} remaining workers to complete..."
@@ -471,9 +478,9 @@ class GapBacktestRunner(BacktestEngine):
         logging.info(
             f"💾 Saving combined results from {len(all_results)} processed files..."
         )
-        self._save_combined_results(all_results, result_files)
+        self._save_results(all_results, result_files)
 
-    def _log_completion_message(self, result_files: dict):
+    def _log_completion_message(self, result_files: Dict[str, Path]):
         """Centralized completion message logging"""
         logging.info(
             f"""
