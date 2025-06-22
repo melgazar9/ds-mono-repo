@@ -324,7 +324,14 @@ class GapBacktestRunner(BacktestEngine):
         logging.info(f"Found {len(remote_files)} files to process")
 
         if DEBUG:
-            remote_files = remote_files[-30:]
+            filtered_dates = [
+                path
+                for path in remote_files
+                if datetime.strptime("2025-05-02", "%Y-%m-%d")
+                <= datetime.strptime(path.split("_")[-1].split(".")[0], "%Y-%m-%d")
+                <= datetime.strptime("2025-06-20", "%Y-%m-%d")
+            ]
+            remote_files = sorted(filtered_dates)
 
         result_files = self._get_result_file_paths()
 
