@@ -31,10 +31,10 @@ logging.basicConfig(
 class BacktestParams:
     """Serializable container for backtest parameters"""
 
-    overnight_gap: float = 0.125
+    overnight_gap: float = 0.33
     bet_amount: int = 2000
-    stop_loss_pct: float = 0.20
-    take_profit_pct: float = 0.33
+    stop_loss_pct: float = 1.0
+    take_profit_pct: float = 1.0
     entry_cutoff_time_cst: tuple = (13, 45)  # (hour, minute) - serializable
     flatten_trade_time_cst: tuple = (14, 55)
     slippage_amount: float = 0.61
