@@ -431,6 +431,7 @@ class PolygonBarLoader(DataLoader):
             self._remove_ma_records()
 
         rows_before = self.df.shape[0]
+        self.df = self._add_prev_us_ohlcv()
         self.df = self._price_gap_with_split_or_dividend()
         assert (
             self.df.shape[0] == rows_before
@@ -442,28 +443,57 @@ class PolygonBarLoader(DataLoader):
             logging.debug("Converted self.df and self.df_prev back to polars.")
         return self.df
 
-    def _price_gap_with_split_or_dividend(self):
-        if self.load_method == "polars":
-            logging.debug(
-                "load_method polars not implemented yet for detecting splits/dividends price gap. Data will be"
-                "converted to a pandas df and converted back to polars for this step."
+    def _add_prev_us_ohlcv(self):
+        """Adds prev ohlcv for pre-market, post-market, and regular market hours."""
+        prev_pmkt_us_ohlcv = (
+            self.df_prev[
+                (self.df_prev["timestamp_cst"].dt.time >= dtime(3, 0)) &
+                (self.df_prev["timestamp_cst"].dt.time < dtime(8, 30))
+                ]
+            .groupby(["ticker", "date"], sort=False)
+            .agg(
+                prev_pmkt_open=("open", "first"),
+                prev_pmkt_high=("high", "max"),
+                prev_pmkt_low=("low", "min"),
+                prev_pmkt_close=("close", "last"),
+                prev_pmkt_volume=("volume", "sum"),
             )
-
-        prev_after_hours_close = (
-            self.df_prev.groupby(["ticker", "date"], sort=False)
-            .agg(prev_close=("close", "last"))
             .reset_index()
-            .rename(
-                columns={"date": "prev_date", "prev_close": "prev_after_hours_close"}
-            )
+            .rename(columns={"date": "prev_date"})
         )
 
-        prev_market_close = (
-            self.df_prev[self.df_prev["timestamp_cst"].dt.time <= dtime(15, 0)]
+        prev_market_us_ohlcv = (
+            self.df_prev[
+                (self.df_prev["timestamp_cst"].dt.time >= dtime(8, 30)) &
+                (self.df_prev["timestamp_cst"].dt.time <= dtime(15, 0))
+            ]
             .groupby(["ticker", "date"], sort=False)
-            .agg(prev_close=("close", "last"))
+            .agg(
+                prev_market_open=("open", "first"),
+                prev_market_high=("high", "max"),
+                prev_market_low=("low", "min"),
+                prev_market_close=("close", "last"),
+                prev_market_volume=("volume", "sum"),
+            )
             .reset_index()
-            .rename(columns={"date": "prev_date", "prev_close": "prev_market_close"})
+            .rename(columns={"date": "prev_date"})
+        )
+
+        prev_after_hours_us_ohlcv = (
+            self.df_prev[
+                (self.df_prev["timestamp_cst"].dt.time > dtime(15, 0)) &
+                (self.df_prev["timestamp_cst"].dt.time <= dtime(20, 0))
+            ]
+            .groupby(["ticker", "date"], sort=False)
+            .agg(
+                prev_after_hours_open=("open", "first"),
+                prev_after_hours_high=("high", "max"),
+                prev_after_hours_low=("low", "min"),
+                prev_after_hours_close=("close", "last"),
+                prev_after_hours_volume=("volume", "sum"),
+            )
+            .reset_index()
+            .rename(columns={"date": "prev_date"})
         )
 
         prev_dates = (
@@ -475,9 +505,27 @@ class PolygonBarLoader(DataLoader):
 
         self.df = (
             self.df.merge(prev_dates, on=["ticker"], how="left")
-            .merge(prev_after_hours_close, on=["ticker", "prev_date"], how="left")
-            .merge(prev_market_close, on=["ticker", "prev_date"], how="left")
+            .merge(prev_pmkt_us_ohlcv, on=["ticker", "prev_date"], how="left")
+            .merge(prev_market_us_ohlcv, on=["ticker", "prev_date"], how="left")
+            .merge(prev_after_hours_us_ohlcv, on=["ticker", "prev_date"], how="left")
         )
+
+        return self.df
+
+    def _price_gap_with_split_or_dividend(self):
+        # Combinations
+        # 1. market close -> pre-market open
+        # 2. market close -> market open
+        # 3. after hours close -> pre-market open
+        # 4. after hours close -> market open
+        # For simplicity, only detect if ticker has splits/dividends applied from official market close --> pre-market open.
+
+        if self.load_method == "polars":
+            logging.debug(
+                "load_method polars not implemented yet for detecting splits/dividends price gap. Data will be"
+                "converted to a pandas df and converted back to polars for this step."
+            )
+
 
         self.df = self.df.merge(
             self.df_corporate_actions,
@@ -490,13 +538,6 @@ class PolygonBarLoader(DataLoader):
         self.df["split_to"] = self.df["split_to"].fillna(1.0)
         self.df["cash_amount"] = self.df["cash_amount"].fillna(0.0)
         self.df["split_ratio"] = self.df["split_from"] / self.df["split_to"]
-
-        # Combinations
-        # 1. market close -> pre-market open
-        # 2. market close -> market open
-        # 3. after hours close -> pre-market open
-        # 4. after hours close -> market open
-        # For simplicity, only detect if ticker has splits/dividends applied from official market close --> pre-market open.
 
         self.df["expected_unchanged_price_after_split"] = (
             self.df["prev_market_close"] * self.df["split_ratio"]
