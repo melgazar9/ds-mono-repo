@@ -88,6 +88,7 @@ class GapPositionManager(PositionManager):
         df = df.drop(
             columns=["trigger_trade_entry_pmkt_raw", "trigger_trade_entry_mkt_raw"]
         )
+        df = df.sort_values(by=["timestamp", "ticker"])
         return df
 
     def _open_position(self, df: Union[pd.DataFrame, pl.DataFrame]):
@@ -647,7 +648,9 @@ class GapStrategyEvaluator(StrategyEvaluator):
             "prev_market_close"
         ]
 
-        df["volume_pct_chg"] = (df["volume"] - df["prev_market_volume"]) / df["prev_market_volume"]
+        df["volume_pct_chg"] = (df["volume"] - df["prev_market_volume"]) / df[
+            "prev_market_volume"
+        ]
         return df
 
     @staticmethod
@@ -686,8 +689,7 @@ class GapStrategyEvaluator(StrategyEvaluator):
                 (
                     df["trigger_trade_entry_pmkt"].sum()
                     / (
-                        df["trigger_trade_entry_pmkt"]
-                        | df["trigger_trade_entry_mkt"]
+                        df["trigger_trade_entry_pmkt"] | df["trigger_trade_entry_mkt"]
                     ).sum()
                 )
                 if has_trades
@@ -697,8 +699,7 @@ class GapStrategyEvaluator(StrategyEvaluator):
                 (
                     df["trigger_trade_entry_mkt"].sum()
                     / (
-                        df["trigger_trade_entry_pmkt"]
-                        | df["trigger_trade_entry_mkt"]
+                        df["trigger_trade_entry_pmkt"] | df["trigger_trade_entry_mkt"]
                     ).sum()
                 )
                 if has_trades
@@ -762,14 +763,10 @@ class GapStrategyEvaluator(StrategyEvaluator):
                 else np.nan
             ),
             "long_intraday_sortino": (
-                calc_sortino_ratio(df["long_realized_pnl"])
-                if has_long_pnl
-                else np.nan
+                calc_sortino_ratio(df["long_realized_pnl"]) if has_long_pnl else np.nan
             ),
             "long_intraday_max_drawdown": (
-                calc_max_drawdown(df["long_realized_pnl"])
-                if has_long_pnl
-                else np.nan
+                calc_max_drawdown(df["long_realized_pnl"]) if has_long_pnl else np.nan
             ),
             # === SHORT POSITION METRICS ===
             "short_realized_pnl": safe_sum(df["short_realized_pnl"]),
@@ -797,9 +794,7 @@ class GapStrategyEvaluator(StrategyEvaluator):
                 else np.nan
             ),
             "short_intraday_max_drawdown": (
-                calc_max_drawdown(df["short_realized_pnl"])
-                if has_short_pnl
-                else np.nan
+                calc_max_drawdown(df["short_realized_pnl"]) if has_short_pnl else np.nan
             ),
             # === ENTRY/EXIT TIMESTAMPS ===
             "avg_trade_entry_timestamp": (
@@ -889,26 +884,15 @@ class GapStrategyEvaluator(StrategyEvaluator):
             "short_trades_losses": (df["short_realized_pnl"] < 0).sum(),
         }
 
-        # Only add detailed price metrics if requested
         if include_pct_chg_metrics:
             detailed_metrics = {
-                # === PERCENT CHANGE METRICS ===
-                "avg_pct_high_from_prev_mkt_close": safe_mean(
-                    df["pct_high_from_prev_mkt_close"]
-                ),
-                "median_pct_high_from_prev_mkt_close": safe_median(
-                    df["pct_high_from_prev_mkt_close"]
-                ),
-                "avg_pct_low_from_prev_mkt_close": safe_mean(
-                    df["pct_low_from_prev_mkt_close"]
-                ),
-                "median_pct_low_from_prev_mkt_close": safe_median(
-                    df["pct_low_from_prev_mkt_close"]
-                ),
-                "avg_open_pct_chg": safe_mean(df["open_pct_chg"]),
-                "avg_high_pct_chg": safe_mean(df["high_pct_chg"]),
-                "avg_low_pct_chg": safe_mean(df["low_pct_chg"]),
-                "avg_close_pct_chg": safe_mean(df["close_pct_chg"]),
+                "pct_high_from_prev_mkt_close": safe_mean(df["pct_high_from_prev_mkt_close"]),
+                "pct_low_from_prev_mkt_close": safe_mean(df["pct_low_from_prev_mkt_close"]),
+                "open_pct_chg": safe_mean(df["open_pct_chg"]),
+                "high_pct_chg": safe_mean(df["high_pct_chg"]),
+                "low_pct_chg": safe_mean(df["low_pct_chg"]),
+                "close_pct_chg": safe_mean(df["close_pct_chg"]),
+                "volume_pct_chg": safe_mean(df["volume_pct_chg"]),
             }
             summary_dict.update(detailed_metrics)
 
@@ -922,7 +906,9 @@ class GapStrategyEvaluator(StrategyEvaluator):
             daily_summary_by_ticker = (
                 df[df["ticker"].isin(traded_tickers)]
                 .groupby(["ticker", "date"], observed=True)
-                .apply(lambda x: self._calc_daily_summary(x, include_pct_chg_metrics=True))
+                .apply(
+                    lambda x: self._calc_daily_summary(x, include_pct_chg_metrics=True)
+                )
             )
             daily_summary_by_ticker = daily_summary_by_ticker.drop(
                 columns=["date"]
@@ -969,10 +955,11 @@ class GapStrategyEvaluator(StrategyEvaluator):
         ), "additional rows joined after merging tickers!"
 
         df[identifier_cols] = df[identifier_cols].fillna("unknown")
+        df = df.sort_values(by=["timestamp", "ticker"])
         return df
 
     @staticmethod
-    def _add_vix_buckets(df):
+    def _add_daily_vix_buckets(df):
         with PostgresConnect(database="financial_elt") as db:
             df_vix_1d = db.run_sql(
                 """
@@ -1018,21 +1005,42 @@ class GapStrategyEvaluator(StrategyEvaluator):
         return df
 
     @staticmethod
-    def _add_volume_bucket(df):
+    def _add_daily_volume_bucket(df):
+        """
+        Assigns a daily dollar volume bucket per ticker and date,
+        and merges the bucket assignment back to each row.
+        """
         volume_buckets = [0, 1_000_000, 10_000_000, 100_000_000, 1_000_000_000, np.inf]
         bucket_labels = ["Very Low", "Low", "Medium", "High", "Very High"]
 
-        df["dollar_volume"] = df["volume"].fillna(0) * df["close"].fillna(0)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=FutureWarning)
+            daily_dollar_volume = (
+                df.groupby(['ticker', 'date'])
+                .apply(lambda x: (x['volume'].fillna(0) * x['close'].fillna(0)).sum())
+                .rename('daily_dollar_volume')
+                .reset_index()
+            )
 
-        df["volume_bucket"] = pd.cut(
-            df["dollar_volume"], bins=volume_buckets, labels=bucket_labels, right=True
+            daily_dollar_volume['daily_volume_bucket'] = pd.cut(
+                daily_dollar_volume['daily_dollar_volume'],
+                bins=volume_buckets,
+                labels=bucket_labels,
+                right=True
+            )
+
+        df = df.merge(
+            daily_dollar_volume[['ticker', 'date', 'daily_volume_bucket']],
+            on=['ticker', 'date'],
+            how='left'
         )
+        df = df.sort_values(["timestamp", "ticker"])
         return df
 
     def _add_segments(self, df):
         df = self._add_ticker_identifiers(df)
-        df = self._add_vix_buckets(df)
-        df = self._add_volume_bucket(df)
+        df = self._add_daily_vix_buckets(df)
+        df = self._add_daily_volume_bucket(df)
         return df
 
     def _calc_daily_summary_by_segment(self, df):
@@ -1040,7 +1048,9 @@ class GapStrategyEvaluator(StrategyEvaluator):
             warnings.filterwarnings("ignore", category=FutureWarning)
             df_summary = (
                 df.groupby(self.segment_cols, observed=True)
-                .apply(lambda x: self._calc_daily_summary(x, include_pct_chg_metrics=False))
+                .apply(
+                    lambda x: self._calc_daily_summary(x, include_pct_chg_metrics=False)
+                )
                 .reset_index()
             )
         return df_summary
@@ -1050,7 +1060,9 @@ class GapStrategyEvaluator(StrategyEvaluator):
             warnings.filterwarnings("ignore", category=FutureWarning)
             df_summary = (
                 df.groupby(list(set(["ticker"] + self.segment_cols)), observed=True)
-                .apply(lambda x: self._calc_daily_summary(x, include_pct_chg_metrics=True))
+                .apply(
+                    lambda x: self._calc_daily_summary(x, include_pct_chg_metrics=True)
+                )
                 .reset_index()
             )
         return df_summary
@@ -1067,7 +1079,9 @@ class GapStrategyEvaluator(StrategyEvaluator):
         ), "Mismatch in rows after adding segments in evaluation."
 
         tickers_traded = df[df["trigger_trade_entry"]]["ticker"].unique()
-        self.simplified_daily_summary = self._calc_daily_summary(df, include_pct_chg_metrics=False)
+        self.simplified_daily_summary = self._calc_daily_summary(
+            df, include_pct_chg_metrics=False
+        )
         self.daily_summary_by_ticker = self._calc_daily_summary_by_ticker(df)
 
         if self.segment_cols:

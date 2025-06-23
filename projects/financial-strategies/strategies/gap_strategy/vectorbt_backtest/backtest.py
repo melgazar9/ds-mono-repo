@@ -34,7 +34,7 @@ files = sorted(os.listdir(os.path.expanduser("~/polygon_data/bars_1min/")))
 for file in files[1:]:
     logging.info(f"Processing {file}")
     bar_loader.load_and_adjust_bars(
-        cur_day_file=os.path.expanduser(f"~/polygon_data/bars_1min/{file}"),
+        cur_day_file=os.path.expanduser(f"~/polygon_data/bars_1min/{file}")
     )
 
     df = bar_loader.df_cur.copy()

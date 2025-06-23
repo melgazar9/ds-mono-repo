@@ -46,9 +46,9 @@ class TitanicSplitter(AbstractSplitter):
     def split(self, df):
         df = df.reset_index(drop=True)
         non_submission_shape = df[df["survived"].notnull()].shape[0]
-        df.loc[0 : int(non_submission_shape * self.train_pct), self.split_colname] = (
-            "train"
-        )
+        df.loc[
+            0 : int(non_submission_shape * self.train_pct), self.split_colname
+        ] = "train"
 
         df.loc[
             int(non_submission_shape * self.train_pct)

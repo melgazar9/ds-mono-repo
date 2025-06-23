@@ -642,9 +642,9 @@ class AmexSplitter(AbstractSplitter):
         df = df.reset_index(drop=True)
         non_submission_shape = df[df[target_name].notnull()].shape[0]
 
-        df.loc[0 : int(non_submission_shape * self.train_pct), self.split_colname] = (
-            "train"
-        )
+        df.loc[
+            0 : int(non_submission_shape * self.train_pct), self.split_colname
+        ] = "train"
 
         df.loc[
             int(non_submission_shape * self.train_pct)

@@ -21,44 +21,14 @@ from ds_core.db_connectors import PostgresConnect  # noqa: E402
 
 TIMESERIES_TABLES = {
     "bars_1_second": (["timestamp", "ticker"], "timestamp", "1 day", "7 days", 8),
-    "bars_30_second": (
-        ["timestamp", "ticker"],
-        "timestamp",
-        "3 days",
-        "14 days",
-        8,
-    ),
+    "bars_30_second": (["timestamp", "ticker"], "timestamp", "3 days", "14 days", 8),
     "bars_1_minute": (["timestamp", "ticker"], "timestamp", "7 days", "30 days", 8),
-    "bars_5_minute": (
-        ["timestamp", "ticker"],
-        "timestamp",
-        "21 days",
-        "60 days",
-        8,
-    ),
-    "bars_30_minute": (
-        ["timestamp", "ticker"],
-        "timestamp",
-        "30 days",
-        "90 days",
-        8,
-    ),
+    "bars_5_minute": (["timestamp", "ticker"], "timestamp", "21 days", "60 days", 8),
+    "bars_30_minute": (["timestamp", "ticker"], "timestamp", "30 days", "90 days", 8),
     "bars_1_hour": (["timestamp", "ticker"], "timestamp", "30 days", "90 days", 8),
     "bars_1_day": (["timestamp", "ticker"], "timestamp", "90 days", "365 days", 8),
-    "bars_1_week": (
-        ["timestamp", "ticker"],
-        "timestamp",
-        "180 days",
-        "730 days",
-        8,
-    ),
-    "bars_1_month": (
-        ["timestamp", "ticker"],
-        "timestamp",
-        "1 year",
-        "1095 days",
-        8,
-    ),
+    "bars_1_week": (["timestamp", "ticker"], "timestamp", "180 days", "730 days", 8),
+    "bars_1_month": (["timestamp", "ticker"], "timestamp", "1 year", "1095 days", 8),
     "daily_market_summary": (
         ["timestamp", "ticker"],
         "timestamp",
@@ -75,13 +45,7 @@ TIMESERIES_TABLES = {
         8,
     ),
     "top_market_movers": (["updated", "ticker"], "updated", "90 days", "365 days", 8),
-    "trades": (
-        ["ticker", "exchange", "id"],
-        "sip_timestamp",
-        "1 day",
-        "7 days",
-        16,
-    ),
+    "trades": (["ticker", "exchange", "id"], "sip_timestamp", "1 day", "7 days", 16),
     "quotes": (
         ["ticker", "sip_timestamp", "sequence_number"],
         "sip_timestamp",
@@ -356,12 +320,9 @@ with PostgresConnect(database="financial_elt") as db:
     safe_run_sql(db, GRANT_SCHEMA, df_type=None)
 
     # Create hypertables with PKs matching Meltano tap-polygon
-    for table, (
-        pk_cols,
-        time_col,
-        chunk_interval,
-        compress_interval,
-        hash_partitions,
+    for (
+        table,
+        (pk_cols, time_col, chunk_interval, compress_interval, hash_partitions),
     ) in TIMESERIES_TABLES.items():
         full_table = f"{SCHEMA}.{table}"
         table_ddl = DDL_MAP[table]
@@ -596,12 +557,9 @@ with PostgresConnect(database="financial_elt") as db:
     safe_run_sql(db, YF_GRANT_SCHEMA, df_type=None)
 
     # Create hypertables with PKs matching Meltano tap-yfinance
-    for table, (
-        pk_cols,
-        time_col,
-        chunk_interval,
-        compress_interval,
-        hash_partitions,
+    for (
+        table,
+        (pk_cols, time_col, chunk_interval, compress_interval, hash_partitions),
     ) in YF_TIMESERIES_TABLES.items():
         full_table = f"{YF_SCHEMA}.{table}"
         table_ddl = YF_DDL_MAP[table]

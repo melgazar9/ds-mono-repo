@@ -332,10 +332,8 @@ class SplitOptimizer(ScoreThresholdOptimizer):
                     axis=1,
                 )
 
-            self.threshold_opt_results_by_split.index = (
-                self.threshold_opt_results_by_split.index.astype(
-                    pd.CategoricalDtype(splits_to_assess, ordered=True)
-                )
+            self.threshold_opt_results_by_split.index = self.threshold_opt_results_by_split.index.astype(
+                pd.CategoricalDtype(splits_to_assess, ordered=True)
             )
             self.threshold_opt_results_by_split.sort_index(inplace=True)
         return self

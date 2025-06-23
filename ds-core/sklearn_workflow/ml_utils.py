@@ -270,16 +270,16 @@ class SklearnMLFlow(MLFlowLogger):
         if not isinstance(self.algorithms, (tuple, list)) and hasattr(
             self.algorithms, "predict_proba"
         ):
-            self.df_out[type(self.algorithms).__name__ + "_pred"] = (
-                self.algorithms.predict_proba(self.df_out[self.output_features])[:, 1]
-            )
+            self.df_out[
+                type(self.algorithms).__name__ + "_pred"
+            ] = self.algorithms.predict_proba(self.df_out[self.output_features])[:, 1]
 
         elif not isinstance(self.algorithms, (tuple, list)) and hasattr(
             self.algorithms, "decision_function"
         ):
-            self.df_out[type(self.algorithms).__name__ + "_pred"] = (
-                algo.decision_function(self.df_out[self.output_features])[:, 1]
-            )
+            self.df_out[
+                type(self.algorithms).__name__ + "_pred"
+            ] = algo.decision_function(self.df_out[self.output_features])[:, 1]
 
         else:
             assert isinstance(self.algorithms, (tuple, list))
@@ -402,9 +402,9 @@ class SklearnMLFlow(MLFlowLogger):
                 )
 
                 if self.optimizer.best_thresholds[fit].index.name != "threshold":
-                    self.optimizer.best_thresholds[fit] = (
-                        self.optimizer.best_thresholds[fit].set_index("threshold")
-                    )
+                    self.optimizer.best_thresholds[
+                        fit
+                    ] = self.optimizer.best_thresholds[fit].set_index("threshold")
 
                 thres_opt.assign_predicted_class(self.optimizer.best_thresholds[fit])
 

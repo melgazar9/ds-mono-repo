@@ -128,7 +128,7 @@ def calc_sortino_ratio(
             return 0.0
 
     # Use sample standard deviation (ddof=1) for consistency with Sharpe
-    downside_deviation = np.sqrt(np.mean(downside_returns**2))
+    downside_deviation = np.sqrt(np.mean(downside_returns ** 2))
 
     if downside_deviation == 0:
         return 0.0 if mean_excess_return >= 0 else -np.inf

@@ -20,6 +20,8 @@ from gap_backtest_utils import (
 
 DEBUG = True
 
+REMOVE_LOW_QUALITY_TICKERS = False
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -40,10 +42,11 @@ class BacktestParams:
     slippage_amount: float = 0.61
     slippage_mode: str = "partway"
     segment_cols: List[str] = None
+    num_workers: int = 1
 
     def __post_init__(self):
         if self.segment_cols is None:
-            self.segment_cols = ["market", "vix_bucket", "volume_bucket"]
+            self.segment_cols = ["market", "vix_bucket", "daily_volume_bucket"]
 
 
 def run_single_backtest_worker(
@@ -68,7 +71,7 @@ def run_single_backtest_worker(
                 f"Worker PID {os.getpid()}: Loading previous data from {Path(previous_file_path).name}"
             )
             temp_loader = PolygonBarLoader(
-                cur_day_file=previous_file_path, load_method="pandas", df_prev=None
+                cur_day_file=previous_file_path, load_method="pandas", df_prev=None, remove_low_quality_tickers=REMOVE_LOW_QUALITY_TICKERS,
             )
             temp_loader.df_corporate_actions = corporate_actions_data
             df_prev = temp_loader.load_raw_intraday_bars()
@@ -126,26 +129,26 @@ class GapBacktestRunner(BacktestEngine):
     # Class-level shared corporate actions data
     _df_corporate_actions = None
 
-    def __init__(self, num_workers: int = 1):
+    def __init__(self, params: BacktestParams):
+        self.params = params
         super().__init__(
-            data_loader=None,  # set dynamically
+            data_loader=None,
             risk_manager=GapStrategyRiskManager(),
             position_manager=GapPositionManager(
-                overnight_gap=0.125,
-                bet_amount=2000,
-                stop_loss_pct=0.20,
-                take_profit_pct=0.33,
-                entry_cutoff_time_cst=dtime(13, 45),
-                flatten_trade_time_cst=dtime(14, 55),
-                slippage_amount=0.61,
-                slippage_mode="partway",
+                overnight_gap=params.overnight_gap,
+                bet_amount=params.bet_amount,
+                stop_loss_pct=params.stop_loss_pct,
+                take_profit_pct=params.take_profit_pct,
+                entry_cutoff_time_cst=dtime(*params.entry_cutoff_time_cst),
+                flatten_trade_time_cst=dtime(*params.flatten_trade_time_cst),
+                slippage_amount=params.slippage_amount,
+                slippage_mode=params.slippage_mode,
             ),
-            strategy_evaluator=GapStrategyEvaluator(
-                segment_cols=["market", "vix_bucket", "volume_bucket"]
-            ),
+            strategy_evaluator=GapStrategyEvaluator(segment_cols=params.segment_cols),
         )
 
-        max_cached_files = 10
+        num_workers = params.num_workers
+        max_cached_files = 30
         if num_workers > max_cached_files:
             raise ValueError(
                 f"num_workers ({num_workers}) cannot be greater than max_cached_files ({max_cached_files}). "
@@ -172,7 +175,7 @@ class GapBacktestRunner(BacktestEngine):
         """Load corporate actions data once and cache it"""
         if GapBacktestRunner._df_corporate_actions is None:
             logging.info("🔄 Loading corporate actions data once for all workers...")
-            temp_loader = PolygonBarLoader(cur_day_file="dummy", load_method="pandas")
+            temp_loader = PolygonBarLoader(cur_day_file="dummy", load_method="pandas", remove_low_quality_tickers=REMOVE_LOW_QUALITY_TICKERS)
             temp_loader.pull_cached_corporate_actions()
             GapBacktestRunner._df_corporate_actions = temp_loader.df_corporate_actions
             logging.info("✅ Corporate actions data loaded and cached for all workers")
@@ -183,7 +186,7 @@ class GapBacktestRunner(BacktestEngine):
     def setup_data_loader(self, file_path: str, df_prev=None):
         """Set up the data loader with current file and previous data"""
         self.data_loader = PolygonBarLoader(
-            cur_day_file=file_path, load_method="pandas", df_prev=df_prev
+            cur_day_file=file_path, load_method="pandas", df_prev=df_prev, remove_low_quality_tickers=REMOVE_LOW_QUALITY_TICKERS
         )
 
         if GapBacktestRunner._df_corporate_actions is not None:
@@ -216,31 +219,19 @@ class GapBacktestRunner(BacktestEngine):
     ):
         """Centralized result saving logic"""
         self.strategy_evaluator.simplified_daily_summary.to_frame().T.to_csv(
-            result_files["simplified"],
-            index=False,
-            header=header,
-            mode="a",
+            result_files["simplified"], index=False, header=header, mode="a"
         )
 
         self.strategy_evaluator.daily_summary_by_ticker.to_csv(
-            result_files["by_ticker"],
-            index=False,
-            header=header,
-            mode="a",
+            result_files["by_ticker"], index=False, header=header, mode="a"
         )
 
         self.strategy_evaluator.daily_summary_with_segments.to_csv(
-            result_files["by_segment"],
-            index=False,
-            header=header,
-            mode="a",
+            result_files["by_segment"], index=False, header=header, mode="a"
         )
 
         self.strategy_evaluator.daily_summary_by_ticker_and_segment.to_csv(
-            result_files["by_ticker_and_segment"],
-            index=False,
-            header=header,
-            mode="a",
+            result_files["by_ticker_and_segment"], index=False, header=header, mode="a"
         )
 
     def _save_results(self, all_results: List[dict], result_files: Dict[str, Path]):
@@ -394,7 +385,6 @@ class GapBacktestRunner(BacktestEngine):
         before they can be deleted by the StreamingFileProcessor
         """
         corporate_actions_data = self._load_corporate_actions()
-
         logging.info(f"🚀 Starting parallel processing with {self.num_workers} workers")
         logging.info(
             f"📦 Respecting max_cached_files={self.max_cached_files} with file protection"
@@ -404,7 +394,7 @@ class GapBacktestRunner(BacktestEngine):
         protected_files: Dict[int, Path] = {}
 
         loop = asyncio.get_event_loop()
-        params = BacktestParams()
+        params = self.params
 
         with ProcessPoolExecutor(max_workers=self.num_workers) as executor:
             file_index = 0
@@ -501,14 +491,14 @@ class GapBacktestRunner(BacktestEngine):
         )
 
 
-async def main(num_workers: int = 1):
+async def main(params: BacktestParams):
     """Main entry point"""
-    runner = GapBacktestRunner(num_workers=num_workers)
+    runner = GapBacktestRunner(params=params)
     await runner.run_backtest_sequence()
 
 
 if __name__ == "__main__":
-    NUM_WORKERS = 3
+    params = BacktestParams(num_workers=20)
 
     # 1. If gap from previous day close to either pre-market open or market open is >= X% (adjusted) then trigger trade entry
     # 2. Iterate over different stop and take loss percentages
@@ -516,4 +506,4 @@ if __name__ == "__main__":
     # 4. All positions must be flattened by 14:55 CST
     # 5. Segment by groups --> HTB / short interest/volume buckets, market cap bucket, industry, VIX range, etc.
 
-    asyncio.run(main(NUM_WORKERS))
+    asyncio.run(main(params))

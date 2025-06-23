@@ -240,10 +240,12 @@ class PolygonBarLoader(DataLoader):
         cur_day_file=None,
         df_prev=None,
         remove_ma_tickers_from_intraday_bars=True,
+        remove_low_quality_tickers=False,
     ):
         self.load_method = load_method
         self.cur_day_file = cur_day_file
         self.df_prev = df_prev
+        self.remove_low_quality_tickers = remove_low_quality_tickers
 
         self.df_corporate_actions = None
         self.remove_ma_tickers_from_intraday_bars = remove_ma_tickers_from_intraday_bars
@@ -372,6 +374,52 @@ class PolygonBarLoader(DataLoader):
             f"Removed {len(removed_records)} records from df from M&A corporate actions."
         )
         self.df = merged[merged["_merge"] == "left_only"].drop(columns=["_merge"])
+        self.df = self.df.sort_values(by=["timestamp", "ticker"])
+
+    def _remove_low_quality_tickers(
+        self, dollar_threshold=5000000, min_avg_close_price=5
+    ):
+        volume_by_ticker = (
+            self.df[
+                (self.df["timestamp_cst"].dt.time >= dtime(8, 0))
+                & (self.df["timestamp_cst"].dt.time <= dtime(15, 0))
+            ]
+            .groupby(["ticker", "date"])[["volume", "close"]]
+            .agg({"volume": "sum", "close": "mean"})
+        )
+        volume_by_ticker["dollar_volume"] = (
+            volume_by_ticker["close"] * volume_by_ticker["volume"]
+        )
+
+        good_volume_tickers = (
+            volume_by_ticker[volume_by_ticker["dollar_volume"] >= dollar_threshold]
+            .index.get_level_values("ticker")
+            .tolist()
+        )
+
+        avg_close_by_ticker = (
+            self.df[
+                (self.df["timestamp_cst"].dt.time >= dtime(8, 0))
+                & (self.df["timestamp_cst"].dt.time <= dtime(15, 0))
+            ]
+            .groupby(["ticker", "date"])["close"]
+            .last()
+        )
+
+        good_price_tickers = (
+            avg_close_by_ticker[avg_close_by_ticker >= min_avg_close_price]
+            .index.get_level_values("ticker")
+            .tolist()
+        )
+
+        good_tickers = list(set(good_volume_tickers) & set(good_price_tickers))
+        tickers_before = self.df["ticker"].nunique()
+        self.df = self.df[self.df["ticker"].isin(good_tickers)]
+        tickers_after = self.df["ticker"].nunique()
+        logging.info(
+            f"Removed {tickers_before - tickers_after}/{tickers_before} ({((tickers_before - tickers_after) / tickers_before)*100:.2f}%) low quality tickers."
+        )
+        self.df = self.df.sort_values(by=["timestamp", "ticker"])
 
     def load_raw_intraday_bars(self) -> Union[pd.DataFrame, pl.DataFrame]:
         """Loads bars data (e.g. 1-minute) from polygon flat files."""
@@ -432,6 +480,8 @@ class PolygonBarLoader(DataLoader):
 
         rows_before = self.df.shape[0]
         self.df = self._add_prev_us_ohlcv()
+        if self.remove_low_quality_tickers:
+            self._remove_low_quality_tickers()
         self.df = self._price_gap_with_split_or_dividend()
         assert (
             self.df.shape[0] == rows_before
@@ -447,9 +497,9 @@ class PolygonBarLoader(DataLoader):
         """Adds prev ohlcv for pre-market, post-market, and regular market hours."""
         prev_pmkt_us_ohlcv = (
             self.df_prev[
-                (self.df_prev["timestamp_cst"].dt.time >= dtime(3, 0)) &
-                (self.df_prev["timestamp_cst"].dt.time < dtime(8, 30))
-                ]
+                (self.df_prev["timestamp_cst"].dt.time >= dtime(3, 0))
+                & (self.df_prev["timestamp_cst"].dt.time < dtime(8, 30))
+            ]
             .groupby(["ticker", "date"], sort=False)
             .agg(
                 prev_pmkt_open=("open", "first"),
@@ -464,8 +514,8 @@ class PolygonBarLoader(DataLoader):
 
         prev_market_us_ohlcv = (
             self.df_prev[
-                (self.df_prev["timestamp_cst"].dt.time >= dtime(8, 30)) &
-                (self.df_prev["timestamp_cst"].dt.time <= dtime(15, 0))
+                (self.df_prev["timestamp_cst"].dt.time >= dtime(8, 30))
+                & (self.df_prev["timestamp_cst"].dt.time <= dtime(15, 0))
             ]
             .groupby(["ticker", "date"], sort=False)
             .agg(
@@ -481,8 +531,8 @@ class PolygonBarLoader(DataLoader):
 
         prev_after_hours_us_ohlcv = (
             self.df_prev[
-                (self.df_prev["timestamp_cst"].dt.time > dtime(15, 0)) &
-                (self.df_prev["timestamp_cst"].dt.time <= dtime(20, 0))
+                (self.df_prev["timestamp_cst"].dt.time > dtime(15, 0))
+                & (self.df_prev["timestamp_cst"].dt.time <= dtime(20, 0))
             ]
             .groupby(["ticker", "date"], sort=False)
             .agg(
@@ -510,6 +560,7 @@ class PolygonBarLoader(DataLoader):
             .merge(prev_after_hours_us_ohlcv, on=["ticker", "prev_date"], how="left")
         )
 
+        self.df = self.df.sort_values(by=["timestamp", "ticker"])
         return self.df
 
     def _price_gap_with_split_or_dividend(self):
@@ -525,7 +576,6 @@ class PolygonBarLoader(DataLoader):
                 "load_method polars not implemented yet for detecting splits/dividends price gap. Data will be"
                 "converted to a pandas df and converted back to polars for this step."
             )
-
 
         self.df = self.df.merge(
             self.df_corporate_actions,
@@ -668,4 +718,6 @@ class PolygonBarLoader(DataLoader):
                 "robust_open_adj_state",
             ]
         ]
-        return self.df[keep_columns]
+        self.df = self.df[keep_columns]
+        self.df = self.df.sort_values(by=["timestamp", "ticker"])
+        return self.df

@@ -19,7 +19,9 @@ if ENVIRONMENT is None:
     raise ValueError(
         "Environment variable ENVIRONMENT is not set. Please set it to 'dev', 'staging', or 'production'."
     )
-TIMEOUT_SECONDS = 777600  # 9 days just for safety, but should not be needed... set this high because of the first stream
+TIMEOUT_SECONDS = (
+    777600
+)  # 9 days just for safety, but should not be needed... set this high because of the first stream
 
 
 def ensure_dir(path):
@@ -228,9 +230,7 @@ def setup_logging():
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.StreamHandler(sys.stdout),
-        ],
+        handlers=[logging.StreamHandler(sys.stdout)],
     )
     logging.info(f"\n*** Running environment {ENVIRONMENT}. ***\n")
     return

@@ -346,8 +346,7 @@ def upload_csv_to_postgres(
             copy_command = sql.SQL(
                 "COPY {schema}.{table} FROM STDIN WITH (FORMAT CSV, NULL '')"
             ).format(
-                schema=sql.Identifier(schema_name),
-                table=sql.Identifier(table_name),
+                schema=sql.Identifier(schema_name), table=sql.Identifier(table_name)
             )
             with open(local_file_path, "r") as f:
                 # Use copy_expert with a file-like object
