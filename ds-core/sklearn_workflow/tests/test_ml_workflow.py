@@ -20,18 +20,13 @@ X_test.loc[:, "dataset_split"] = "test"
 df = pd.concat(
     [
         pd.concat([X_train, X_val, X_test]),
-        pd.concat([pd.Series(y_train), pd.Series(y_val), pd.Series(y_test)]).rename(
-            "target"
-        ),
+        pd.concat([pd.Series(y_train), pd.Series(y_val), pd.Series(y_test)]).rename("target"),
     ],
     axis=1,
 )
 
 mlf = SklearnMLFlow(
-    df=df,
-    target_name="target",
-    input_features=data["feature_names"],
-    algorithms=[XGBClassifier(), LGBMClassifier()],
+    df=df, target_name="target", input_features=data["feature_names"], algorithms=[XGBClassifier(), LGBMClassifier()]
 )
 
 mlf.transform_features()

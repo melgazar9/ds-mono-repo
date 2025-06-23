@@ -165,9 +165,7 @@ def get_bq_table_schema(table_name: str):
         print(f"Fetched schema for BigQuery table: {table_name}")
         return table.schema
     except Exception as e:
-        print(
-            f"❌ Error fetching BigQuery schema for {table_name}: {e}", file=sys.stderr
-        )
+        print(f"❌ Error fetching BigQuery schema for {table_name}: {e}", file=sys.stderr)
         raise
 
 
@@ -178,10 +176,7 @@ def has_complex_types(schema, level=0):
     for field in schema:
         # print(f"{indent}  Field: {field.name}, Type: {field.field_type.upper()}, Mode: {field.mode.upper()}") # Debug print field details
         # --- CORRECTED CHECK HERE ---
-        if (
-            field.field_type.upper() in ["ARRAY", "STRUCT"]
-            or field.mode.upper() == "REPEATED"
-        ):
+        if field.field_type.upper() in ["ARRAY", "STRUCT"] or field.mode.upper() == "REPEATED":
             # --- END CORRECTED CHECK ---
             print(
                 f"{indent}  DEBUG: Detected complex/repeated type '{field.field_type.upper()}'/'{field.mode.upper()}' for field '{field.name}'."
@@ -215,10 +210,7 @@ def map_bq_type_to_postgres(bq_type: str, mode: str) -> str:
         )
         return "JSONB"
     else:
-        print(
-            f"Warning: Unhandled BigQuery type {bq_type} ({mode}). Mapping to TEXT.",
-            file=sys.stderr,
-        )
+        print(f"Warning: Unhandled BigQuery type {bq_type} ({mode}). Mapping to TEXT.", file=sys.stderr)
         return "TEXT"
 
 
@@ -228,16 +220,10 @@ def create_pg_table_from_bq_schema(table_name: str):
     cols = []
     for field in schema:
         pg_type = map_bq_type_to_postgres(field.field_type, field.mode)
-        cols.append(
-            sql.SQL("{col_name} {pg_type}").format(
-                col_name=sql.Identifier(field.name), pg_type=sql.SQL(pg_type)
-            )
-        )
+        cols.append(sql.SQL("{col_name} {pg_type}").format(col_name=sql.Identifier(field.name), pg_type=sql.SQL(pg_type)))
 
     ddl = sql.SQL("CREATE TABLE IF NOT EXISTS {schema}.{table} (\n  {cols}\n);").format(
-        schema=sql.Identifier(PG_SCHEMA),
-        table=sql.Identifier(table_name),
-        cols=sql.SQL(",\n  ").join(cols),
+        schema=sql.Identifier(PG_SCHEMA), table=sql.Identifier(table_name), cols=sql.SQL(",\n  ").join(cols)
     )
 
     conn = None
@@ -245,19 +231,12 @@ def create_pg_table_from_bq_schema(table_name: str):
         conn = psycopg2.connect(**POSTGRES_CONN_PARAMS)
         conn.autocommit = False
         with conn.cursor() as cur:
-            cur.execute(
-                sql.SQL("CREATE SCHEMA IF NOT EXISTS {};").format(
-                    sql.Identifier(PG_SCHEMA)
-                )
-            )
+            cur.execute(sql.SQL("CREATE SCHEMA IF NOT EXISTS {};").format(sql.Identifier(PG_SCHEMA)))
             cur.execute(ddl)
         conn.commit()
         print(f"PostgreSQL table {PG_SCHEMA}.{table_name} created or already exists.")
     except Exception as e:
-        print(
-            f"❌ Error creating PostgreSQL table {PG_SCHEMA}.{table_name}: {e}",
-            file=sys.stderr,
-        )
+        print(f"❌ Error creating PostgreSQL table {PG_SCHEMA}.{table_name}: {e}", file=sys.stderr)
         if conn:
             conn.rollback()
         raise
@@ -281,18 +260,12 @@ def export_bq_to_gcs(table_name: str, bucket_name: str, destination_prefix: str)
     try:
         source_table_ref = bq_client.get_table(source_table_id)
     except Exception as e:
-        print(
-            f"❌ Error getting source table reference {source_table_id}: {e}",
-            file=sys.stderr,
-        )
+        print(f"❌ Error getting source table reference {source_table_id}: {e}", file=sys.stderr)
         raise
 
     try:
         extract_job = bq_client.extract_table(
-            source_table_ref,
-            destination_uri,
-            job_config=job_config,
-            location=source_table_ref.location,
+            source_table_ref, destination_uri, job_config=job_config, location=source_table_ref.location
         )
 
         extract_job.result()  # Wait for the job to complete
@@ -306,9 +279,7 @@ def export_bq_to_gcs(table_name: str, bucket_name: str, destination_prefix: str)
 
     bucket = storage_client.get_bucket(bucket_name)
     gcs_files = [
-        blob.name
-        for blob in bucket.list_blobs(prefix=f"{destination_prefix}/{table_name}/")
-        if blob.name.endswith(".csv")
+        blob.name for blob in bucket.list_blobs(prefix=f"{destination_prefix}/{table_name}/") if blob.name.endswith(".csv")
     ]
     print(f"Found {len(gcs_files)} exported files in GCS for {table_name}.")
     return gcs_files
@@ -332,20 +303,14 @@ def download_gcs_files(bucket_name: str, gcs_file_names: list, local_dir: str):
     return local_paths
 
 
-def upload_csv_to_postgres(
-    local_file_path: str, table_name: str, schema_name: str = "bigquery_migration"
-):
-    print(
-        f"Uploading {os.path.basename(local_file_path)} to {schema_name}.{table_name}..."
-    )
+def upload_csv_to_postgres(local_file_path: str, table_name: str, schema_name: str = "bigquery_migration"):
+    print(f"Uploading {os.path.basename(local_file_path)} to {schema_name}.{table_name}...")
     conn = None
     try:
         conn = psycopg2.connect(**POSTGRES_CONN_PARAMS)
         with conn.cursor() as cur:
             # Use NULL '' for empty strings in COPY
-            copy_command = sql.SQL(
-                "COPY {schema}.{table} FROM STDIN WITH (FORMAT CSV, NULL '')"
-            ).format(
+            copy_command = sql.SQL("COPY {schema}.{table} FROM STDIN WITH (FORMAT CSV, NULL '')").format(
                 schema=sql.Identifier(schema_name), table=sql.Identifier(table_name)
             )
             with open(local_file_path, "r") as f:
@@ -354,10 +319,7 @@ def upload_csv_to_postgres(
         conn.commit()
         print(f"✅ Uploaded {os.path.basename(local_file_path)}.")
     except Exception as e:
-        print(
-            f"❌ Error uploading {os.path.basename(local_file_path)} to {schema_name}.{table_name}: {e}",
-            file=sys.stderr,
-        )
+        print(f"❌ Error uploading {os.path.basename(local_file_path)} to {schema_name}.{table_name}: {e}", file=sys.stderr)
         if conn:
             conn.rollback()
         raise
@@ -390,10 +352,7 @@ def delete_local_files(local_file_paths: list):
         try:
             os.remove(local_path)
         except Exception as e:
-            print(
-                f"⚠️ Warning: Error deleting local file {local_path}: {e}",
-                file=sys.stderr,
-            )
+            print(f"⚠️ Warning: Error deleting local file {local_path}: {e}", file=sys.stderr)
     print("Local file deletion complete.")
 
 
@@ -459,45 +418,26 @@ def process_table(table_name: str):
         local_temp_dir = tempfile.mkdtemp(prefix="bq_pg_export_")
         print(f"Table specific temporary directory: {local_temp_dir}")
 
-        gcs_exported_files = export_bq_to_gcs(
-            table_name, GCS_BUCKET_NAME, GCS_DESTINATION_PREFIX
-        )
+        gcs_exported_files = export_bq_to_gcs(table_name, GCS_BUCKET_NAME, GCS_DESTINATION_PREFIX)
         if not gcs_exported_files:
-            print(
-                f"❌ No files exported to GCS for {table_name}. Aborting table processing.",
-                file=sys.stderr,
-            )
+            print(f"❌ No files exported to GCS for {table_name}. Aborting table processing.", file=sys.stderr)
             return
 
-        downloaded_local_files = download_gcs_files(
-            GCS_BUCKET_NAME, gcs_exported_files, local_temp_dir
-        )
+        downloaded_local_files = download_gcs_files(GCS_BUCKET_NAME, gcs_exported_files, local_temp_dir)
         if not downloaded_local_files:
-            print(
-                f"❌ No files downloaded locally for {table_name}. Aborting table processing.",
-                file=sys.stderr,
-            )
+            print(f"❌ No files downloaded locally for {table_name}. Aborting table processing.", file=sys.stderr)
             return
 
-        with tqdm(
-            total=len(downloaded_local_files),
-            unit="files",
-            desc=f"Uploading {table_name} files",
-        ) as pbar:
+        with tqdm(total=len(downloaded_local_files), unit="files", desc=f"Uploading {table_name} files") as pbar:
             for local_file_path in downloaded_local_files:
                 try:
                     upload_csv_to_postgres(local_file_path, table_name)
                     pbar.update(1)
                 except Exception as upload_e:
-                    print(
-                        f"❌ Error uploading file {local_file_path}. Aborting table processing.",
-                        file=sys.stderr,
-                    )
+                    print(f"❌ Error uploading file {local_file_path}. Aborting table processing.", file=sys.stderr)
                     raise upload_e  # Stop processing this table on upload failure
 
-        print(
-            f"Finished uploading all files for {table_name}. Verifying row count in PostgreSQL..."
-        )
+        print(f"Finished uploading all files for {table_name}. Verifying row count in PostgreSQL...")
         conn = None
         rows_in_pg = -1  # Initialize to -1 in case verification fails
         try:
@@ -505,17 +445,13 @@ def process_table(table_name: str):
             with conn.cursor() as cur:
                 cur.execute(
                     sql.SQL("SELECT COUNT(*) FROM {schema}.{table}").format(
-                        schema=sql.Identifier(PG_SCHEMA),
-                        table=sql.Identifier(table_name),
+                        schema=sql.Identifier(PG_SCHEMA), table=sql.Identifier(table_name)
                     )
                 )
                 rows_in_pg = cur.fetchone()[0]
 
         except Exception as count_e:
-            print(
-                f"⚠️ Warning: Could not get final row count from PostgreSQL for {table_name}: {count_e}",
-                file=sys.stderr,
-            )
+            print(f"⚠️ Warning: Could not get final row count from PostgreSQL for {table_name}: {count_e}", file=sys.stderr)
             rows_in_pg = -1  # Ensure it's -1 if count fails
 
         finally:
@@ -530,9 +466,7 @@ def process_table(table_name: str):
                 file=sys.stderr,
             )
         elif rows_in_pg != -1:  # Only print match if we successfully got the PG count
-            print(
-                f"✅ PostgreSQL row count ({rows_in_pg}) matches BigQuery count ({total_rows_bq})."
-            )
+            print(f"✅ PostgreSQL row count ({rows_in_pg}) matches BigQuery count ({total_rows_bq}).")
         # else: if rows_in_pg is -1, the warning above is sufficient
 
         print(
@@ -557,10 +491,7 @@ def process_table(table_name: str):
                 # Use shutil.rmtree to remove directory and its contents
                 shutil.rmtree(local_temp_dir, ignore_errors=True)
             except Exception as e:  # Catch any exception during removal
-                print(
-                    f"⚠️ Warning: Error removing temp directory {local_temp_dir}: {e}",
-                    file=sys.stderr,
-                )
+                print(f"⚠️ Warning: Error removing temp directory {local_temp_dir}: {e}", file=sys.stderr)
 
         # Keeping GCS files for manual cleanup as per previous decision
         if gcs_exported_files:
@@ -573,23 +504,14 @@ def process_table(table_name: str):
 def main():
     # Add checks for required environment variables or defined constants
     if not all([GCP_PROJECT_ID, BQ_DATASET, POSTGRES_CONN_PARAMS.get("password")]):
-        print(
-            "‼️ ERROR: Missing required configuration (GCP_PROJECT_ID, BQ_DATASET, POSTGRES_PASSWORD).",
-            file=sys.stderr,
-        )
-        print(
-            "Ensure environment variables are set or constants are defined.",
-            file=sys.stderr,
-        )
+        print("‼️ ERROR: Missing required configuration (GCP_PROJECT_ID, BQ_DATASET, POSTGRES_PASSWORD).", file=sys.stderr)
+        print("Ensure environment variables are set or constants are defined.", file=sys.stderr)
         sys.exit(1)
 
     # Add a check for the correct GCS bucket name
     # Assuming 'meltano_tap_yfinance' is the expected bucket name
     if GCS_BUCKET_NAME != "meltano_tap_yfinance":
-        print(
-            f"⚠️ Warning: GCS_BUCKET_NAME is set to '{GCS_BUCKET_NAME}'. Expected 'meltano_tap_yfinance'.",
-            file=sys.stderr,
-        )
+        print(f"⚠️ Warning: GCS_BUCKET_NAME is set to '{GCS_BUCKET_NAME}'. Expected 'meltano_tap_yfinance'.", file=sys.stderr)
         # You might want to add a sys.exit(1) here if the bucket name is critical
         # sys.exit(1)
 
@@ -601,9 +523,7 @@ def main():
         print("No tables found to process or list retrieval failed. Exiting.")
         return
 
-    print(
-        f"Initiating migration for {len(tables_to_process)} table(s) using GCS export method..."
-    )
+    print(f"Initiating migration for {len(tables_to_process)} table(s) using GCS export method...")
 
     # Added a comment to allow the loop to continue after failure
     # To make the script continue processing other tables even if one fails,

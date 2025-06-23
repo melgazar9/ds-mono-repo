@@ -66,9 +66,7 @@ for table in tables:
             df_yfinance = getattr(t, f"{table}")
 
     except Exception:
-        raise ValueError(
-            f"Attribute {table} does not exist in the yfinance library anymore!"
-        )
+        raise ValueError(f"Attribute {table} does not exist in the yfinance library anymore!")
 
     if table in ["fast_info"]:
         cols = pd.DataFrame(df_yfinance).T.iloc[0].values
@@ -83,36 +81,20 @@ for table in tables:
 
     try:
         df_postgres = db.run_sql(f"select * from tap_yfinance_dev.{table} limit 1")
-        df_postgres = df_postgres[
-            [i for i in df_postgres.columns if i not in ignore_cols]
-        ]
+        df_postgres = df_postgres[[i for i in df_postgres.columns if i not in ignore_cols]]
     except Exception:
-        raise ValueError(
-            f"Attribute tap_yfinance_dev.{table} does not exist in the postgres db!"
-        )
+        raise ValueError(f"Attribute tap_yfinance_dev.{table} does not exist in the postgres db!")
 
     try:
         # if table is wide
         df_missing_yf_i = pd.DataFrame(
-            {
-                "column": [
-                    i
-                    for i in clean_strings(df_postgres.columns)
-                    if i not in clean_strings(df_yfinance.columns)
-                ]
-            }
+            {"column": [i for i in clean_strings(df_postgres.columns) if i not in clean_strings(df_yfinance.columns)]}
         )
         df_missing_yf_i["table"] = table
         df_missing_yf_i = df_missing_yf_i[["table", "column"]]
 
         df_missing_db_i = pd.DataFrame(
-            {
-                "column": [
-                    i
-                    for i in clean_strings(df_yfinance.columns)
-                    if i not in clean_strings(df_postgres.columns)
-                ]
-            }
+            {"column": [i for i in clean_strings(df_yfinance.columns) if i not in clean_strings(df_postgres.columns)]}
         )
         df_missing_db_i["table"] = table
         df_missing_db_i = df_missing_db_i[["table", "column"]]
@@ -120,25 +102,13 @@ for table in tables:
         try:
             # if table is long
             df_missing_yf_i = pd.DataFrame(
-                {
-                    "column": [
-                        i
-                        for i in clean_strings(df_postgres.columns)
-                        if i not in clean_strings(df_yfinance.index)
-                    ]
-                }
+                {"column": [i for i in clean_strings(df_postgres.columns) if i not in clean_strings(df_yfinance.index)]}
             )
             df_missing_yf_i["table"] = table
             df_missing_yf_i = df_missing_yf_i[["table", "column"]]
 
             df_missing_db_i = pd.DataFrame(
-                {
-                    "column": [
-                        i
-                        for i in clean_strings(df_yfinance.index)
-                        if i not in clean_strings(df_postgres.columns)
-                    ]
-                }
+                {"column": [i for i in clean_strings(df_yfinance.index) if i not in clean_strings(df_postgres.columns)]}
             )
             df_missing_db_i["table"] = table
             df_missing_db_i = df_missing_db_i[["table", "column"]]

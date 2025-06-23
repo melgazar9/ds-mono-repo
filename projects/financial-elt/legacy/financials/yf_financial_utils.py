@@ -5,9 +5,7 @@ class YFinanceFinancialsGetter:
     def __init__(self, tickers):
         self.tickers = [tickers] if isinstance(tickers, str) else tickers
 
-        assert isinstance(
-            tickers, (tuple, list)
-        ), "parameter tickers must be in the format str, list, or tuple"
+        assert isinstance(tickers, (tuple, list)), "parameter tickers must be in the format str, list, or tuple"
 
         self.financials_to_get = (
             "actions",
@@ -44,18 +42,14 @@ class YFinanceFinancialsGetter:
             self.dict_of_financials["actions"] = pd.concat(
                 [
                     self.dict_of_financials["actions"],
-                    t.actions.reset_index()
-                    .assign(ticker=ticker)
-                    .pipe(lambda x: clean_columns(x)),
+                    t.actions.reset_index().assign(ticker=ticker).pipe(lambda x: clean_columns(x)),
                 ]
             )
 
             self.dict_of_financials["analysis"] = pd.concat(
                 [
                     self.dict_of_financials["analysis"],
-                    t.analysis.reset_index()
-                    .assign(ticker=ticker)
-                    .pipe(lambda x: clean_columns(x)),
+                    t.analysis.reset_index().assign(ticker=ticker).pipe(lambda x: clean_columns(x)),
                 ]
             )
 
@@ -70,37 +64,27 @@ class YFinanceFinancialsGetter:
             )
 
             self.dict_of_financials["calendar"] = pd.concat(
-                [
-                    self.dict_of_financials["calendar"],
-                    t.calendar.T.assign(ticker=ticker).pipe(lambda x: clean_columns(x)),
-                ]
+                [self.dict_of_financials["calendar"], t.calendar.T.assign(ticker=ticker).pipe(lambda x: clean_columns(x))]
             )
 
             self.dict_of_financials["cashflow"] = pd.concat(
                 [
                     self.dict_of_financials["cashflow"],
-                    t.cashflow.T.rename_axis(index="date")
-                    .reset_index()
-                    .assign(ticker=ticker)
-                    .pipe(lambda x: clean_columns(x)),
+                    t.cashflow.T.rename_axis(index="date").reset_index().assign(ticker=ticker).pipe(lambda x: clean_columns(x)),
                 ]
             )
 
             self.dict_of_financials["dividends"] = pd.concat(
                 [
                     self.dict_of_financials["dividends"],
-                    t.dividends.reset_index()
-                    .assign(ticker=ticker)
-                    .pipe(lambda x: clean_columns(x)),
+                    t.dividends.reset_index().assign(ticker=ticker).pipe(lambda x: clean_columns(x)),
                 ]
             )
 
             self.dict_of_financials["earnings"] = pd.concat(
                 [
                     self.dict_of_financials["earnings"],
-                    t.earnings.reset_index()
-                    .assign(ticker=ticker)
-                    .pipe(lambda x: clean_columns(x)),
+                    t.earnings.reset_index().assign(ticker=ticker).pipe(lambda x: clean_columns(x)),
                 ]
             )
 
@@ -174,9 +158,7 @@ class YFinanceFinancialsGetter:
             self.dict_of_financials["quarterly_earnings"] = pd.concat(
                 [
                     self.dict_of_financials["quarterly_earnings"],
-                    t.quarterly_earnings.reset_index()
-                    .assign(ticker=ticker)
-                    .pipe(lambda x: clean_columns(x)),
+                    t.quarterly_earnings.reset_index().assign(ticker=ticker).pipe(lambda x: clean_columns(x)),
                 ]
             )
 
@@ -193,18 +175,14 @@ class YFinanceFinancialsGetter:
             self.dict_of_financials["recommendations"] = pd.concat(
                 [
                     self.dict_of_financials["recommendations"],
-                    t.recommendations.reset_index()
-                    .assign(ticker=ticker)
-                    .pipe(lambda x: clean_columns(x)),
+                    t.recommendations.reset_index().assign(ticker=ticker).pipe(lambda x: clean_columns(x)),
                 ]
             )
 
             self.dict_of_financials["shares"] = pd.concat(
                 [
                     self.dict_of_financials["shares"],
-                    t.shares.reset_index()
-                    .assign(ticker=ticker)
-                    .pipe(lambda x: clean_columns(x)),
+                    t.shares.reset_index().assign(ticker=ticker).pipe(lambda x: clean_columns(x)),
                 ]
             )
 

@@ -10,9 +10,7 @@ POSTGRES_DIALECT = os.getenv("POSTGRES_DIALECT")
 conn = PostgresConnect()
 
 
-def insert_from_source_to_target(
-    db_params, source_schema, source_table, target_schema, target_table
-):
+def insert_from_source_to_target(db_params, source_schema, source_table, target_schema, target_table):
     conn = PostgresConnect()
     cur = conn.cursor()
 

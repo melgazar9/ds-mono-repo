@@ -23,9 +23,7 @@ class RDBMSConnect:
         raise ValueError("method run_sql must be overridden.")
 
 
-rdbms_method_enforcer = MetaclassMethodEnforcer(
-    required_methods=["connect", "run_sql"], parent_class="RDBMSConnect"
-)
+rdbms_method_enforcer = MetaclassMethodEnforcer(required_methods=["connect", "run_sql"], parent_class="RDBMSConnect")
 MetaclassRDBMSEnforcer = rdbms_method_enforcer.enforce()
 
 
@@ -112,13 +110,9 @@ class MySQLConnect(metaclass=MetaclassRDBMSEnforcer):
             if query.strip().lower().startswith("select"):
                 df = pd.read_sql(query, con=self.con, **read_sql_kwargs)
             elif df_type == "polars":
-                df = pl.read_database(
-                    query=query, connection=self.con, **read_sql_kwargs
-                )
+                df = pl.read_database(query=query, connection=self.con, **read_sql_kwargs)
             else:
-                raise ValueError(
-                    f"df_type is set to {df_type} but only pandas and polars are supported."
-                )
+                raise ValueError(f"df_type is set to {df_type} but only pandas and polars are supported.")
 
             if not self.keep_session_alive:
                 self.disconnect()
@@ -235,9 +229,7 @@ class PostgresConnect(metaclass=MetaclassRDBMSEnforcer):
         df_type: if returning a df then it will return a df of type df_type (currently only supports pandas and polars).
         **read_sql_kwargs: kwargs passed to pd.read_sql or pl.read_database.
         """
-        is_batched_read = df_type == "polars" and read_sql_kwargs.get(
-            "iter_batches", False
-        )
+        is_batched_read = df_type == "polars" and read_sql_kwargs.get("iter_batches", False)
 
         if is_batched_read and (self.con is None or self.con.closed):
             # For batched reads, connection MUST be managed by context manager
@@ -260,9 +252,7 @@ class PostgresConnect(metaclass=MetaclassRDBMSEnforcer):
                 return df
             elif df_type == "polars":
                 try:
-                    df = pl.read_database(
-                        query=query, connection=self.con, **read_sql_kwargs
-                    )
+                    df = pl.read_database(query=query, connection=self.con, **read_sql_kwargs)
                 finally:
                     if not self.keep_session_alive and not is_batched_read:
                         self.disconnect()
@@ -270,9 +260,7 @@ class PostgresConnect(metaclass=MetaclassRDBMSEnforcer):
             else:
                 if not self.keep_session_alive and not is_batched_read:
                     self.disconnect()
-                raise ValueError(
-                    f"df_type is set to {df_type} but only pandas and polars are supported."
-                )
+                raise ValueError(f"df_type is set to {df_type} but only pandas and polars are supported.")
         else:
             try:
                 query_obj = text(query)
@@ -505,9 +493,7 @@ class NoSQLConnect:
         raise ValueError("method run_sql must be overridden.")
 
 
-nosql_method_enforcer = MetaclassMethodEnforcer(
-    required_methods=["connect", "find"], parent_class="NoSQLConnect"
-)
+nosql_method_enforcer = MetaclassMethodEnforcer(required_methods=["connect", "find"], parent_class="NoSQLConnect")
 MetaclassNoSQLEnforcer = nosql_method_enforcer.enforce()
 
 

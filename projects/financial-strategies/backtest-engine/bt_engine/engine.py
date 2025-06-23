@@ -9,9 +9,7 @@ from ds_core.ds_utils import MetaclassMethodEnforcer
 Clear trading backtesting structure following actual trading workflow.
 """
 
-meta_data_loader = MetaclassMethodEnforcer(
-    required_methods=["load_and_clean_data"], parent_class="DataLoader"
-)
+meta_data_loader = MetaclassMethodEnforcer(required_methods=["load_and_clean_data"], parent_class="DataLoader")
 MetaDataLoaderEnforcer = meta_data_loader.enforce()
 
 
@@ -22,17 +20,13 @@ class DataLoader(metaclass=MetaDataLoaderEnforcer):
         pass
 
 
-meta_risk_manager = MetaclassMethodEnforcer(
-    required_methods=["quantify_risk"], parent_class="RiskManager"
-)
+meta_risk_manager = MetaclassMethodEnforcer(required_methods=["quantify_risk"], parent_class="RiskManager")
 MetaRiskManagerEnforcer = meta_risk_manager.enforce()
 
 
 class RiskManager(metaclass=MetaRiskManagerEnforcer):
     @abstractmethod
-    def quantify_risk(
-        self, df: [pd.DataFrame, pl.DataFrame]
-    ) -> (pd.DataFrame, pl.DataFrame):
+    def quantify_risk(self, df: [pd.DataFrame, pl.DataFrame]) -> (pd.DataFrame, pl.DataFrame):
         return df
 
 
@@ -44,35 +38,27 @@ MetaPositionManagerEnforcer = meta_position_manager.enforce()
 
 class PositionManager(metaclass=MetaPositionManagerEnforcer):
     @abstractmethod
-    def detect_trade(
-        self, df: [pd.DataFrame, pl.DataFrame]
-    ) -> (pd.DataFrame, pl.DataFrame):
+    def detect_trade(self, df: [pd.DataFrame, pl.DataFrame]) -> (pd.DataFrame, pl.DataFrame):
         """
         Detect trading opportunities ---> flag when to enter, exit, hedge, roll, spread, etc.
         """
         return df
 
     @abstractmethod
-    def adjust_position(
-        self, df: [pd.DataFrame, pl.DataFrame]
-    ) -> (pd.DataFrame, pl.DataFrame):
+    def adjust_position(self, df: [pd.DataFrame, pl.DataFrame]) -> (pd.DataFrame, pl.DataFrame):
         """
         Adjust overall position by executing a trade or number of trades.
         """
         return df
 
 
-meta_strategy_evaluator = MetaclassMethodEnforcer(
-    required_methods=["evaluate_strategy"], parent_class="StrategyEvaluator"
-)
+meta_strategy_evaluator = MetaclassMethodEnforcer(required_methods=["evaluate_strategy"], parent_class="StrategyEvaluator")
 MetaStrategyEvaluatorEnforcer = meta_strategy_evaluator.enforce()
 
 
 class StrategyEvaluator(metaclass=MetaStrategyEvaluatorEnforcer):
     @abstractmethod
-    def evaluate_strategy(
-        self, df: [pd.DataFrame, pl.DataFrame]
-    ) -> (pd.DataFrame, pl.DataFrame):
+    def evaluate_strategy(self, df: [pd.DataFrame, pl.DataFrame]) -> (pd.DataFrame, pl.DataFrame):
         """
         Comprehensively evaluate the strategy to determine its robustness.
         """

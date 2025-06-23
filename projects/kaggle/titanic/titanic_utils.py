@@ -5,11 +5,7 @@ class TitanicFeatureCreator:
     def get_survived_categories(self, df, features=None, target_name="survived"):
 
         features = [features] if isinstance(features, str) else features
-        features = (
-            [i for i in df.columns if i != target_name]
-            if features is None
-            else features
-        )
+        features = [i for i in df.columns if i != target_name] if features is None else features
 
         self.survival_categories = {}
         for feature in features:
@@ -17,11 +13,7 @@ class TitanicFeatureCreator:
             for v in df[feature]:
                 if not pd.isnull(v):
                     self.survival_categories[feature].update(
-                        {
-                            df.loc[df[feature] == v, feature].iloc[0]: max(
-                                df.loc[df[feature] == v, target_name].max(), 0
-                            )
-                        }
+                        {df.loc[df[feature] == v, feature].iloc[0]: max(df.loc[df[feature] == v, target_name].max(), 0)}
                     )
 
         return self
@@ -46,9 +38,7 @@ class TitanicSplitter(AbstractSplitter):
     def split(self, df):
         df = df.reset_index(drop=True)
         non_submission_shape = df[df["survived"].notnull()].shape[0]
-        df.loc[
-            0 : int(non_submission_shape * self.train_pct), self.split_colname
-        ] = "train"
+        df.loc[0 : int(non_submission_shape * self.train_pct), self.split_colname] = "train"
 
         df.loc[
             int(non_submission_shape * self.train_pct)

@@ -21,9 +21,7 @@ class MLFlowLogger:
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(self.log_level)
         ch = logging.StreamHandler()
-        formatter = logging.Formatter(
-            "%(asctime)s  %(name)s:  %(levelname)s  %(message)s"
-        )
+        formatter = logging.Formatter("%(asctime)s  %(name)s:  %(levelname)s  %(message)s")
         ch.setFormatter(formatter)
         self.logger.addHandler(ch)
 
@@ -70,9 +68,7 @@ class SklearnMLFlow(MLFlowLogger):
         if input_features is None:
             if self.target_name is not None:
                 # supervised learning set all columns != self.target_name as input features
-                self.input_features = list(
-                    self.df_input.drop(self.target_name, axis=1).columns
-                )
+                self.input_features = list(self.df_input.drop(self.target_name, axis=1).columns)
             elif self.target_name is None:
                 # unsupervised learning set all columns as input features
                 self.input_features = list(self.df_input.columns)
@@ -83,11 +79,7 @@ class SklearnMLFlow(MLFlowLogger):
         self.preserve_vars = (
             preserve_vars
             if preserve_vars is not None
-            else [
-                i
-                for i in self.df_input.columns
-                if i not in self.input_features + [self.target_name]
-            ]
+            else [i for i in self.df_input.columns if i not in self.input_features + [self.target_name]]
         )
 
         if self.split_colname not in self.preserve_vars:
@@ -95,27 +87,17 @@ class SklearnMLFlow(MLFlowLogger):
 
         if self.clean_column_names:
             self.df_out = clean_columns(self.df_out)
-            self.input_features = clean_columns(
-                pd.DataFrame(columns=self.input_features)
-            ).columns.tolist()
-            self.output_features = clean_columns(
-                pd.DataFrame(columns=self.output_features)
-            ).columns.tolist()
-            self.preserve_vars = clean_columns(
-                pd.DataFrame(columns=self.preserve_vars)
-            ).columns.tolist()
-            self.target_name = clean_columns(
-                pd.DataFrame(columns=[self.target_name])
-            ).columns[0]
+            self.input_features = clean_columns(pd.DataFrame(columns=self.input_features)).columns.tolist()
+            self.output_features = clean_columns(pd.DataFrame(columns=self.output_features)).columns.tolist()
+            self.preserve_vars = clean_columns(pd.DataFrame(columns=self.preserve_vars)).columns.tolist()
+            self.target_name = clean_columns(pd.DataFrame(columns=[self.target_name])).columns[0]
 
         self.splitter = splitter
         self.feature_creator = feature_creator
         self.feature_transformer = (
             feature_transformer
             if feature_transformer is not None
-            else FeatureTransformer(
-                target_name=self.target_name, preserve_vars=self.preserve_vars
-            )
+            else FeatureTransformer(target_name=self.target_name, preserve_vars=self.preserve_vars)
         )
         self.resampler = resampler
         self.algorithms = algorithms
@@ -145,11 +127,7 @@ class SklearnMLFlow(MLFlowLogger):
         """
 
         self.df_out = self.feature_creator.fit_transform(self.df_out)
-        self.output_features = [
-            i
-            for i in self.df_out.columns
-            if i not in self.preserve_vars + [self.target_name]
-        ]
+        self.output_features = [i for i in self.df_out.columns if i not in self.preserve_vars + [self.target_name]]
         self.new_features = list(set(self.output_features) - set(self.input_features))
 
         return self
@@ -170,17 +148,11 @@ class SklearnMLFlow(MLFlowLogger):
                           numeric_features=['numeric_feature1'])
         """
 
-        if (
-            hasattr(self, "new_features")
-            and self.new_features is not None
-            and len(self.new_features)
-        ):
+        if hasattr(self, "new_features") and self.new_features is not None and len(self.new_features):
 
             self.feature_transformer.instantiate_column_transformer(
                 self.df_out[self.df_out[self.split_colname] == "train"],
-                self.df_out[self.df_out[self.split_colname] == "train"][
-                    self.target_name
-                ],
+                self.df_out[self.df_out[self.split_colname] == "train"][self.target_name],
             )
 
             ### Assign feature groups ###
@@ -195,10 +167,7 @@ class SklearnMLFlow(MLFlowLogger):
                 for fg in self.new_feature_groups.keys():
                     if len(self.new_feature_groups[fg]) > 0:
                         self.feature_transformer.feature_groups[fg] = list(
-                            set(
-                                self.feature_transformer.feature_groups[fg]
-                                + self.new_feature_groups[fg]
-                            )
+                            set(self.feature_transformer.feature_groups[fg] + self.new_feature_groups[fg])
                         )
             else:
                 self.feature_groups = feature_groups
@@ -221,17 +190,13 @@ class SklearnMLFlow(MLFlowLogger):
             try:
                 self.df_train_resampled = self.resampler.fit_resample(
                     self.df_out[self.df_out[self.split_colname] == "train"],
-                    self.df_out[self.df_out[self.split_colname] == "train"][
-                        self.target_name
-                    ],
+                    self.df_out[self.df_out[self.split_colname] == "train"][self.target_name],
                 )
             except Exception:
                 try:
                     self.df_train_resampled = self.resampler.fit_transform(
                         self.df_out[self.df_out[self.split_colname] == "train"],
-                        self.df_out[self.df_out[self.split_colname] == "train"][
-                            self.target_name
-                        ],
+                        self.df_out[self.df_out[self.split_colname] == "train"][self.target_name],
                     )
                 except Exception:
                     raise ValueError("Could not fit the resampler.")
@@ -239,18 +204,12 @@ class SklearnMLFlow(MLFlowLogger):
             return self
 
     def train(self, **fit_params):
-        if hasattr(self, "df_train_resampled") and isinstance(
-            self.df_train_resampled, pd.DataFrame
-        ):
+        if hasattr(self, "df_train_resampled") and isinstance(self.df_train_resampled, pd.DataFrame):
             X_train = self.df_train_resampled.drop(self.target_name, axis=1)
             y_train = self.df_train_resampled[self.target_name]
         else:
-            X_train = self.df_out[self.df_out[self.split_colname] == "train"][
-                self.output_features
-            ]
-            y_train = self.df_out[self.df_out[self.split_colname] == "train"][
-                self.target_name
-            ]
+            X_train = self.df_out[self.df_out[self.split_colname] == "train"][self.output_features]
+            y_train = self.df_out[self.df_out[self.split_colname] == "train"][self.target_name]
 
         if hasattr(self.algorithms, "fit"):
             self.logger.info(f"Running {type(self.algorithms).__name__}...")
@@ -267,19 +226,15 @@ class SklearnMLFlow(MLFlowLogger):
     def predict(self):
         self.logger.info("Predicting models...")
 
-        if not isinstance(self.algorithms, (tuple, list)) and hasattr(
-            self.algorithms, "predict_proba"
-        ):
-            self.df_out[
-                type(self.algorithms).__name__ + "_pred"
-            ] = self.algorithms.predict_proba(self.df_out[self.output_features])[:, 1]
+        if not isinstance(self.algorithms, (tuple, list)) and hasattr(self.algorithms, "predict_proba"):
+            self.df_out[type(self.algorithms).__name__ + "_pred"] = self.algorithms.predict_proba(
+                self.df_out[self.output_features]
+            )[:, 1]
 
-        elif not isinstance(self.algorithms, (tuple, list)) and hasattr(
-            self.algorithms, "decision_function"
-        ):
-            self.df_out[
-                type(self.algorithms).__name__ + "_pred"
-            ] = algo.decision_function(self.df_out[self.output_features])[:, 1]
+        elif not isinstance(self.algorithms, (tuple, list)) and hasattr(self.algorithms, "decision_function"):
+            self.df_out[type(self.algorithms).__name__ + "_pred"] = algo.decision_function(self.df_out[self.output_features])[
+                :, 1
+            ]
 
         else:
             assert isinstance(self.algorithms, (tuple, list))
@@ -287,19 +242,13 @@ class SklearnMLFlow(MLFlowLogger):
             for algo in self.algorithms:
                 if hasattr(algo, "predict_proba"):
                     self.logger.info("Running predict_proba as predict method.")
-                    self.df_out[type(algo).__name__ + "_pred"] = algo.predict_proba(
-                        self.df_out[self.output_features]
-                    )[:, 1]
+                    self.df_out[type(algo).__name__ + "_pred"] = algo.predict_proba(self.df_out[self.output_features])[:, 1]
                 elif hasattr(algo, "decision_function"):
                     self.logger.info("Running decision_function as predict method.")
-                    self.df_out[type(algo).__name__ + "_pred"] = algo.decision_function(
-                        self.df_out[self.output_features]
-                    )[:, 1]
+                    self.df_out[type(algo).__name__ + "_pred"] = algo.decision_function(self.df_out[self.output_features])[:, 1]
                 elif hasattr(algo, "predict"):
                     self.logger.info("Running predict as predict method.")
-                    self.df_out[type(algo).__name__ + "_pred"] = algo.predict(
-                        self.df_out[self.output_features]
-                    )
+                    self.df_out[type(algo).__name__ + "_pred"] = algo.predict(self.df_out[self.output_features])
                 else:
                     raise ValueError("Could not run prediction on dataset.")
 
@@ -309,12 +258,7 @@ class SklearnMLFlow(MLFlowLogger):
 
         return self
 
-    def assign_threshold_opt_rows(
-        self,
-        pct_train_for_opt=0.25,
-        pct_val_for_opt=1,
-        threshold_opt_name="use_for_threshold_opt",
-    ):
+    def assign_threshold_opt_rows(self, pct_train_for_opt=0.25, pct_val_for_opt=1, threshold_opt_name="use_for_threshold_opt"):
         self.threshold_opt_name = threshold_opt_name
 
         self.df_out.loc[:, threshold_opt_name] = False
@@ -325,33 +269,19 @@ class SklearnMLFlow(MLFlowLogger):
         # how it currently works. Based on experience, models have performed much worse.
         # n_train_values = int(self.df_out[self.df_out[self.split_colname] == 'val'].shape[0] * pct_train_for_opt)
 
-        n_train_values = int(
-            self.df_out[self.df_out[self.split_colname] == "train"].shape[0]
-            * pct_train_for_opt
-        )
+        n_train_values = int(self.df_out[self.df_out[self.split_colname] == "train"].shape[0] * pct_train_for_opt)
         # tail might not be a good way to choose the rows, but in case the data is
         # sorted it makes sense as a default
-        opt_train_indices = (
-            self.df_out[self.df_out[self.split_colname] == "train"]
-            .tail(n_train_values)
-            .index
-        )
+        opt_train_indices = self.df_out[self.df_out[self.split_colname] == "train"].tail(n_train_values).index
         self.df_out.loc[opt_train_indices, threshold_opt_name] = True
 
         ### assign the val rows to be used for threshold optimization ###
 
-        n_val_values = int(
-            self.df_out[self.df_out[self.split_colname] == "val"].shape[0]
-            * pct_val_for_opt
-        )
+        n_val_values = int(self.df_out[self.df_out[self.split_colname] == "val"].shape[0] * pct_val_for_opt)
 
         # tail might not be a good way to choose the rows, but in case the data is
         # sorted it makes sense as a default
-        opt_val_indices = (
-            self.df_out[self.df_out[self.split_colname] == "val"]
-            .tail(n_val_values)
-            .index
-        )
+        opt_val_indices = self.df_out[self.df_out[self.split_colname] == "val"].tail(n_val_values).index
 
         self.df_out.loc[opt_val_indices, threshold_opt_name] = True
 
@@ -369,24 +299,13 @@ class SklearnMLFlow(MLFlowLogger):
 
         fits = [i for i in self.df_out.columns if i.endswith("_pred")]
 
-        splits_to_assess = (
-            [splits_to_assess]
-            if isinstance(splits_to_assess, str)
-            else splits_to_assess
-        )
-        splits_to_assess = (
-            list(splits_to_assess)
-            if isinstance(splits_to_assess, tuple)
-            else splits_to_assess
-        )
+        splits_to_assess = [splits_to_assess] if isinstance(splits_to_assess, str) else splits_to_assess
+        splits_to_assess = list(splits_to_assess) if isinstance(splits_to_assess, tuple) else splits_to_assess
 
         self.optimizer.run_optimization(
             fits=fits,
             minimize_or_maximize=minimize_or_maximize,
-            df=self.df_out[
-                (self.df_out[self.threshold_opt_name])
-                & (self.df_out[self.split_colname].isin(splits_to_assess))
-            ],
+            df=self.df_out[(self.df_out[self.threshold_opt_name]) & (self.df_out[self.split_colname].isin(splits_to_assess))],
             target_name=self.target_name,
         )
 
@@ -394,17 +313,10 @@ class SklearnMLFlow(MLFlowLogger):
 
         if is_classification:
             for fit in self.optimizer.best_thresholds.keys():
-                thres_opt = ThresholdOptimizer(
-                    df=self.df_out,
-                    pred_column=fit,
-                    pred_class_col=fit + "_class",
-                    make_copy=False,
-                )
+                thres_opt = ThresholdOptimizer(df=self.df_out, pred_column=fit, pred_class_col=fit + "_class", make_copy=False)
 
                 if self.optimizer.best_thresholds[fit].index.name != "threshold":
-                    self.optimizer.best_thresholds[
-                        fit
-                    ] = self.optimizer.best_thresholds[fit].set_index("threshold")
+                    self.optimizer.best_thresholds[fit] = self.optimizer.best_thresholds[fit].set_index("threshold")
 
                 thres_opt.assign_predicted_class(self.optimizer.best_thresholds[fit])
 
@@ -412,32 +324,16 @@ class SklearnMLFlow(MLFlowLogger):
 
     def evaluate(self, splits_to_evaluate=("train", "val", "test"), **kwargs):
         evaluator_params = {}
-        for param in [
-            i
-            for i in inspect.getfullargspec(self.evaluator.__init__).args
-            if i != "self"
-        ]:
+        for param in [i for i in inspect.getfullargspec(self.evaluator.__init__).args if i != "self"]:
             evaluator_params[param] = getattr(self.evaluator, param)
         for k in kwargs.keys():
             evaluator_params[k] = kwargs[k]
 
-        splits_to_evaluate = (
-            [splits_to_evaluate]
-            if isinstance(splits_to_evaluate, str)
-            else splits_to_evaluate
-        )
-        splits_to_evaluate = (
-            list(splits_to_evaluate)
-            if isinstance(splits_to_evaluate, tuple)
-            else splits_to_evaluate
-        )
-        assert isinstance(
-            splits_to_evaluate, list
-        ), "could not convert splits_to_evaluate to a list"
+        splits_to_evaluate = [splits_to_evaluate] if isinstance(splits_to_evaluate, str) else splits_to_evaluate
+        splits_to_evaluate = list(splits_to_evaluate) if isinstance(splits_to_evaluate, tuple) else splits_to_evaluate
+        assert isinstance(splits_to_evaluate, list), "could not convert splits_to_evaluate to a list"
 
-        self.evaluator.df = self.df_out[
-            self.df_out[self.split_colname].isin(splits_to_evaluate)
-        ].copy()
+        self.evaluator.df = self.df_out[self.df_out[self.split_colname].isin(splits_to_evaluate)].copy()
         self.evaluator.target_name = self.target_name
         # self.evaluator.fits = [i for i in self.df_out.columns if i.endswith('_pred_class')]
 
@@ -472,11 +368,7 @@ class SklearnMLFlow(MLFlowLogger):
         ### create features ###
 
         if self.feature_creator is not None:
-            (
-                self.create_features()
-                if create_features_params is None
-                else self.create_features(**create_features_params)
-            )
+            (self.create_features() if create_features_params is None else self.create_features(**create_features_params))
 
         ### transform features ###
 
@@ -490,11 +382,7 @@ class SklearnMLFlow(MLFlowLogger):
         ### resample data ###
 
         if self.resampler is not None:
-            (
-                self.resample()
-                if resampler_params is None
-                else self.resample(**resampler_params)
-            )
+            (self.resample() if resampler_params is None else self.resample(**resampler_params))
 
         ### train models ###
 
@@ -513,29 +401,17 @@ class SklearnMLFlow(MLFlowLogger):
         ### predict models ###
 
         if len(fitted_algorithms) == len(self.algorithms):
-            (
-                self.predict()
-                if predict_model_params is None
-                else self.predict(**predict_model_params)
-            )
+            (self.predict() if predict_model_params is None else self.predict(**predict_model_params))
 
             ### optimize models ###
 
             if self.optimizer is not None:
-                (
-                    self.optimize()
-                    if optimize_models_params is None
-                    else self.optimize(**optimize_models_params)
-                )
+                (self.optimize() if optimize_models_params is None else self.optimize(**optimize_models_params))
 
             ### evaluate models ###
 
             if self.evaluator is not None:
-                (
-                    self.evaluate()
-                    if evaluate_model_params is None
-                    else self.evaluate(**evaluate_model_params)
-                )
+                (self.evaluate() if evaluate_model_params is None else self.evaluate(**evaluate_model_params))
 
             ### get feature importances ###
 
@@ -547,9 +423,7 @@ class SklearnMLFlow(MLFlowLogger):
         return self
 
 
-def get_column_names_from_column_transformer(
-    column_transformer, clean_column_names=True, verbose=False
-):
+def get_column_names_from_column_transformer(column_transformer, clean_column_names=True, verbose=False):
     """
     Reference: Kyle Gilde
     https://github.com/kylegilde/Kaggle-Notebooks/blob/master/Extracolumn_transformering-and-Plotting-Scikit-Feature-Names-and-Importances/feature_importance.py
@@ -569,9 +443,7 @@ def get_column_names_from_column_transformer(
     the Pipeline. Inspiration: https://github.com/scikit-learn/scikit-learn/issues/12525
     """
 
-    assert isinstance(
-        column_transformer, ColumnTransformer
-    ), "Input isn't a ColumnTransformer"
+    assert isinstance(column_transformer, ColumnTransformer), "Input isn't a ColumnTransformer"
 
     check_is_fitted(column_transformer)
 
@@ -591,12 +463,8 @@ def get_column_names_from_column_transformer(
                 continue
 
             if verbose:
-                self.logger.info(
-                    f"{i}.Transformer/Pipeline: {transformer_name} {transformer.__class__.__name__}"
-                )
-                self.logger.info(
-                    f"{i}.Transformer/Pipeline: {transformer_name} {transformer.__class__.__name__}"
-                )
+                self.logger.info(f"{i}.Transformer/Pipeline: {transformer_name} {transformer.__class__.__name__}")
+                self.logger.info(f"{i}.Transformer/Pipeline: {transformer_name} {transformer.__class__.__name__}")
                 self.logger.info(f"n_orig_feature_names:{len(orig_feature_names)}")
 
             if transformer == "drop" or transformer == "passthrough":
@@ -621,73 +489,43 @@ def get_column_names_from_column_transformer(
                                 transformer_feature_names = t.get_feature_names_out()
                             except Exception:
                                 try:
-                                    transformer_feature_names = t.get_feature_names_out(
-                                        orig_feature_names
-                                    )
+                                    transformer_feature_names = t.get_feature_names_out(orig_feature_names)
                                 except Exception:
                                     try:
-                                        transformer_feature_names = t[
-                                            :-1
-                                        ].get_feature_names_out()
+                                        transformer_feature_names = t[:-1].get_feature_names_out()
                                     except Exception:
                                         transformer = transformer.steps[-1][1]
                                         try:
                                             transformer_feature_names = transformer.cols
                                         except Exception:
-                                            raise ValueError(
-                                                f"Could not get column names for transformer {t}"
-                                            )
+                                            raise ValueError(f"Could not get column names for transformer {t}")
 
-                            [
-                                names.append(i)
-                                for i in transformer_feature_names
-                                if i not in names
-                            ]
+                            [names.append(i) for i in transformer_feature_names if i not in names]
 
                     if hasattr(transformer, "get_feature_names_out"):
-                        if (
-                            "input_features"
-                            in transformer.get_feature_names_out.__code__.co_varnames
-                        ):
-                            names = list(
-                                transformer.get_feature_names_out(
-                                    input_features=orig_feature_names
-                                )
-                            )
+                        if "input_features" in transformer.get_feature_names_out.__code__.co_varnames:
+                            names = list(transformer.get_feature_names_out(input_features=orig_feature_names))
 
                         else:
                             names = list(transformer.get_feature_names_out())
 
                     elif hasattr(transformer, "get_feature_names"):
-                        if (
-                            "input_features"
-                            in transformer.get_feature_names.__code__.co_varnames
-                        ):
-                            names = list(
-                                transformer.get_feature_names(orig_feature_names)
-                            )
+                        if "input_features" in transformer.get_feature_names.__code__.co_varnames:
+                            names = list(transformer.get_feature_names(orig_feature_names))
                         else:
                             names = list(transformer.get_feature_names())
 
-                    elif (
-                        hasattr(transformer, "indicator_") and transformer.add_indicator
-                    ):
+                    elif hasattr(transformer, "indicator_") and transformer.add_indicator:
                         # is this transformer one of the imputers & did it call the
                         # MissingIndicator?
                         missing_indicator_indices = transformer.indicator_.features_
-                        missing_indicators = [
-                            orig_feature_names[idx] + "_missing_flag"
-                            for idx in missing_indicator_indices
-                        ]
+                        missing_indicators = [orig_feature_names[idx] + "_missing_flag" for idx in missing_indicator_indices]
                         names = orig_feature_names + missing_indicators
 
                     elif hasattr(transformer, "features_"):
                         # is this a MissingIndicator class?
                         missing_indicator_indices = transformer.features_
-                        missing_indicators = [
-                            orig_feature_names[idx] + "_missing_flag"
-                            for idx in missing_indicator_indices
-                        ]
+                        missing_indicators = [orig_feature_names[idx] + "_missing_flag" for idx in missing_indicator_indices]
 
                     else:
                         names = orig_feature_names
@@ -700,18 +538,12 @@ def get_column_names_from_column_transformer(
             transformer_list.extend([transformer_name] * len(names))
 
         if column_transformer.remainder == "passthrough":
-            passthrough_cols = column_transformer.feature_names_in_[
-                column_transformer.transformers_[-1][-1]
-            ]
-            new_column_names = list(new_column_names) + [
-                i for i in passthrough_cols if i not in new_column_names
-            ]
+            passthrough_cols = column_transformer.feature_names_in_[column_transformer.transformers_[-1][-1]]
+            new_column_names = list(new_column_names) + [i for i in passthrough_cols if i not in new_column_names]
 
     if clean_column_names:
         new_column_names = [i.replace("remainder__", "") for i in new_column_names]
-        new_column_names = list(
-            clean_columns(pd.DataFrame(columns=new_column_names)).columns
-        )
+        new_column_names = list(clean_columns(pd.DataFrame(columns=new_column_names)).columns)
 
     return new_column_names
 
@@ -781,9 +613,7 @@ class FeatureTransformer(TransformerMixin, MLFlowLogger):
         self.make_copy = make_copy
         self.preserve_vars = [] if self.preserve_vars is None else self.preserve_vars
 
-        self.column_transformer = ColumnTransformer(
-            transformers=[], remainder=self.remainder, n_jobs=self.n_jobs
-        )
+        self.column_transformer = ColumnTransformer(transformers=[], remainder=self.remainder, n_jobs=self.n_jobs)
 
         self.input_features = None
         self.feature_groups = None
@@ -804,37 +634,19 @@ class FeatureTransformer(TransformerMixin, MLFlowLogger):
                 "lc_features": self.lc_features,
                 "hc_features": self.hc_features,
             }
-            if (
-                self.FE_pipeline_dict is not None
-                and "custom_pipe" in self.FE_pipeline_dict.keys()
-            ):
-                feature_dict["custom_features"] = list(
-                    self.FE_pipeline_dict["custom_pipe"].values()
-                )[0]
+            if self.FE_pipeline_dict is not None and "custom_pipe" in self.FE_pipeline_dict.keys():
+                feature_dict["custom_features"] = list(self.FE_pipeline_dict["custom_pipe"].values())[0]
             return feature_dict
 
-        if (
-            self.FE_pipeline_dict is not None
-            and "custom_pipe" in self.FE_pipeline_dict.keys()
-        ):
-            custom_features = list(
-                itertools.chain(*self.FE_pipeline_dict["custom_pipe"].values())
-            )
+        if self.FE_pipeline_dict is not None and "custom_pipe" in self.FE_pipeline_dict.keys():
+            custom_features = list(itertools.chain(*self.FE_pipeline_dict["custom_pipe"].values()))
         else:
             custom_features = []
 
         assert (
             len(
                 np.intersect1d(
-                    list(
-                        set(
-                            self.numeric_features
-                            + self.lc_features
-                            + self.hc_features
-                            + custom_features
-                        )
-                    ),
-                    self.preserve_vars,
+                    list(set(self.numeric_features + self.lc_features + self.hc_features + custom_features)), self.preserve_vars
                 )
             )
             == 0
@@ -842,23 +654,12 @@ class FeatureTransformer(TransformerMixin, MLFlowLogger):
              numeric_features, lc_features, or hc_features"
 
         detected_numeric_vars = make_column_selector(dtype_include=np.number)(
-            X[
-                [
-                    i
-                    for i in X.columns
-                    if i
-                    not in self.preserve_vars + [self.target_name] + custom_features
-                ]
-            ]
+            X[[i for i in X.columns if i not in self.preserve_vars + [self.target_name] + custom_features]]
         )
 
         detected_lc_vars = [
             i
-            for i in X.loc[
-                :,
-                (X.nunique(dropna=False) <= self.max_lc_cardinality)
-                & (X.nunique(dropna=False) > 1),
-            ].columns
+            for i in X.loc[:, (X.nunique(dropna=False) <= self.max_lc_cardinality) & (X.nunique(dropna=False) > 1)].columns
             if i not in self.preserve_vars + [self.target_name] + custom_features
         ]
 
@@ -870,11 +671,7 @@ class FeatureTransformer(TransformerMixin, MLFlowLogger):
             .index.tolist()
         )
 
-        discarded_features = [
-            i
-            for i in X.isnull().sum()[X.isnull().sum() == X.shape[0]].index
-            if i not in self.preserve_vars
-        ]
+        discarded_features = [i for i in X.isnull().sum()[X.isnull().sum() == X.shape[0]].index if i not in self.preserve_vars]
 
         numeric_features = list(
             set(
@@ -884,11 +681,7 @@ class FeatureTransformer(TransformerMixin, MLFlowLogger):
                     + [
                         i
                         for i in detected_numeric_vars
-                        if i
-                        not in list(self.lc_features)
-                        + list(self.hc_features)
-                        + list(discarded_features)
-                        + custom_features
+                        if i not in list(self.lc_features) + list(self.hc_features) + list(discarded_features) + custom_features
                     ]
                 ]
             )
@@ -903,10 +696,7 @@ class FeatureTransformer(TransformerMixin, MLFlowLogger):
                         i
                         for i in detected_lc_vars
                         if i
-                        not in list(self.numeric_features)
-                        + list(self.hc_features)
-                        + list(discarded_features)
-                        + custom_features
+                        not in list(self.numeric_features) + list(self.hc_features) + list(discarded_features) + custom_features
                     ]
                 ]
             )
@@ -921,10 +711,7 @@ class FeatureTransformer(TransformerMixin, MLFlowLogger):
                         i
                         for i in detected_hc_vars
                         if i
-                        not in list(self.numeric_features)
-                        + list(self.lc_features)
-                        + list(discarded_features)
-                        + custom_features
+                        not in list(self.numeric_features) + list(self.lc_features) + list(discarded_features) + custom_features
                     ]
                 ]
             )
@@ -932,72 +719,47 @@ class FeatureTransformer(TransformerMixin, MLFlowLogger):
 
         if self.verbose:
             self.logger.info(
-                "Overlap between numeric and lc_features: "
-                + str(list(set(np.intersect1d(numeric_features, lc_features))))
+                "Overlap between numeric and lc_features: " + str(list(set(np.intersect1d(numeric_features, lc_features))))
             )
             self.logger.info(
-                "Overlap between numeric and hc_features: "
-                + str(list(set(np.intersect1d(numeric_features, hc_features))))
+                "Overlap between numeric and hc_features: " + str(list(set(np.intersect1d(numeric_features, hc_features))))
             )
             self.logger.info(
                 "Overlap between numeric lc_features and hc_features: "
                 + str(list(set(np.intersect1d(lc_features, hc_features))))
             )
-            self.logger.info(
-                "Overlap between lc_features and hc_features will be moved to lc_features"
-            )
+            self.logger.info("Overlap between lc_features and hc_features will be moved to lc_features")
 
         if self.overwrite_detection:
             numeric_features = [
-                i
-                for i in numeric_features
-                if i
-                not in lc_features + hc_features + discarded_features + custom_features
+                i for i in numeric_features if i not in lc_features + hc_features + discarded_features + custom_features
             ]
 
             lc_features = [
-                i
-                for i in lc_features
-                if i
-                not in hc_features
-                + numeric_features
-                + discarded_features
-                + custom_features
+                i for i in lc_features if i not in hc_features + numeric_features + discarded_features + custom_features
             ]
 
             hc_features = [
-                i
-                for i in hc_features
-                if i
-                not in lc_features
-                + numeric_features
-                + discarded_features
-                + custom_features
+                i for i in hc_features if i not in lc_features + numeric_features + discarded_features + custom_features
             ]
 
         else:
             numeric_overlap = [
                 i
                 for i in numeric_features
-                if i in lc_features
-                or i in hc_features
-                and i not in discarded_features + custom_features
+                if i in lc_features or i in hc_features and i not in discarded_features + custom_features
             ]
 
             lc_overlap = [
                 i
                 for i in lc_features
-                if i in hc_features
-                or i in numeric_features
-                and i not in discarded_features + custom_features
+                if i in hc_features or i in numeric_features and i not in discarded_features + custom_features
             ]
 
             hc_overlap = [
                 i
                 for i in hc_features
-                if i in lc_features
-                or i in numeric_features
-                and i not in discarded_features + custom_features
+                if i in lc_features or i in numeric_features and i not in discarded_features + custom_features
             ]
 
             if numeric_overlap or lc_overlap or hc_overlap:
@@ -1007,19 +769,9 @@ class FeatureTransformer(TransformerMixin, MLFlowLogger):
                                       To ignore this set overwrite_detection to True."
                 )
 
-        all_features = list(
-            set(
-                numeric_features
-                + lc_features
-                + hc_features
-                + discarded_features
-                + custom_features
-            )
-        )
+        all_features = list(set(numeric_features + lc_features + hc_features + discarded_features + custom_features))
 
-        all_features_debug = set(all_features) - set(
-            [i for i in X.columns if i not in self.preserve_vars + [self.target_name]]
-        )
+        all_features_debug = set(all_features) - set([i for i in X.columns if i not in self.preserve_vars + [self.target_name]])
 
         if len(all_features_debug) > 0:
             self.logger.info("{}".format(all_features_debug))
@@ -1049,9 +801,7 @@ class FeatureTransformer(TransformerMixin, MLFlowLogger):
         if self.target_name is None and y is not None:
             self.target_name = y.name
 
-        assert (
-            y is not None or self.target_name is not None
-        ), "Both self.target_name and y cannot be None!"
+        assert y is not None or self.target_name is not None, "Both self.target_name and y cannot be None!"
 
         self.feature_groups = self.detect_feature_groups(X)
 
@@ -1061,9 +811,7 @@ class FeatureTransformer(TransformerMixin, MLFlowLogger):
             ### Default pipelines ###
 
             na_replacer = FunctionTransformer(
-                lambda x: x.replace(
-                    [-np.inf, np.inf, None, "None", "", " ", "nan", "Nan"], np.nan
-                ),
+                lambda x: x.replace([-np.inf, np.inf, None, "None", "", " ", "nan", "Nan"], np.nan),
                 feature_names_out="one-to-one",
             )
 
@@ -1076,9 +824,7 @@ class FeatureTransformer(TransformerMixin, MLFlowLogger):
 
             hc_pipe = make_pipeline(
                 na_replacer,
-                FunctionTransformer(
-                    lambda x: x.astype(str), feature_names_out="one-to-one"
-                ),
+                FunctionTransformer(lambda x: x.astype(str), feature_names_out="one-to-one"),
                 # MeanEncoder()
                 TargetEncoder(
                     cols=self.feature_groups["hc_features"],
@@ -1091,9 +837,7 @@ class FeatureTransformer(TransformerMixin, MLFlowLogger):
                 ),
             )
 
-            lc_pipe = make_pipeline(
-                na_replacer, OneHotEncoder(handle_unknown="ignore", sparse_output=False)
-            )
+            lc_pipe = make_pipeline(na_replacer, OneHotEncoder(handle_unknown="ignore", sparse_output=False))
 
             custom_pipe = None
 
@@ -1102,11 +846,7 @@ class FeatureTransformer(TransformerMixin, MLFlowLogger):
             numeric_pipe = self.FE_pipeline_dict["numeric_pipe"]
             lc_pipe = self.FE_pipeline_dict["lc_pipe"]
 
-            custom_pipe = (
-                self.FE_pipeline_dict["custom_pipe"]
-                if "custom_pipe" in self.FE_pipeline_dict.keys()
-                else {}
-            )
+            custom_pipe = self.FE_pipeline_dict["custom_pipe"] if "custom_pipe" in self.FE_pipeline_dict.keys() else {}
 
         transformers = [
             ("hc_pipe", hc_pipe, self.feature_groups["hc_features"]),
@@ -1120,22 +860,14 @@ class FeatureTransformer(TransformerMixin, MLFlowLogger):
                     if "cols" in list(inspect.signature(t.__class__).parameters.keys()):
                         t.cols = cols
             else:
-                if "cols" in list(
-                    inspect.signature(transformer.__class__).parameters.keys()
-                ):
+                if "cols" in list(inspect.signature(transformer.__class__).parameters.keys()):
                     transformer.cols = transformer[-1]
 
         if custom_pipe:
-            setattr(
-                self,
-                "custom_features",
-                list(set(np.concatenate(list(custom_pipe.values())))),
-            )
+            setattr(self, "custom_features", list(set(np.concatenate(list(custom_pipe.values())))))
             i = 0
             for cp in custom_pipe.keys():
-                transformers.append(
-                    ("custom_pipe{}".format(str(i)), cp, custom_pipe[cp])
-                )
+                transformers.append(("custom_pipe{}".format(str(i)), cp, custom_pipe[cp]))
                 i += 1
 
         self.column_transformer.transformers = transformers
@@ -1150,9 +882,7 @@ class FeatureTransformer(TransformerMixin, MLFlowLogger):
             self.column_transformer.fit(X, y)
 
         self.output_cols = get_column_names_from_column_transformer(
-            self.column_transformer,
-            clean_column_names=self.clean_column_names,
-            verbose=self.verbose,
+            self.column_transformer, clean_column_names=self.clean_column_names, verbose=self.verbose
         )
 
         self.input_features = (
@@ -1164,23 +894,11 @@ class FeatureTransformer(TransformerMixin, MLFlowLogger):
 
         if len(self.preserve_vars):
             self.preserve_vars_orig = self.preserve_vars.copy()
-            self.preserve_vars = (
-                self.preserve_vars_orig + self.feature_groups["discarded_features"]
-            )
+            self.preserve_vars = self.preserve_vars_orig + self.feature_groups["discarded_features"]
 
-        setattr(
-            self,
-            "output_features",
-            [
-                i
-                for i in self.output_cols
-                if i not in self.preserve_vars + [self.target_name]
-            ],
-        )
+        setattr(self, "output_features", [i for i in self.output_cols if i not in self.preserve_vars + [self.target_name]])
 
-        assert len(
-            list(set(self.output_features + self.preserve_vars + [self.target_name]))
-        ) == len(self.output_cols)
+        assert len(list(set(self.output_features + self.preserve_vars + [self.target_name]))) == len(self.output_cols)
         assert len(set(self.output_cols)) == len(self.output_cols)
 
         return self
@@ -1212,9 +930,7 @@ class FeatureImportance(MLFlowLogger):
 
     """
 
-    def __init__(
-        self, model=None, df=None, input_features=None, round_decimals=3, verbose=False
-    ):
+    def __init__(self, model=None, df=None, input_features=None, round_decimals=3, verbose=False):
         self.model = model
         self.df = df
         self.input_features = input_features
@@ -1222,9 +938,7 @@ class FeatureImportance(MLFlowLogger):
         self.verbose = verbose
 
         if self.df is not None:
-            self.input_features = (
-                self.df.columns if self.input_features is None else self.input_features
-            )
+            self.input_features = self.df.columns if self.input_features is None else self.input_features
 
         super().__init__()
 
@@ -1240,23 +954,15 @@ class FeatureImportance(MLFlowLogger):
         # sklearn tree models usually have the feature_importance_ attribute
         try:
             importances = self.model.feature_importances_
-            feature_importances = (
-                pd.Series(importances, index=self.input_features)
-                .sort_values(ascending=False)
-                .reset_index()
-            )
+            feature_importances = pd.Series(importances, index=self.input_features).sort_values(ascending=False).reset_index()
 
         # sklearn linear models usually have the .coef_ attribute
         except AttributeError:
             try:
-                feature_importances = pd.DataFrame(
-                    self.model.coef_, index=self.input_features, columns=["coefs"]
-                )
+                feature_importances = pd.DataFrame(self.model.coef_, index=self.input_features, columns=["coefs"])
                 feature_importances["importance"] = feature_importances["coefs"].abs()
                 feature_importances = (
-                    feature_importances.sort_values(by="importance", ascending=False)
-                    .reset_index()
-                    .drop("coefs", axis=1)
+                    feature_importances.sort_values(by="importance", ascending=False).reset_index().drop("coefs", axis=1)
                 )
             except Exception:
                 raise ValueError("Cannot get feature importance for this model")
@@ -1269,9 +975,7 @@ class FeatureImportance(MLFlowLogger):
         feature_importances.columns = ["feature", "importance"]
 
         if self.round_decimals:
-            feature_importances["importance"] = round(
-                feature_importances["importance"], self.round_decimals
-            )
+            feature_importances["importance"] = round(feature_importances["importance"], self.round_decimals)
 
         return feature_importances
 
@@ -1310,17 +1014,13 @@ class FeatureImportance(MLFlowLogger):
         """
 
         height = top_n_features * height_per_feature if height is None else height
-        feature_importances = (
-            self.get_feature_importance()
-            if feature_importances is None
-            else feature_importances
-        )
+        feature_importances = self.get_feature_importance() if feature_importances is None else feature_importances
 
         if feature_importances.shape[0] >= 1:
 
-            feature_importances = feature_importances.nlargest(
-                top_n_features, "importance"
-            ).sort_values(by="importance", ascending=False)
+            feature_importances = feature_importances.nlargest(top_n_features, "importance").sort_values(
+                by="importance", ascending=False
+            )
 
             n_all_importances = feature_importances.shape[0]
 
@@ -1332,15 +1032,9 @@ class FeatureImportance(MLFlowLogger):
 
             feature_importances = feature_importances.sort_values(by="importance")
             if self.round_decimals:
-                feature_importances["text"] = (
-                    feature_importances["importance"]
-                    .round(self.round_decimals)
-                    .astype(str)
-                )
+                feature_importances["text"] = feature_importances["importance"].round(self.round_decimals).astype(str)
             else:
-                feature_importances["text"] = feature_importances["importance"].astype(
-                    str
-                )
+                feature_importances["text"] = feature_importances["importance"].astype(str)
 
             # create the plot
             fig = px.bar(
@@ -1356,9 +1050,7 @@ class FeatureImportance(MLFlowLogger):
 
             fig.update_layout(title_text=title_text, title_x=0.5)
             fig.update(layout_showlegend=False)
-            fig.update_yaxes(
-                tickfont=dict(family=yaxes_tickfont_family, size=yaxes_tickfont_size)
-            )
+            fig.update_yaxes(tickfont=dict(family=yaxes_tickfont_family, size=yaxes_tickfont_size))
             return fig
         else:
             return
@@ -1511,9 +1203,7 @@ class CalcMLMetrics(MLFlowLogger):
 
         # TODO: Make groupby_col_order immutable
 
-        assert (
-            df[target_name].isnull().sum() == 0
-        ), "There cannot be NAs in the target variable"
+        assert df[target_name].isnull().sum() == 0, "There cannot be NAs in the target variable"
         num_threads = mp.cpu_count() if num_threads < 0 else num_threads
 
         self.df = (
@@ -1546,9 +1236,7 @@ class CalcMLMetrics(MLFlowLogger):
             self.metrics_df = pd.DataFrame()
             for fit in self.fits:
                 _metrics_df = pd.DataFrame.from_dict(
-                    self.metric_fn(df[self.target_name], df[fit]),
-                    orient="index",
-                    columns=[fit],
+                    self.metric_fn(df[self.target_name], df[fit]), orient="index", columns=[fit]
                 )
 
                 self.metrics_df = pd.concat([self.metrics_df, _metrics_df], axis=1)
@@ -1561,9 +1249,7 @@ class CalcMLMetrics(MLFlowLogger):
             if len(self.fits) == 1:
                 self.metrics_df = (
                     df.groupby(self.groupby_cols, dropna=drop_nas)
-                    .apply(
-                        lambda x: self.metric_fn(x[self.target_name], x[self.fits[0]])
-                    )
+                    .apply(lambda x: self.metric_fn(x[self.target_name], x[self.fits[0]]))
                     .reset_index()
                     .pipe(lambda x: x[self.groupby_cols].join(json_normalize(x[0])))
                 )
@@ -1583,14 +1269,10 @@ class CalcMLMetrics(MLFlowLogger):
 
             if groupby_col_order is not None:
                 for col in groupby_col_order.keys():
-                    col_order = pd.CategoricalDtype(
-                        groupby_col_order[col], ordered=True
-                    )
+                    col_order = pd.CategoricalDtype(groupby_col_order[col], ordered=True)
                     self.metrics_df[col] = self.metrics_df[col].astype(col_order)
 
-                self.metrics_df = self.metrics_df.sort_values(
-                    by=list(groupby_col_order.keys())
-                )
+                self.metrics_df = self.metrics_df.sort_values(by=list(groupby_col_order.keys()))
 
         return self.metrics_df
 
@@ -1613,26 +1295,16 @@ class CalcMLMetrics(MLFlowLogger):
         **calc_ml_metrics_params,
     ):
 
-        metrics_output = (
-            self.calc_ml_metrics(**calc_ml_metrics_params)
-            if metrics_output is None
-            else metrics_output
-        )
+        metrics_output = self.calc_ml_metrics(**calc_ml_metrics_params) if metrics_output is None else metrics_output
 
         if self.groupby_cols is None:
             metrics_df = metrics_output.reset_index().melt(id_vars="index")
-            metrics_df = metrics_df.rename(
-                columns={"index": "metric", "variable": "fit"}
-            )
+            metrics_df = metrics_df.rename(columns={"index": "metric", "variable": "fit"})
         else:
-            metrics_df = metrics_output.melt(
-                id_vars=list(set(self.groupby_cols + ["fit"]))
-            )
+            metrics_df = metrics_output.melt(id_vars=list(set(self.groupby_cols + ["fit"])))
             metrics_df = metrics_df.rename(columns={"variable": "metric"})
 
-        metrics_df["text"] = (
-            (metrics_df["value"] * 100).round(2).astype(str).pipe(lambda x: x + "%")
-        )
+        metrics_df["text"] = (metrics_df["value"] * 100).round(2).astype(str).pipe(lambda x: x + "%")
 
         fig = px.bar(
             metrics_df,
@@ -1650,10 +1322,7 @@ class CalcMLMetrics(MLFlowLogger):
         )
 
         fig.update_traces(textposition=text_position)
-        fig.update_yaxes(
-            range=[metrics_df[y].min() - 0.05, metrics_df[y].max() + 0.1],
-            matches=y_matches,
-        )
+        fig.update_yaxes(range=[metrics_df[y].min() - 0.05, metrics_df[y].max() + 0.1], matches=y_matches)
 
         if width is None:
             for data in fig.data:
@@ -1678,9 +1347,7 @@ class ThresholdOptimizer(MLFlowLogger):
     make_copy: bool whether to create a copy of the dataframe prior to computation
     """
 
-    def __init__(
-        self, df=None, pred_column=None, pred_class_col="pred_class", make_copy=True
-    ):
+    def __init__(self, df=None, pred_column=None, pred_class_col="pred_class", make_copy=True):
 
         self.df = df
         self.pred_column = pred_column
@@ -1754,45 +1421,24 @@ class ThresholdOptimizer(MLFlowLogger):
             groupby_cols = None
         else:
             assert (
-                len(
-                    [
-                        i
-                        for i in np.intersect1d(
-                            best_threshold_df.columns, self.df.columns
-                        )
-                        if i != "threshold"
-                    ]
-                )
-                == 0
+                len([i for i in np.intersect1d(best_threshold_df.columns, self.df.columns) if i != "threshold"]) == 0
             ), "column intersection between df.columns and best_threshold_df, excluding threshold, must have length 0."
 
-            groupby_cols = [
-                i for i in list(best_threshold_df.index.names) if i != "threshold"
-            ]
+            groupby_cols = [i for i in list(best_threshold_df.index.names) if i != "threshold"]
 
         self.df.loc[:, self.pred_class_col] = 0
 
         if groupby_cols is None:
-            threshold_cutoff = best_threshold_df.index.get_level_values(
-                "threshold"
-            ).min()
-            self.df.loc[
-                self.df[self.pred_column] >= threshold_cutoff, self.pred_class_col
-            ] = 1
+            threshold_cutoff = best_threshold_df.index.get_level_values("threshold").min()
+            self.df.loc[self.df[self.pred_column] >= threshold_cutoff, self.pred_class_col] = 1
             return self.df
 
         else:
             if "threshold" in self.df.columns:
                 self.df = self.df.drop("threshold", axis=1)
 
-            self.df = self.df.merge(
-                best_threshold_df.reset_index()[groupby_cols + ["threshold"]],
-                on=groupby_cols,
-                how="left",
-            )
-            self.df.loc[
-                self.df[self.pred_column] >= self.df["threshold"], self.pred_class_col
-            ] = 1
+            self.df = self.df.merge(best_threshold_df.reset_index()[groupby_cols + ["threshold"]], on=groupby_cols, how="left")
+            self.df.loc[self.df[self.pred_column] >= self.df["threshold"], self.pred_class_col] = 1
         return self.df
 
 
@@ -1841,9 +1487,7 @@ class ScoreThresholdOptimizer(ThresholdOptimizer):
         pandas df of all thresholds tested and the score calculated in the optimization_fn
         """
 
-        assert (
-            type(self.optimization_func).__name__ == "function"
-        ), "optimization_func must be a function!"
+        assert type(self.optimization_func).__name__ == "function", "optimization_func must be a function!"
 
         self.thresholds = np.arange(0, 100) / 100 if thresholds is None else thresholds
         score_df = pd.DataFrame({"y_pred": self.y_pred, "y_true": self.y_true})
@@ -1859,17 +1503,11 @@ class ScoreThresholdOptimizer(ThresholdOptimizer):
                     and "y_pred" in inspect.getfullargspec(self.optimization_func).args
                 ):
 
-                    self.scores[thres] = self.optimization_func(
-                        y_true=score_df["y_true"], y_pred=score_df["pred_class"]
-                    )
+                    self.scores[thres] = self.optimization_func(y_true=score_df["y_true"], y_pred=score_df["pred_class"])
                 else:
-                    self.scores[thres] = self.optimization_func(
-                        score_df["y_true"], score_df["pred_class"]
-                    )
+                    self.scores[thres] = self.optimization_func(score_df["y_true"], score_df["pred_class"])
 
-            self.threshold_df = pd.DataFrame.from_dict(
-                self.scores, orient="index"
-            ).reset_index()
+            self.threshold_df = pd.DataFrame.from_dict(self.scores, orient="index").reset_index()
             self.threshold_df.columns = ["threshold", "score"]
         else:
             raise NotImplementedError("Multi-threading not implemented yet.")
@@ -1890,44 +1528,28 @@ class ScoreThresholdOptimizer(ThresholdOptimizer):
         self.threshold_df = self.threshold_df if threshold_df is None else threshold_df
 
         if isinstance(self.threshold_df.index, pd.MultiIndex):
-            groupby_cols = [
-                i for i in self.threshold_df.index.names if i != "threshold"
-            ]
+            groupby_cols = [i for i in self.threshold_df.index.names if i != "threshold"]
             if minimize_or_maximize.lower() == "maximize":
-                best_score = self.threshold_df.groupby(groupby_cols).apply(
-                    lambda x: x[x["score"] == x["score"].max()]
-                )
+                best_score = self.threshold_df.groupby(groupby_cols).apply(lambda x: x[x["score"] == x["score"].max()])
 
             elif minimize_or_maximize.lower() == "maximize":
-                best_score = self.threshold_df.groupby(groupby_cols).apply(
-                    lambda x: x[x["score"] == x["score"].max()]
-                )
+                best_score = self.threshold_df.groupby(groupby_cols).apply(lambda x: x[x["score"] == x["score"].max()])
 
             else:
-                raise ValueError(
-                    "minimize_or_maximize must be set to 'maximize' or 'minimize'"
-                )
+                raise ValueError("minimize_or_maximize must be set to 'maximize' or 'minimize'")
 
-            indices = np.flatnonzero(
-                pd.Index(best_score.index.names).duplicated()
-            ).tolist()
+            indices = np.flatnonzero(pd.Index(best_score.index.names).duplicated()).tolist()
 
             best_score = best_score.reset_index(indices, drop=True)
         else:
             if minimize_or_maximize.lower() == "maximize":
-                self.best_score = self.threshold_df[
-                    self.threshold_df["score"] == self.threshold_df["score"].max()
-                ]
+                self.best_score = self.threshold_df[self.threshold_df["score"] == self.threshold_df["score"].max()]
             elif minimize_or_maximize.lower() == "minimize":
-                self.best_score = self.threshold_df[
-                    self.threshold_df["score"] == self.threshold_df["score"].min()
-                ]
+                self.best_score = self.threshold_df[self.threshold_df["score"] == self.threshold_df["score"].min()]
 
         return self
 
-    def run_optimization(
-        self, fits, minimize_or_maximize, df=None, target_name=None, num_threads=1
-    ):
+    def run_optimization(self, fits, minimize_or_maximize, df=None, target_name=None, num_threads=1):
         """
         Description
         -----------
@@ -1949,9 +1571,7 @@ class ScoreThresholdOptimizer(ThresholdOptimizer):
         ### sanity checks ###
 
         if df is None and len(fits) > 1:
-            raise AssertionError(
-                "The parameter df must be specified (with fit columns present) len(fits) > 1."
-            )
+            raise AssertionError("The parameter df must be specified (with fit columns present) len(fits) > 1.")
 
         if num_threads > 1:
             raise NotImplementedError("Multi-threading not implemented yet!")
@@ -2068,8 +1688,6 @@ class GenericMLEvaluator(AbstractEvaluator):
 
         self.evaluation_output = self.evaluation_output.reset_index(drop=True)
 
-        self.evaluation_output = self.evaluation_output[
-            ["fit"] + [i for i in self.evaluation_output.columns if i != "fit"]
-        ]
+        self.evaluation_output = self.evaluation_output[["fit"] + [i for i in self.evaluation_output.columns if i != "fit"]]
 
         return self

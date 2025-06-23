@@ -33,21 +33,16 @@ mlf = SklearnMLFlow(
     target_name=TARGET_NAME,
     preserve_vars=PRESERVE_VARS,
     feature_creator=AmexFeatureCreator(
-        customer_history_cols=CUSTOMER_HISTORY_COLS,
-        customer_history_cat_cols=CUSTOMER_HISTORY_CAT_COLS,
+        customer_history_cols=CUSTOMER_HISTORY_COLS, customer_history_cat_cols=CUSTOMER_HISTORY_CAT_COLS
     ),
     splitter=AmexSplitter(train_pct=0.70, val_pct=0.15),
-    feature_transformer=FeatureTransformer(
-        target_name=TARGET_NAME, preserve_vars=PRESERVE_VARS
-    ),
+    feature_transformer=FeatureTransformer(target_name=TARGET_NAME, preserve_vars=PRESERVE_VARS),
     algorithms=[
         CatBoostClassifier(iterations=300, learning_rate=0.02, random_state=9),
         XGBClassifier(learning_rate=0.05, max_depth=3, random_state=9),
     ],
     optimizer=ScoreThresholdOptimizer(f1_score),
-    evaluator=GenericMLEvaluator(
-        classification_or_regression="classification", groupby_cols="dataset_split"
-    ),
+    evaluator=GenericMLEvaluator(classification_or_regression="classification", groupby_cols="dataset_split"),
 )
 
 mlf.split()
@@ -66,9 +61,7 @@ print("\nTotal time taken:", round((time.time() - start) / 60, 3), "minutes\n")
 ### submission ###
 
 df_catboost = (
-    mlf.df_out[mlf.df_out[mlf.split_colname] == "submission"][
-        ["customer_id", "CatBoostClassifier_pred"]
-    ]
+    mlf.df_out[mlf.df_out[mlf.split_colname] == "submission"][["customer_id", "CatBoostClassifier_pred"]]
     .groupby("customer_id")
     .mean()
     .rename({"customer_id": "customer_ID", "CatBoostClassifier_pred": "prediction"})

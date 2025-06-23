@@ -29,65 +29,17 @@ TIMESERIES_TABLES = {
     "bars_1_day": (["timestamp", "ticker"], "timestamp", "90 days", "365 days", 8),
     "bars_1_week": (["timestamp", "ticker"], "timestamp", "180 days", "730 days", 8),
     "bars_1_month": (["timestamp", "ticker"], "timestamp", "1 year", "1095 days", 8),
-    "daily_market_summary": (
-        ["timestamp", "ticker"],
-        "timestamp",
-        "90 days",
-        "365 days",
-        8,
-    ),
+    "daily_market_summary": (["timestamp", "ticker"], "timestamp", "90 days", "365 days", 8),
     "daily_ticker_summary": (["from", "symbol"], "from", "90 days", "365 days", 8),
-    "previous_day_bar": (
-        ["timestamp", "ticker"],
-        "timestamp",
-        "90 days",
-        "365 days",
-        8,
-    ),
+    "previous_day_bar": (["timestamp", "ticker"], "timestamp", "90 days", "365 days", 8),
     "top_market_movers": (["updated", "ticker"], "updated", "90 days", "365 days", 8),
     "trades": (["ticker", "exchange", "id"], "sip_timestamp", "1 day", "7 days", 16),
-    "quotes": (
-        ["ticker", "sip_timestamp", "sequence_number"],
-        "sip_timestamp",
-        "1 day",
-        "7 days",
-        16,
-    ),
-    "sma": (
-        ["timestamp", "ticker", "indicator", "series_window_timespan"],
-        "timestamp",
-        "3 days",
-        "21 days",
-        8,
-    ),
-    "ema": (
-        ["timestamp", "ticker", "indicator", "series_window_timespan"],
-        "timestamp",
-        "3 days",
-        "21 days",
-        8,
-    ),
-    "macd": (
-        ["timestamp", "ticker", "indicator", "series_window_timespan"],
-        "timestamp",
-        "3 days",
-        "21 days",
-        8,
-    ),
-    "rsi": (
-        ["timestamp", "ticker", "indicator", "series_window_timespan"],
-        "timestamp",
-        "3 days",
-        "21 days",
-        8,
-    ),
-    "short_interest": (
-        ["settlement_date", "ticker"],
-        "settlement_date",
-        "90 days",
-        "365 days",
-        8,
-    ),
+    "quotes": (["ticker", "sip_timestamp", "sequence_number"], "sip_timestamp", "1 day", "7 days", 16),
+    "sma": (["timestamp", "ticker", "indicator", "series_window_timespan"], "timestamp", "3 days", "21 days", 8),
+    "ema": (["timestamp", "ticker", "indicator", "series_window_timespan"], "timestamp", "3 days", "21 days", 8),
+    "macd": (["timestamp", "ticker", "indicator", "series_window_timespan"], "timestamp", "3 days", "21 days", 8),
+    "rsi": (["timestamp", "ticker", "indicator", "series_window_timespan"], "timestamp", "3 days", "21 days", 8),
+    "short_interest": (["settlement_date", "ticker"], "settlement_date", "90 days", "365 days", 8),
     "short_volume": (["date", "ticker"], "date", "90 days", "365 days", 8),
 }
 
@@ -302,11 +254,7 @@ def safe_run_sql(db, sql, df_type=None, ignore_error_codes=None):
     except Exception as e:
         # Optionally skip errors like 'already hypertable', 'already compressed', etc.
         # You can expand this logic based on your needs.
-        if (
-            hasattr(e, "orig")
-            and hasattr(e.orig, "pgcode")
-            and e.orig.pgcode in ignore_error_codes
-        ):
+        if hasattr(e, "orig") and hasattr(e.orig, "pgcode") and e.orig.pgcode in ignore_error_codes:
             print(f"Warning: {e}")
         else:
             print(f"Error executing query:\n{sql}\n{e}")
@@ -320,10 +268,7 @@ with PostgresConnect(database="financial_elt") as db:
     safe_run_sql(db, GRANT_SCHEMA, df_type=None)
 
     # Create hypertables with PKs matching Meltano tap-polygon
-    for (
-        table,
-        (pk_cols, time_col, chunk_interval, compress_interval, hash_partitions),
-    ) in TIMESERIES_TABLES.items():
+    for table, (pk_cols, time_col, chunk_interval, compress_interval, hash_partitions) in TIMESERIES_TABLES.items():
         full_table = f"{SCHEMA}.{table}"
         table_ddl = DDL_MAP[table]
         print(f"Setting up hypertable: {full_table}...")
@@ -331,18 +276,14 @@ with PostgresConnect(database="financial_elt") as db:
         safe_run_sql(db, GRANT_TABLE, df_type=None)
         safe_run_sql(
             db,
-            CREATE_HYPERTABLE.format(
-                full_table=full_table, time_col=time_col, chunk_interval=chunk_interval
-            ),
+            CREATE_HYPERTABLE.format(full_table=full_table, time_col=time_col, chunk_interval=chunk_interval),
             df_type=None,
             ignore_error_codes=["TS101"],  # Already a hypertable
         )
         if "ticker" in pk_cols and hash_partitions > 1:
             safe_run_sql(
                 db,
-                ADD_HASH_DIMENSION.format(
-                    full_table=full_table, hash_partitions=hash_partitions
-                ),
+                ADD_HASH_DIMENSION.format(full_table=full_table, hash_partitions=hash_partitions),
                 df_type=None,
                 ignore_error_codes=["TS202"],  # Already has hash dimension
             )
@@ -361,9 +302,7 @@ with PostgresConnect(database="financial_elt") as db:
         )
         safe_run_sql(
             db,
-            ADD_COMPRESSION_POLICY.format(
-                full_table=full_table, compress_interval=compress_interval
-            ),
+            ADD_COMPRESSION_POLICY.format(full_table=full_table, compress_interval=compress_interval),
             df_type=None,
             ignore_error_codes=["TS201"],  # Already has compression policy
         )
@@ -419,20 +358,8 @@ YF_TIMESERIES_TABLES = {
     "dividends": (["timestamp", "ticker"], "timestamp", "365 days", "1095 days", 4),
     "splits": (["timestamp", "ticker"], "timestamp", "365 days", "1095 days", 4),
     # Earnings, news
-    "earnings_dates": (
-        ["timestamp", "ticker"],
-        "timestamp",
-        "365 days",
-        "1095 days",
-        2,
-    ),
-    "news": (
-        ["timestamp_extracted", "ticker"],
-        "timestamp_extracted",
-        "30 days",
-        "180 days",
-        2,
-    ),
+    "earnings_dates": (["timestamp", "ticker"], "timestamp", "365 days", "1095 days", 2),
+    "news": (["timestamp_extracted", "ticker"], "timestamp_extracted", "30 days", "180 days", 2),
 }
 
 YF_PRICE_DDL = """
@@ -557,10 +484,7 @@ with PostgresConnect(database="financial_elt") as db:
     safe_run_sql(db, YF_GRANT_SCHEMA, df_type=None)
 
     # Create hypertables with PKs matching Meltano tap-yfinance
-    for (
-        table,
-        (pk_cols, time_col, chunk_interval, compress_interval, hash_partitions),
-    ) in YF_TIMESERIES_TABLES.items():
+    for table, (pk_cols, time_col, chunk_interval, compress_interval, hash_partitions) in YF_TIMESERIES_TABLES.items():
         full_table = f"{YF_SCHEMA}.{table}"
         table_ddl = YF_DDL_MAP[table]
         print(f"Setting up hypertable: {full_table}...")
@@ -568,18 +492,14 @@ with PostgresConnect(database="financial_elt") as db:
         safe_run_sql(db, YF_GRANT_TABLE, df_type=None)
         safe_run_sql(
             db,
-            YF_CREATE_HYPERTABLE.format(
-                full_table=full_table, time_col=time_col, chunk_interval=chunk_interval
-            ),
+            YF_CREATE_HYPERTABLE.format(full_table=full_table, time_col=time_col, chunk_interval=chunk_interval),
             df_type=None,
             ignore_error_codes=["TS101"],
         )
         if "ticker" in pk_cols and hash_partitions > 1:
             safe_run_sql(
                 db,
-                YF_ADD_HASH_DIMENSION.format(
-                    full_table=full_table, hash_partitions=hash_partitions
-                ),
+                YF_ADD_HASH_DIMENSION.format(full_table=full_table, hash_partitions=hash_partitions),
                 df_type=None,
                 ignore_error_codes=["TS202"],
             )
@@ -597,9 +517,7 @@ with PostgresConnect(database="financial_elt") as db:
         )
         safe_run_sql(
             db,
-            YF_ADD_COMPRESSION_POLICY.format(
-                full_table=full_table, compress_interval=compress_interval
-            ),
+            YF_ADD_COMPRESSION_POLICY.format(full_table=full_table, compress_interval=compress_interval),
             df_type=None,
             ignore_error_codes=["TS201"],
         )

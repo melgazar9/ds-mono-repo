@@ -32,9 +32,7 @@ if __name__ == "__main__":
 
     if "tap-yahooquery" in os.getenv("FINANCIAL_ELT_TAPS_TO_RUN"):
         tap_yahooquery_cron = json.loads(os.getenv("TAP_YAHOOQUERY_CRON"))
-        scheduler.add_job(
-            tap_yahooquery, trigger="cron", **tap_yahooquery_cron, jitter=120
-        )
+        scheduler.add_job(tap_yahooquery, trigger="cron", **tap_yahooquery_cron, jitter=120)
         logging.info(f"Added tap-yahooquery job with cron: {tap_yahooquery_cron}")
 
     if "tap-polygon" in os.getenv("FINANCIAL_ELT_TAPS_TO_RUN"):
@@ -52,12 +50,7 @@ if __name__ == "__main__":
     scheduler.start()
 
     if DEBUG:
-        tap = MeltanoTap(
-            project_dir="tap-polygon",
-            num_workers=10,
-            tap_name="tap-polygon",
-            target_name="jsonl",
-        )
+        tap = MeltanoTap(project_dir="tap-polygon", num_workers=10, tap_name="tap-polygon", target_name="jsonl")
         tap.run_tap()
 
     serve(app, host=HOST, port=PORT, threads=2)  # waitress wsgi production server

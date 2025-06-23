@@ -20,9 +20,7 @@ CUTOFF_CST = pd.Timestamp("13:45:00").time()
 
 bar_loader = PolygonBarLoader()
 
-bar_loader.df_prev = bar_loader.load_raw_intraday_bars(
-    os.path.expanduser("~/polygon_data/bars_1min/bars_1m_2025-05-12.csv.gz")
-)
+bar_loader.df_prev = bar_loader.load_raw_intraday_bars(os.path.expanduser("~/polygon_data/bars_1min/bars_1m_2025-05-12.csv.gz"))
 
 pd.options.display.max_columns = 100
 
@@ -33,9 +31,7 @@ daily_metrics = []
 files = sorted(os.listdir(os.path.expanduser("~/polygon_data/bars_1min/")))
 for file in files[1:]:
     logging.info(f"Processing {file}")
-    bar_loader.load_and_adjust_bars(
-        cur_day_file=os.path.expanduser(f"~/polygon_data/bars_1min/{file}")
-    )
+    bar_loader.load_and_adjust_bars(cur_day_file=os.path.expanduser(f"~/polygon_data/bars_1min/{file}"))
 
     df = bar_loader.df_cur.copy()
 

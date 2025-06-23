@@ -116,9 +116,7 @@ def calc_sortino_ratio(
     mean_excess_return = excess_returns.mean()
 
     # Calculate downside deviation (key difference from Sharpe)
-    downside_returns = excess_returns[
-        excess_returns < (target_return - rf_rate_per_trade)
-    ]
+    downside_returns = excess_returns[excess_returns < (target_return - rf_rate_per_trade)]
 
     if len(downside_returns) == 0:
         # No downside - but still need to handle edge cases
@@ -128,7 +126,7 @@ def calc_sortino_ratio(
             return 0.0
 
     # Use sample standard deviation (ddof=1) for consistency with Sharpe
-    downside_deviation = np.sqrt(np.mean(downside_returns ** 2))
+    downside_deviation = np.sqrt(np.mean(downside_returns**2))
 
     if downside_deviation == 0:
         return 0.0 if mean_excess_return >= 0 else -np.inf

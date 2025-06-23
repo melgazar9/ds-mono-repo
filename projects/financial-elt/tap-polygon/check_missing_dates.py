@@ -16,13 +16,7 @@ class USStockMarketHolidays(UnitedStates):
 
 def main():
     parser = OptionParser()
-    parser.add_option(
-        "-d",
-        "--subdir",
-        dest="subdir",
-        help="Subdirectory to process (e.g., 'SPY')",
-        default="",
-    )
+    parser.add_option("-d", "--subdir", dest="subdir", help="Subdirectory to process (e.g., 'SPY')", default="")
     parser.add_option(
         "-i",
         "--ignore",
@@ -37,11 +31,7 @@ def main():
     if options.subdir:
         base_dir = os.path.join(base_dir, options.subdir)
 
-    ignore_items = (
-        [item.strip() for item in options.ignore_list.split(",")]
-        if options.ignore_list
-        else []
-    )
+    ignore_items = [item.strip() for item in options.ignore_list.split(",")] if options.ignore_list else []
 
     start_date = date(2015, 5, 17)
     end_date = date(2025, 5, 17)
@@ -52,11 +42,7 @@ def main():
         if options.subdir and os.path.basename(root) == os.path.basename(base_dir):
             dirs[:] = [d for d in dirs if d not in ignore_items]
             files[:] = [f for f in files if f not in ignore_items]
-        elif any(
-            ignored_item in root
-            for ignored_item in ignore_items
-            if ignored_item in root
-        ):
+        elif any(ignored_item in root for ignored_item in ignore_items if ignored_item in root):
             continue
 
         if not files:

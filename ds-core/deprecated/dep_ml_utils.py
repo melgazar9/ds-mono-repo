@@ -100,46 +100,20 @@ class RunModel:
 
         np.random.seed(self.seed)
 
-        assert all(
-            f in self.X_train.columns for f in self.features
-        ), "Missing features in X_train!"
+        assert all(f in self.X_train.columns for f in self.features), "Missing features in X_train!"
 
         if not self.bypass_all_numeric:  # need to check all features are numeric
             assert len(
-                list(
-                    set(
-                        [
-                            i
-                            for i in self.X_train.select_dtypes(
-                                include=np.number
-                            ).columns
-                            if i in self.features
-                        ]
-                    )
-                )
+                list(set([i for i in self.X_train.select_dtypes(include=np.number).columns if i in self.features]))
             ) == len(self.features), "Not all features in X_train are numeric!"
 
             if (self.use_eval_set_when_possible) and (self.eval_set is not None):
-                assert all(
-                    f in self.eval_set[0][0].columns for f in self.features
-                ), "Missing features in X_val!"
+                assert all(f in self.eval_set[0][0].columns for f in self.features), "Missing features in X_val!"
                 assert len(
-                    list(
-                        set(
-                            [
-                                i
-                                for i in self.eval_set[0][0]
-                                .select_dtypes(include=np.number)
-                                .columns
-                                if i in self.features
-                            ]
-                        )
-                    )
+                    list(set([i for i in self.eval_set[0][0].select_dtypes(include=np.number).columns if i in self.features]))
                 ) == len(self.features), "Not all features in X_val are numeric!"
 
-        assert self.X_train.shape[0] == len(
-            self.y_train
-        ), "X_train shape does not match y_train shape!"
+        assert self.X_train.shape[0] == len(self.y_train), "X_train shape does not match y_train shape!"
 
         ds_print("\nRunning " + type(self.algorithm).__name__ + "...\n")
 
@@ -154,45 +128,24 @@ class RunModel:
             # All kwargs in the fit_params are available in the model.fit object
             # (e.g. list(inspect.getfullargspec(RandomForestClassifier.fit))[0] must have all params inside fit_params)
 
-            ds_print(
-                "\nUsing a validation set for "
-                + type(self.algorithm).__name__
-                + "...\n"
-            )
+            ds_print("\nUsing a validation set for " + type(self.algorithm).__name__ + "...\n")
 
             if self.use_eval_set_when_possible and self.eval_set is not None:
-                model = self.algorithm.fit(
-                    self.X_train,
-                    self.y_train,
-                    eval_set=self.eval_set,
-                    **self.kwargs["fit_params"]
-                )
+                model = self.algorithm.fit(self.X_train, self.y_train, eval_set=self.eval_set, **self.kwargs["fit_params"])
             else:
-                model = self.algorithm.fit(
-                    self.X_train, self.y_train, **self.kwargs["fit_params"]
-                )
+                model = self.algorithm.fit(self.X_train, self.y_train, **self.kwargs["fit_params"])
 
         elif (
             self.use_eval_set_when_possible
             and self.eval_set is not None
-            and {"eval_set"}.issubset(
-                list(inspect.signature(XGBRegressor.fit).parameters)
-            )
+            and {"eval_set"}.issubset(list(inspect.signature(XGBRegressor.fit).parameters))
         ):
 
-            ds_print(
-                "\nUsing a validation set for "
-                + type(self.algorithm).__name__
-                + "...\n"
-            )
-            model = self.algorithm.fit(
-                self.X_train, self.y_train, eval_set=self.eval_set
-            )
+            ds_print("\nUsing a validation set for " + type(self.algorithm).__name__ + "...\n")
+            model = self.algorithm.fit(self.X_train, self.y_train, eval_set=self.eval_set)
 
         else:
-            ds_print(
-                "\nNot using an eval_set for " + type(self.algorithm).__name__ + "...\n"
-            )
+            ds_print("\nNot using an eval_set for " + type(self.algorithm).__name__ + "...\n")
             model = self.algorithm.fit(self.X_train, self.y_train)
             ds_print("\n" + type(model).__name__ + " training done!\n")
 
@@ -206,28 +159,18 @@ class RunModel:
         X_test : a pandas dataframe or np.array-like object to perform predictions on
         """
 
-        if ("predict_params" in self.kwargs) and (
-            len(self.kwargs["predict_params"]) > 0
-        ):
+        if ("predict_params" in self.kwargs) and (len(self.kwargs["predict_params"]) > 0):
 
             if not self.predict_proba:
-                predictions = model.predict(
-                    self.X_test[self.features], **self.kwargs["predict_params"]
-                )
+                predictions = model.predict(self.X_test[self.features], **self.kwargs["predict_params"])
             else:
                 try:
-                    predictions = model.predict_proba(
-                        self.X_test[self.features], **self.kwargs["predict_params"]
-                    )[:, 1]
+                    predictions = model.predict_proba(self.X_test[self.features], **self.kwargs["predict_params"])[:, 1]
                 except:
                     try:
-                        predictions = model.decision_function(
-                            self.X_test[self.features], **self.kwargs["predict_params"]
-                        )[:, 1]
+                        predictions = model.decision_function(self.X_test[self.features], **self.kwargs["predict_params"])[:, 1]
                     except:
-                        sys.exit(
-                            "model does not have predict_proba or decision_function attribute"
-                        )
+                        sys.exit("model does not have predict_proba or decision_function attribute")
         else:
 
             if not self.predict_proba:
@@ -237,13 +180,9 @@ class RunModel:
                     predictions = model.predict_proba(self.X_test[self.features])[:, 1]
                 except:
                     try:
-                        predictions = model.decision_function(
-                            self.X_test[self.features]
-                        )[:, 1]
+                        predictions = model.decision_function(self.X_test[self.features])[:, 1]
                     except:
-                        ds_print(
-                            "model does not have predict_proba or decision_function attribute"
-                        )
+                        ds_print("model does not have predict_proba or decision_function attribute")
                         sys.exit()
 
         if not self.map_predictions_to_df_full:
@@ -280,13 +219,7 @@ class SplitOptimizer(ScoreThresholdOptimizer):
         self.split_colname = split_colname
 
     def run_split_optimization(
-        self,
-        df,
-        fits,
-        minimize_or_maximize,
-        split_colname="dataset_split",
-        target_name=None,
-        num_threads=1,
+        self, df, fits, minimize_or_maximize, split_colname="dataset_split", target_name=None, num_threads=1
     ):
         """
         Description
@@ -321,15 +254,12 @@ class SplitOptimizer(ScoreThresholdOptimizer):
                 _threshold_results_by_split = pd.DataFrame(
                     df[df[self.split_colname].isin(splits_to_assess)]
                     .groupby(self.split_colname)
-                    .apply(
-                        lambda x: self.optimization_func(x[target_name], x[pred_class])
-                    ),
+                    .apply(lambda x: self.optimization_func(x[target_name], x[pred_class])),
                     columns=[pred_class],
                 )
 
                 self.threshold_opt_results_by_split = pd.concat(
-                    [self.threshold_opt_results_by_split, _threshold_results_by_split],
-                    axis=1,
+                    [self.threshold_opt_results_by_split, _threshold_results_by_split], axis=1
                 )
 
             self.threshold_opt_results_by_split.index = self.threshold_opt_results_by_split.index.astype(
