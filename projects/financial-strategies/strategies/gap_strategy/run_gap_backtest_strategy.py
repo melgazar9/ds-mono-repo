@@ -9,14 +9,21 @@ from typing import Optional, List, Dict
 import pandas as pd
 from concurrent.futures import ProcessPoolExecutor, Future
 import shutil
-
+from itertools import product
 from dataclasses import dataclass
 
 from gap_backtest_utils import GapStrategyRiskManager, GapStrategyEvaluator, GapPositionManager
 
+stop_vals = [0.5, 1.0]
+tp_vals = [1.0, 0.5]
+gap_vals = [0.2, 0.33]
+PARAM_GRID = list(product(stop_vals, tp_vals, gap_vals))
+BASE_RESULTS_DIR = Path.home() / "gap_backtrade_results"
+
 DEBUG = True
 
 REMOVE_LOW_QUALITY_TICKERS = False
+
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
@@ -111,8 +118,11 @@ class GapBacktestRunner(BacktestEngine):
     # Class-level shared corporate actions data
     _df_corporate_actions = None
 
-    def __init__(self, params: BacktestParams):
+    def __init__(self, params: BacktestParams, results_dir: Path = None):
         self.params = params
+        self.run_timestamp = datetime.now().strftime("%Y-%m-%d__%H-%M-%S")
+        self.results_dir = results_dir or (Path.home() / "gap_backtrade_results")
+        self.results_dir.mkdir(exist_ok=True)
         super().__init__(
             data_loader=None,
             risk_manager=GapStrategyRiskManager(),
@@ -146,8 +156,6 @@ class GapBacktestRunner(BacktestEngine):
             max_cached_files=max_cached_files,
         )
         self.run_timestamp = datetime.now().strftime("%Y-%m-%d__%H-%M-%S")
-        self.results_dir = Path.home() / "gap_backtrade_results"
-        self.results_dir.mkdir(exist_ok=True)
 
         # Create a protected directory for files that are being processed
         self.processing_dir = self.results_dir / f"processing_{self.run_timestamp}"
@@ -414,19 +422,22 @@ class GapBacktestRunner(BacktestEngine):
         )
 
 
-async def main(params: BacktestParams):
+async def main(params: BacktestParams, results_dir: Path):
     """Main entry point"""
-    runner = GapBacktestRunner(params=params)
+    runner = GapBacktestRunner(params=params, results_dir=results_dir)
     await runner.run_backtest_sequence()
 
 
 if __name__ == "__main__":
-    params = BacktestParams(num_workers=20)
-
-    # 1. If gap from previous day close to either pre-market open or market open is >= X% (adjusted) then trigger trade entry
-    # 2. Iterate over different stop and take loss percentages
-    # 3. Do not enter trade after 13:45 CST
-    # 4. All positions must be flattened by 14:55 CST
-    # 5. Segment by groups --> HTB / short interest/volume buckets, market cap bucket, industry, VIX range, etc.
-
-    asyncio.run(main(params))
+    for stop, tp, gap in PARAM_GRID:
+        ts = datetime.now().strftime("%Y-%m-%d__%H-%M-%S")
+        result_dir = BASE_RESULTS_DIR / f"{ts}__stop_{stop}__tp_{tp}__gap_{gap}"
+        result_dir.mkdir(parents=True, exist_ok=True)
+        params = BacktestParams(
+            stop_loss_pct=stop,
+            take_profit_pct=tp,
+            overnight_gap=gap,
+            num_workers=20,
+        )
+        print(f"Running for stop={stop}, tp={tp}, gap={gap} in {result_dir}")
+        asyncio.run(main(params, result_dir))
