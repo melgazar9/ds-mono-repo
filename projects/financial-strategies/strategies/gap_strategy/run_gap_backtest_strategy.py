@@ -14,13 +14,13 @@ from dataclasses import dataclass
 
 from gap_backtest_utils import GapStrategyRiskManager, GapStrategyEvaluator, GapPositionManager
 
-stop_vals = [0.5, 1.0]
-tp_vals = [1.0, 0.5]
-gap_vals = [0.2, 0.33]
+stop_vals = [0.10, 0.60, 1.0]     # conservative, mid, aggressive
+tp_vals   = [0.20, 0.60, 1.5]     # conservative, mid, aggressive
+gap_vals  = [0.10, 0.33, 0.66]    # small, mid, large gap
 PARAM_GRID = list(product(stop_vals, tp_vals, gap_vals))
 BASE_RESULTS_DIR = Path.home() / "gap_backtrade_results"
-
-DEBUG = True
+START_DATE = "2025-01-01"
+END_DATE = "2025-06-01"
 
 REMOVE_LOW_QUALITY_TICKERS = False
 
@@ -224,7 +224,6 @@ class GapBacktestRunner(BacktestEngine):
                 if not df.empty:
                     combined_results[key].append(df)
 
-        # Save combined results
         for key, df_list in combined_results.items():
             if df_list:
                 combined_df = pd.concat(df_list, ignore_index=True)
@@ -279,15 +278,14 @@ class GapBacktestRunner(BacktestEngine):
 
         logging.info(f"Found {len(remote_files)} files to process")
 
-        if DEBUG:
-            filtered_dates = [
-                path
-                for path in remote_files
-                if datetime.strptime("2025-05-02", "%Y-%m-%d")
-                <= datetime.strptime(path.split("_")[-1].split(".")[0], "%Y-%m-%d")
-                <= datetime.strptime("2025-06-20", "%Y-%m-%d")
-            ]
-            remote_files = sorted(filtered_dates)
+        filtered_dates = [
+            path
+            for path in remote_files
+            if datetime.strptime(START_DATE, "%Y-%m-%d")
+            <= datetime.strptime(path.split("_")[-1].split(".")[0], "%Y-%m-%d")
+            <= datetime.strptime(END_DATE, "%Y-%m-%d")
+        ]
+        remote_files = sorted(filtered_dates)
 
         result_files = self._get_result_file_paths()
 
@@ -299,13 +297,12 @@ class GapBacktestRunner(BacktestEngine):
 
             self._log_completion_message(result_files)
         finally:
-            # Clean up processing directory
             if self.processing_dir.exists():
                 shutil.rmtree(self.processing_dir)
                 logging.info("🗑️ Cleaned up processing directory")
 
     async def _run_sequential(self, remote_files: List[str], result_files: Dict[str, Path]):
-        """Run backtest sequentially (ORIGINAL BEHAVIOR - EXACT SAME LOGIC)"""
+        """Run backtest sequentially"""
         header = True
         i = 0
         df_prev = None
@@ -324,13 +321,9 @@ class GapBacktestRunner(BacktestEngine):
             logging.info(f"Processing backtest for {local_file_path.name}")
             self.setup_data_loader(str(local_file_path), df_prev)
 
-            # Run backtest using inherited methods
             self.run_backtest()
-
-            # Save results using centralized method
             self._save_results_to_files(result_files, header)
 
-            # Set df_prev for next iteration using inherited df attribute
             df_prev = self.df
             header = False
             logging.info(f"✅ Completed processing {local_file_path.name}")
@@ -389,7 +382,7 @@ class GapBacktestRunner(BacktestEngine):
                 while len(active_futures) >= self.num_workers:
                     done, pending = await asyncio.wait(active_futures.keys(), return_when=asyncio.FIRST_COMPLETED, timeout=0.1)
 
-                    # Process completed futures using DRY method
+                    # Process completed futures
                     self._process_completed_futures(list(done), active_futures, all_results, protected_files)
 
                 file_index += 1
@@ -422,9 +415,9 @@ class GapBacktestRunner(BacktestEngine):
         )
 
 
-async def main(params: BacktestParams, results_dir: Path):
+async def main(backtest_params: BacktestParams, results_dir: Path):
     """Main entry point"""
-    runner = GapBacktestRunner(params=params, results_dir=results_dir)
+    runner = GapBacktestRunner(params=backtest_params, results_dir=results_dir)
     await runner.run_backtest_sequence()
 
 
