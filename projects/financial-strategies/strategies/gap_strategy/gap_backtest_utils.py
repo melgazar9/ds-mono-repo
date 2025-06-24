@@ -450,19 +450,19 @@ class GapStrategyEvaluator(StrategyEvaluator):
         """
 
         df["pct_high_from_prev_mkt_close"] = (df["high"] - df["prev_market_close"]) / df["prev_market_close"]
-
         df["pct_low_from_prev_mkt_close"] = (df["low"] - df["prev_market_close"]) / df["prev_market_close"]
 
-        df["pct_high_from_entry_price"] = (
-            df["high"] - (df["bto_price_with_slippage"] + df["sto_price_with_slippage"]).mean()
-        ) / (df["bto_price_with_slippage"] + df["sto_price_with_slippage"]).mean()
-        df["pct_low_from_entry_price"] = (
-            df["low"] - (df["bto_price_with_slippage"] + df["sto_price_with_slippage"]).mean()
-        ) / (df["bto_price_with_slippage"] + df["sto_price_with_slippage"]).mean()
+        df["pct_high_from_entry_price"] = (df["high"] - ((df["theoretical_bto_price"] + df["theoretical_sto_price"]) / 2)) / (
+            (df["theoretical_bto_price"] + df["theoretical_sto_price"]) / 2
+        )
 
-        df["open_pct_chg"] = (df["open"] - df["prev_market_close"]) / df["prev_market_close"]
-        df["high_pct_chg"] = (df["high"] - df["prev_market_close"]) / df["prev_market_close"]
-        df["low_pct_chg"] = (df["low"] - df["prev_market_close"]) / df["prev_market_close"]
+        df["pct_low_from_entry_price"] = (df["low"] - ((df["theoretical_bto_price"] + df["theoretical_sto_price"]) / 2)) / (
+            (df["theoretical_bto_price"] + df["theoretical_sto_price"]) / 2
+        )
+
+        df["open_pct_chg"] = (df["open"] - df["prev_market_open"]) / df["prev_market_open"]
+        df["high_pct_chg"] = (df["high"] - df["prev_market_high"]) / df["prev_market_high"]
+        df["low_pct_chg"] = (df["low"] - df["prev_market_low"]) / df["prev_market_low"]
         df["close_pct_chg"] = (df["close"] - df["prev_market_close"]) / df["prev_market_close"]
 
         df["volume_pct_chg"] = (df["volume"] - df["prev_market_volume"]) / df["prev_market_volume"]
@@ -627,13 +627,13 @@ class GapStrategyEvaluator(StrategyEvaluator):
 
         if include_pct_chg_metrics:
             detailed_metrics = {
-                "pct_high_from_prev_mkt_close": safe_mean(df["pct_high_from_prev_mkt_close"]),
-                "pct_low_from_prev_mkt_close": safe_mean(df["pct_low_from_prev_mkt_close"]),
-                "open_pct_chg": safe_mean(df["open_pct_chg"]),
-                "high_pct_chg": safe_mean(df["high_pct_chg"]),
-                "low_pct_chg": safe_mean(df["low_pct_chg"]),
-                "close_pct_chg": safe_mean(df["close_pct_chg"]),
-                "volume_pct_chg": safe_mean(df["volume_pct_chg"]),
+                "pct_high_from_prev_mkt_close": df["pct_high_from_prev_mkt_close"].max(),
+                "pct_low_from_prev_mkt_close": df["pct_low_from_prev_mkt_close"].min(),
+                "open_pct_chg": df["open_pct_chg"].first(),
+                "high_pct_chg": df["high_pct_chg"].max(),
+                "low_pct_chg": df["low_pct_chg"].min(),
+                "close_pct_chg": df["close_pct_chg"].last(),
+                "volume_pct_chg": df["volume_pct_chg"].sum(),
             }
             summary_dict.update(detailed_metrics)
 
@@ -694,15 +694,24 @@ class GapStrategyEvaluator(StrategyEvaluator):
         return df
 
     @staticmethod
-    def _add_daily_vix_buckets(df):
+    def _add_prev_day_vix_buckets(df):
+        """
+        Assigns the previous trading day's VIX open bucket to each row based on the current date.
+        This avoids lookahead bias (no cheating).
+        """
         with PostgresConnect(database="financial_elt") as db:
             df_vix_1d = db.run_sql(
                 """
-                select date(timestamp) as date, open as vix_open from tap_yfinance_production.prices_1d where ticker = '^VIX'
-            """
+                select date(timestamp) as date, close as vix_close from tap_yfinance_production.prices_1d where ticker = '^VIX'
+                """
             )
 
-        min_vix, max_vix, multiplier, epsilon = (df_vix_1d["vix_open"].min(), df_vix_1d["vix_open"].max(), 1.333, 0.01)
+        min_vix, max_vix, multiplier, epsilon = (
+            df_vix_1d["vix_close"].min(),
+            df_vix_1d["vix_close"].max(),
+            1.333,
+            0.01,
+        )
 
         bins = sorted(
             list(
@@ -720,43 +729,90 @@ class GapStrategyEvaluator(StrategyEvaluator):
         )
         bins = [bins[0]] + [bins[i] for i in range(1, len(bins)) if bins[i] - bins[i - 1] > 0.001]
 
-        df_vix_1d["vix_bucket"] = pd.cut(
-            df_vix_1d["vix_open"], bins=bins, labels=[f"{b1:.2f}-{b2:.2f}" for b1, b2 in zip(bins[:-1], bins[1:])], right=False
+        df_vix_1d["vix_close_bucket"] = pd.cut(
+            df_vix_1d["vix_close"],
+            bins=bins,
+            labels=[f"{b1:.2f}-{b2:.2f}" for b1, b2 in zip(bins[:-1], bins[1:])],
+            right=False,
         )
+
         df_vix_1d["date"] = pd.to_datetime(df_vix_1d["date"]).dt.tz_localize("America/Chicago")
-        df = df.merge(df_vix_1d, how="left", on="date")
+        df_vix_1d = df_vix_1d.sort_values(by="date")
+        df = df.sort_values(by=["timestamp", "ticker"])
+        df = pd.merge_asof(
+            df,
+            df_vix_1d,
+            on="date",
+            direction="backward",
+            allow_exact_matches=False,
+        ).rename(columns={"vix_close": "prev_day_vix_close", "vix_close_bucket": "prev_day_vix_close_bucket"})
+        df = df.sort_values(by=["timestamp", "ticker"])
         return df
 
     @staticmethod
-    def _add_daily_volume_bucket(df):
+    def _add_prev_day_volume_bucket(df):
         """
-        Assigns a daily dollar volume bucket per ticker and date,
-        and merges the bucket assignment back to each row.
+        Assigns a daily dollar volume bucket per row using prev_market_volume and prev_market_close.
         """
         volume_buckets = [0, 1_000_000, 10_000_000, 100_000_000, 1_000_000_000, np.inf]
         bucket_labels = ["Very Low", "Low", "Medium", "High", "Very High"]
 
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=FutureWarning)
-            daily_dollar_volume = (
-                df.groupby(["ticker", "date"])
-                .apply(lambda x: (x["volume"].fillna(0) * x["close"].fillna(0)).sum())
-                .rename("daily_dollar_volume")
-                .reset_index()
-            )
+        df["prev_day_dollar_volume"] = df["prev_market_volume"].fillna(0) * df["prev_market_close"].fillna(0)
+        df["prev_day_volume_bucket"] = pd.cut(
+            df["prev_day_dollar_volume"], bins=volume_buckets, labels=bucket_labels, right=True
+        )
 
-            daily_dollar_volume["daily_volume_bucket"] = pd.cut(
-                daily_dollar_volume["daily_dollar_volume"], bins=volume_buckets, labels=bucket_labels, right=True
-            )
-
-        df = df.merge(daily_dollar_volume[["ticker", "date", "daily_volume_bucket"]], on=["ticker", "date"], how="left")
         df = df.sort_values(["timestamp", "ticker"])
+        return df
+
+    @staticmethod
+    def _get_industry(df):
+        return df
+
+    @staticmethod
+    def _get_market_cap_bucket(df):
+        return df
+
+    @staticmethod
+    def _get_prev_short_interest_bucket(df):
+        return df
+
+    @staticmethod
+    def _get_prev_day_short_volume_bucket(df):
+        return df
+
+    @staticmethod
+    def _get_prev_day_trin_bucket(df):
+        return df
+
+    @staticmethod
+    def _get_prev_day_tick_bucket(df):
+        return df
+
+    @staticmethod
+    def _get_7day_sma_bucket(df):
+        return df
+
+    @staticmethod
+    def _get_7day_ema_bucket(df):
+        return df
+
+    @staticmethod
+    def _get_7day_rsi_bucket(df):
+        return df
+
+    @staticmethod
+    def _get_7day_macd_bucket(df):
+        return df
+
+    @staticmethod
+    def _get_prev_htb_flag(df):
         return df
 
     def _add_segments(self, df):
         df = self._add_ticker_identifiers(df)
-        df = self._add_daily_vix_buckets(df)
-        df = self._add_daily_volume_bucket(df)
+        df = self._add_prev_day_volume_bucket(df)
+        df = self._add_prev_day_vix_buckets(df)
         return df
 
     def _calc_daily_summary_by_segment(self, df):

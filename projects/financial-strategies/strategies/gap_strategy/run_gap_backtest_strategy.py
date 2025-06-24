@@ -14,13 +14,13 @@ from dataclasses import dataclass
 
 from gap_backtest_utils import GapStrategyRiskManager, GapStrategyEvaluator, GapPositionManager
 
-stop_vals = [0.10, 0.60, 1.0]     # conservative, mid, aggressive
-tp_vals   = [0.20, 0.60, 1.5]     # conservative, mid, aggressive
-gap_vals  = [0.10, 0.33, 0.66]    # small, mid, large gap
+stop_vals = [1.0]  # conservative, mid, aggressive
+tp_vals = [1.0]  # conservative, mid, aggressive
+gap_vals = [0.33]  # small, mid, large gap
 PARAM_GRID = list(product(stop_vals, tp_vals, gap_vals))
 BASE_RESULTS_DIR = Path.home() / "gap_backtrade_results"
-START_DATE = "2025-01-01"
-END_DATE = "2025-06-01"
+START_DATE = "2025-05-07"
+END_DATE = "2025-05-08"
 
 REMOVE_LOW_QUALITY_TICKERS = False
 
@@ -47,7 +47,7 @@ class BacktestParams:
 
     def __post_init__(self):
         if self.segment_cols is None:
-            self.segment_cols = ["market", "vix_bucket", "daily_volume_bucket"]
+            self.segment_cols = ["market", "prev_day_vix_close_bucket", "prev_day_volume_bucket"]
 
 
 def run_single_backtest_worker(
@@ -73,7 +73,6 @@ def run_single_backtest_worker(
             temp_loader.df_corporate_actions = corporate_actions_data
             df_prev = temp_loader.load_raw_intraday_bars()
 
-        # Create runner with parameters
         runner = BacktestEngine(
             data_loader=None,  # set below
             risk_manager=GapStrategyRiskManager(),
@@ -418,6 +417,7 @@ class GapBacktestRunner(BacktestEngine):
 async def main(backtest_params: BacktestParams, results_dir: Path):
     """Main entry point"""
     runner = GapBacktestRunner(params=backtest_params, results_dir=results_dir)
+    logging.info(f"Running backtest with backtest_params {backtest_params}")
     await runner.run_backtest_sequence()
 
 
@@ -430,7 +430,7 @@ if __name__ == "__main__":
             stop_loss_pct=stop,
             take_profit_pct=tp,
             overnight_gap=gap,
-            num_workers=20,
+            num_workers=16,
         )
         print(f"Running for stop={stop}, tp={tp}, gap={gap} in {result_dir}")
         asyncio.run(main(params, result_dir))
