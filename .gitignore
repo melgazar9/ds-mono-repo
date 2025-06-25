@@ -57,3 +57,5 @@ pyvenv.cfg
 logs/
 
 *.python-version
+
+./projects/financial-elt/dbt_financial/logs/*
