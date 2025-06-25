@@ -771,8 +771,8 @@ class GapStrategyEvaluator(StrategyEvaluator):
 
     @staticmethod
     def get_is_earnings_event(df):
-        with PostgresConnect(database="financial_elt") as db:
-            df_earnings = db.run_sql("select * from financial_analytics.earnings_dates")
+        # with PostgresConnect(database="financial_elt") as db:
+        #     df_earnings = db.run_sql("select * from financial_analytics.earnings_dates")
         return df
 
     @staticmethod
