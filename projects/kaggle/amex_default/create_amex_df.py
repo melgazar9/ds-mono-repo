@@ -38,10 +38,6 @@ df = pd.concat([df_train[col_order], df_test_orig[col_order]])
 ### save the df ###
 
 df.reset_index(inplace=True)
-df.to_feather(
-    "~/.kaggle/amex-default-prediction/train_data.csv".replace(
-        "train_data.csv", "df_amex.feather"
-    )
-)
+df.to_feather("~/.kaggle/amex-default-prediction/train_data.csv".replace("train_data.csv", "df_amex.feather"))
 
 print("\nTotal time taken:", round((time.time() - start) / 60, 3), "minutes\n")

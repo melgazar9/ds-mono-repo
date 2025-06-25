@@ -16,6 +16,6 @@ jobs:
         python -m pip install --upgrade pip
         pip install black==24.3.0 flake8==7.0.0
     - name: Run black check
-      run: black --check --line-length=88 .
+      run: black --check --line-length=128 .
     - name: Run flake8
       run: flake8 .

@@ -189,9 +189,7 @@ def map_polars_type_to_postgres(polars_type: pl.DataType) -> str:
         return "TEXT"
 
 
-def create_pg_table_from_polars_schema(
-    df: pl.DataFrame, table_name: str, schema_name="bigquery_migration"
-):
+def create_pg_table_from_polars_schema(df: pl.DataFrame, table_name: str, schema_name="bigquery_migration"):
     """
     Creates a table in PostgreSQL based on the schema of a Polars DataFrame.
 
@@ -205,26 +203,16 @@ def create_pg_table_from_polars_schema(
     for col_name, col_type in df.schema.items():
         pg_type = map_polars_type_to_postgres(col_type)
         # Construct each column definition as a sql.SQL object
-        cols.append(
-            sql.SQL("{col_name} {pg_type}").format(
-                col_name=sql.Identifier(col_name), pg_type=sql.SQL(pg_type)
-            )
-        )
+        cols.append(sql.SQL("{col_name} {pg_type}").format(col_name=sql.Identifier(col_name), pg_type=sql.SQL(pg_type)))
 
     ddl = sql.SQL("CREATE TABLE IF NOT EXISTS {schema}.{table} (\n  {cols}\n);").format(
-        schema=sql.Identifier(schema_name),
-        table=sql.Identifier(table_name),
-        cols=sql.SQL(",\n  ").join(cols),
+        schema=sql.Identifier(schema_name), table=sql.Identifier(table_name), cols=sql.SQL(",\n  ").join(cols)
     )
 
     try:
         with psycopg2.connect(**POSTGRES_CONN) as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    sql.SQL("CREATE SCHEMA IF NOT EXISTS {};").format(
-                        sql.Identifier(schema_name)
-                    )
-                )
+                cur.execute(sql.SQL("CREATE SCHEMA IF NOT EXISTS {};").format(sql.Identifier(schema_name)))
                 cur.execute(ddl)
             conn.commit()
         print(f"Table {schema_name}.{table_name} created or already exists.")
@@ -234,53 +222,34 @@ def create_pg_table_from_polars_schema(
 
 
 def upload_polars_df_to_postgres(
-    df: pl.DataFrame,
-    table_name: str,
-    schema_name: str = "bigquery_migration",
-    chunk_size: int = 100000,
-    debug_save_csv=False,
+    df: pl.DataFrame, table_name: str, schema_name: str = "bigquery_migration", chunk_size: int = 100000, debug_save_csv=False
 ):
     try:
         with psycopg2.connect(**POSTGRES_CONN) as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    sql.SQL("CREATE SCHEMA IF NOT EXISTS {};").format(
-                        sql.Identifier(schema_name)
-                    )
-                )
+                cur.execute(sql.SQL("CREATE SCHEMA IF NOT EXISTS {};").format(sql.Identifier(schema_name)))
                 create_pg_table_from_polars_schema(df, table_name)
-                for i in tqdm(
-                    range(0, df.height, chunk_size),
-                    desc=f"Uploading {table_name} chunks",
-                    leave=False,
-                ):
+                for i in tqdm(range(0, df.height, chunk_size), desc=f"Uploading {table_name} chunks", leave=False):
                     chunk = df.slice(i, chunk_size)
                     csv_buf = StringIO()
                     chunk.write_csv(csv_buf, include_header=False, null_value="")
                     csv_buf.seek(0)
 
                     if debug_save_csv:
-                        chunk_file_path = os.path.join(
-                            LOCAL_TMP, f"{table_name}_chunk_{int(i / chunk_size)}.csv"
-                        )
+                        chunk_file_path = os.path.join(LOCAL_TMP, f"{table_name}_chunk_{int(i / chunk_size)}.csv")
                         with open(chunk_file_path, "w") as f:
                             f.write(csv_buf.getvalue())
                         csv_buf.seek(0)
 
-                    copy_command = sql.SQL(
-                        "COPY {schema}.{table} FROM STDIN WITH (FORMAT CSV, NULL '')"
-                    ).format(
-                        schema=sql.Identifier(schema_name),
-                        table=sql.Identifier(table_name),
+                    copy_command = sql.SQL("COPY {schema}.{table} FROM STDIN WITH (FORMAT CSV, NULL '')").format(
+                        schema=sql.Identifier(schema_name), table=sql.Identifier(table_name)
                     )
 
                     try:
                         cur.copy_expert(copy_command, csv_buf)
                         print(f"✅ {table_name} loaded.")
                     except Exception as chunk_e:
-                        print(
-                            f"❌ Error uploading chunk {int(i / chunk_size) + 1} for {table_name}: {chunk_e}"
-                        )
+                        print(f"❌ Error uploading chunk {int(i / chunk_size) + 1} for {table_name}: {chunk_e}")
                         raise chunk_e
 
             conn.commit()
@@ -299,17 +268,8 @@ def upload_chunk_to_postgres(df, table_name):
 
     try:
         cur.execute("BEGIN;")
-        df.head(0).to_sql(
-            table_name.lower(),
-            pg_engine,
-            if_exists="append",
-            index=False,
-            schema="bigquery_migration",
-        )
-        cur.copy_expert(
-            f"COPY {PG_SCHEMA}.\"{table_name}\" FROM STDIN WITH CSV HEADER NULL AS 'NULL'",
-            csv_buf,
-        )
+        df.head(0).to_sql(table_name.lower(), pg_engine, if_exists="append", index=False, schema="bigquery_migration")
+        cur.copy_expert(f"COPY {PG_SCHEMA}.\"{table_name}\" FROM STDIN WITH CSV HEADER NULL AS 'NULL'", csv_buf)
         conn.commit()
     except Exception as e:
         print(f"❌ Error uploading {table_name}: {e}")
@@ -325,9 +285,7 @@ def process_table(table_name, method="polars"):
         start_time_process = time()
         print(f"Processing table: {table_name}")
         if method == "csv":
-            df = fetch_data_from_bigquery(
-                f"select * from `{GCP_PROJECT_ID}.meltano_yfinance_dev.{table_name}`"
-            )
+            df = fetch_data_from_bigquery(f"select * from `{GCP_PROJECT_ID}.meltano_yfinance_dev.{table_name}`")
             create_pg_table_from_bq_schema(table_name)
             chunk_size = 1000000  # 1 million rows per chunk for large tables
             tmp = pd.DataFrame()
@@ -338,9 +296,7 @@ def process_table(table_name, method="polars"):
                 tmp = pd.concat([chunk, tmp])
 
             end_time = time()
-            print(
-                f"✅ {table_name} loaded. Took {round((end_time - start_time_process) / 60, 3)} minutes."
-            )
+            print(f"✅ {table_name} loaded. Took {round((end_time - start_time_process) / 60, 3)} minutes.")
         elif method == "polars":
             df = fetch_bq_table_to_polars_df(table_name)
             upload_polars_df_to_postgres(df, table_name)
@@ -352,9 +308,7 @@ def main():
     tables = get_tables()
     print(f"Found {len(tables)} tables. Starting parallel processing...")
 
-    large_tables = [
-        t for t in tables if "500M" in t
-    ]  # Example: detect large tables by name or size logic
+    large_tables = [t for t in tables if "500M" in t]  # Example: detect large tables by name or size logic
     small_tables = [t for t in tables if "500M" not in t]
 
     with ThreadPoolExecutor(max_workers=1) as executor:

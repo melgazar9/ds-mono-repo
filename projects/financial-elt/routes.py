@@ -34,12 +34,8 @@ TAP_CONFIGS = {
 
 
 for tap_cfg in os.getenv("FINANCIAL_ELT_TAPS_TO_RUN").split(","):
-    assert isinstance(
-        TAP_CONFIGS[tap_cfg]["db_target"], str
-    ), f"could not determine {TAP_CONFIGS[tap_cfg]} db target"
-    assert isinstance(
-        TAP_CONFIGS[tap_cfg]["file_target"], str
-    ), f"could not determine {TAP_CONFIGS[tap_cfg]} file target"
+    assert isinstance(TAP_CONFIGS[tap_cfg]["db_target"], str), f"could not determine {TAP_CONFIGS[tap_cfg]} db target"
+    assert isinstance(TAP_CONFIGS[tap_cfg]["file_target"], str), f"could not determine {TAP_CONFIGS[tap_cfg]} file target"
 
 
 ### GENERAL ROUTES ###
@@ -76,14 +72,10 @@ class MeltanoTap:
                 f"You must set at least one of {env_prefix}_DB_TARGET or {env_prefix}_FILE_TARGET in your environment."
             )
 
-        self.base_run_command = (
-            f"meltano --environment={ENVIRONMENT} el {self.tap_name}"
-        )
+        self.base_run_command = f"meltano --environment={ENVIRONMENT} el {self.tap_name}"
         self.cwd = os.path.join(app.root_path, project_dir)
 
-        self.task_chunks = (
-            get_task_chunks(num_workers, self.tap_name) if num_workers > 1 else None
-        )
+        self.task_chunks = get_task_chunks(num_workers, self.tap_name) if num_workers > 1 else None
 
         # if DEBUG:
         #     self.task_chunks = self.task_chunks[-1:]
@@ -98,18 +90,10 @@ class MeltanoTap:
             if target and tasks_dict.get(target_type):
                 for chunk in tasks_dict[target_type]:
                     select_param = " ".join(chunk).replace(".*", "")
-                    select_id = (
-                        select_param.replace("--select ", "").replace(" ", "_")
-                        if select_param
-                        else "unknown"
-                    )
+                    select_id = select_param.replace("--select ", "").replace(" ", "_") if select_param else "unknown"
                     state_id = f"{self.tap_name.replace('-', '_')}_{target}_{ENVIRONMENT}__{select_id}"
-                    run_command = (
-                        f"{self.base_run_command} target-{target} --state-id {state_id} {select_param}"
-                    ).split(" ")
-                    command, return_code = run_meltano_task(
-                        run_command=run_command, cwd=self.cwd
-                    )
+                    run_command = (f"{self.base_run_command} target-{target} --state-id {state_id} {select_param}").split(" ")
+                    command, return_code = run_meltano_task(run_command=run_command, cwd=self.cwd)
                     logging.info(f"command: {command} ---> return_code: {return_code}")
                     results.append((command, return_code))
 
@@ -120,19 +104,13 @@ class MeltanoTap:
 
     def run_tap_in_parallel(self):
         run_commands = get_run_commands(
-            base_run_command=self.base_run_command,
-            task_chunks_dict=self.task_chunks,
-            tap_name=self.tap_name,
+            base_run_command=self.base_run_command, task_chunks_dict=self.task_chunks, tap_name=self.tap_name
         )
 
-        parallelism_env_var = (
-            f"{self.tap_name.replace('-', '_').upper()}_PARALLELISM_METHOD"
-        )
+        parallelism_env_var = f"{self.tap_name.replace('-', '_').upper()}_PARALLELISM_METHOD"
         parallelism_method = os.getenv(parallelism_env_var)
 
-        assert isinstance(
-            parallelism_method, str
-        ), f"Must provide parallelism_method {parallelism_env_var} in .env."
+        assert isinstance(parallelism_method, str), f"Must provide parallelism_method {parallelism_env_var} in .env."
 
         logging.info(
             f"Running meltano ELT {self.tap_name} using {parallelism_method}. Number of workers set to {self.num_workers}."
@@ -140,27 +118,16 @@ class MeltanoTap:
 
         if parallelism_method.lower() in ["threadpool", "processpool"]:
             run_pool_task(
-                run_commands=run_commands,
-                cwd=self.cwd,
-                num_workers=self.num_workers,
-                pool_task=parallelism_method.lower(),
+                run_commands=run_commands, cwd=self.cwd, num_workers=self.num_workers, pool_task=parallelism_method.lower()
             )
         elif parallelism_method.lower() == "process":
             run_process_task(
                 run_commands=run_commands,
                 cwd=self.cwd,
-                concurrency_semaphore=mp.Semaphore(
-                    int(
-                        os.getenv(
-                            f"{self.tap_name.replace('-', '_').upper()}_MP_SEMAPHORE"
-                        )
-                    )
-                ),
+                concurrency_semaphore=mp.Semaphore(int(os.getenv(f"{self.tap_name.replace('-', '_').upper()}_MP_SEMAPHORE"))),
             )
         else:
-            raise ValueError(
-                f"Could not determine parallelism_method. It's currently set to {parallelism_method}"
-            )
+            raise ValueError(f"Could not determine parallelism_method. It's currently set to {parallelism_method}")
 
     def run_tap(self):
         if self.num_workers == 1:
@@ -178,17 +145,10 @@ def run_tap_route(tap_name):
     with app.app_context():
         start = time.monotonic()
 
-        num_workers = int(
-            os.getenv(f"{tap_name.upper().replace('-', '_')}_NUM_WORKERS")
-        )
+        num_workers = int(os.getenv(f"{tap_name.upper().replace('-', '_')}_NUM_WORKERS"))
         target = os.getenv(f"{tap_name.upper().replace('-', '_')}_TARGET")
 
-        tap = MeltanoTap(
-            project_dir=tap_name,
-            num_workers=num_workers,
-            tap_name=tap_name,
-            target_name=target,
-        )
+        tap = MeltanoTap(project_dir=tap_name, num_workers=num_workers, tap_name=tap_name, target_name=target)
 
         tap.run_tap()
 
@@ -199,10 +159,7 @@ def run_tap_route(tap_name):
             f"({round(total_seconds / 60, 2)} minutes,"
             f"{round(total_seconds / 3600, 2)} hours) ***"
         )
-        return make_response(
-            f"Last ran project {tap_name}-{ENVIRONMENT} target {target} at {cur_timestamp()}.",
-            200,
-        )
+        return make_response(f"Last ran project {tap_name}-{ENVIRONMENT} target {target} at {cur_timestamp()}.", 200)
 
 
 @app.route(f"/financial-elt/tap-yfinance-{ENVIRONMENT}", methods=["GET"])

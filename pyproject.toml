@@ -1,0 +1,15 @@
+[tool.poetry.group.dev.dependencies]
+black = {extras = ["jupyter"], version = "^25.1.0"}
+flake8 = "^7.0.0"
+
+[tool.black]
+line-length = 128
+exclude = '''
+(^|/)(
+    \.meltano
+  | .*venv
+  | build
+  | dist
+  | site-packages
+)
+'''

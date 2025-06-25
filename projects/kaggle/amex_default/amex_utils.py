@@ -17,14 +17,8 @@ class AmexFeatureCreator:
         self.customer_history_cat_cols = customer_history_cat_cols
         self.target = target
 
-        self.customer_history_cols = (
-            [] if self.customer_history_cols is None else self.customer_history_cols
-        )
-        self.customer_history_cat_cols = (
-            []
-            if self.customer_history_cat_cols is None
-            else self.customer_history_cat_cols
-        )
+        self.customer_history_cols = [] if self.customer_history_cols is None else self.customer_history_cols
+        self.customer_history_cat_cols = [] if self.customer_history_cat_cols is None else self.customer_history_cat_cols
         self.datetime_feature_creator = None
         self.ordinal_encoder = None
         self._customer_history_cols = None
@@ -62,20 +56,11 @@ class AmexFeatureCreator:
                 input_mapping[col_group] = [input_mapping[col_group]]
             for col in input_mapping[col_group]:
                 if col not in df.columns:
-                    cleaned_col = list(
-                        clean_columns(pd.DataFrame(columns=[col])).columns
-                    )[0]
+                    cleaned_col = list(clean_columns(pd.DataFrame(columns=[col])).columns)[0]
                     if cleaned_col in df.columns:
-                        input_mapping[col_group] = list(
-                            map(
-                                lambda x: x.replace(col, cleaned_col),
-                                input_mapping[col_group],
-                            )
-                        )
+                        input_mapping[col_group] = list(map(lambda x: x.replace(col, cleaned_col), input_mapping[col_group]))
                     else:
-                        raise ValueError(
-                            f"Could not find column {col} or {cleaned_col}"
-                        )
+                        raise ValueError(f"Could not find column {col} or {cleaned_col}")
 
         self.id_col = input_mapping.get("id_col")[0]
         self.datetime_cols = input_mapping["datetime_cols"]
@@ -87,26 +72,14 @@ class AmexFeatureCreator:
 
         if len(self.customer_history_cat_cols):
             self.ordinal_encoder = OrdinalEncoder(
-                handle_unknown="use_encoded_value",
-                unknown_value=-99,
-                encoded_missing_value=np.nan,
+                handle_unknown="use_encoded_value", unknown_value=-99, encoded_missing_value=np.nan
             )
 
-            df[self.customer_history_cat_cols] = self.ordinal_encoder.fit_transform(
-                df[self.customer_history_cat_cols]
-            )
+            df[self.customer_history_cat_cols] = self.ordinal_encoder.fit_transform(df[self.customer_history_cat_cols])
 
-        self._customer_history_cols = list(
-            set(
-                self.customer_history_cat_cols
-                + self.customer_history_cols
-                + [self.id_col]
-            )
-        )
+        self._customer_history_cols = list(set(self.customer_history_cat_cols + self.customer_history_cols + [self.id_col]))
 
-        df = create_customer_history(
-            df, generate_lagging_mean_cols=self.customer_history_cols
-        )
+        df = create_customer_history(df, generate_lagging_mean_cols=self.customer_history_cols)
 
         return df
 
@@ -153,10 +126,7 @@ def create_datetime_features(df, datetime_cols, include_hour=False, make_copy=Fa
         df.loc[:, f"{dt_col}_is_quarter_start"] = df[dt_col].dt.is_quarter_start
         df.loc[:, f"{dt_col}_is_quarter_end"] = df[dt_col].dt.is_quarter_end
 
-        holidays = calendar().holidays(
-            start=str(np.min(np.array(df[dt_col]))),
-            end=str(np.max(np.array(df[dt_col]))),
-        )
+        holidays = calendar().holidays(start=str(np.min(np.array(df[dt_col]))), end=str(np.max(np.array(df[dt_col]))))
 
         df.loc[:, f"{dt_col}_is_holiday"] = df[dt_col].isin(holidays)
 
@@ -180,17 +150,10 @@ def find_abnormal_features(df, pct_na_thres=0.85, copy=True):
         if pct_nas >= pct_na_thres:
             excessive_na_cols[col] = pct_nas
 
-    return dict(
-        single_value_cols=single_value_cols, excessive_na_cols=excessive_na_cols
-    )
+    return dict(single_value_cols=single_value_cols, excessive_na_cols=excessive_na_cols)
 
 
-def create_customer_history(
-    df,
-    customer_id_col="customer_id",
-    generate_lagging_mean_cols=None,
-    n_jobs_lag=mp.cpu_count(),
-):
+def create_customer_history(df, customer_id_col="customer_id", generate_lagging_mean_cols=None, n_jobs_lag=mp.cpu_count()):
     """
     Description
     -----------
@@ -212,41 +175,32 @@ def create_customer_history(
 
     df["n"] = 1
 
-    df["n_prev_ids"] = df.groupby(customer_id_col)["n"].transform(
-        lambda x: x.shift().expanding().sum().fillna(0)
-    )
+    df["n_prev_ids"] = df.groupby(customer_id_col)["n"].transform(lambda x: x.shift().expanding().sum().fillna(0))
 
     if isinstance(generate_lagging_mean_cols, (list, tuple)):
 
         if n_jobs_lag == 1:
             for feature in generate_lagging_mean_cols:
-                df["mean_prev_" + feature] = df.groupby(customer_id_col)[
-                    feature
-                ].transform(lambda x: x.shift().expanding().mean().fillna(0))
+                df["mean_prev_" + feature] = df.groupby(customer_id_col)[feature].transform(
+                    lambda x: x.shift().expanding().mean().fillna(0)
+                )
         else:
 
             def parallelize_lag(_df, feature):
-                _df["mean_prev_" + feature] = _df.groupby(customer_id_col)[
-                    feature
-                ].transform(lambda x: x.shift().expanding().mean().fillna(0))
+                _df["mean_prev_" + feature] = _df.groupby(customer_id_col)[feature].transform(
+                    lambda x: x.shift().expanding().mean().fillna(0)
+                )
                 return _df
 
             num_workers = np.abs(n_jobs_lag)
 
-            delayed_list = [
-                delayed(parallelize_lag(df, feature))
-                for feature in generate_lagging_mean_cols
-            ]
+            delayed_list = [delayed(parallelize_lag(df, feature)) for feature in generate_lagging_mean_cols]
             tuple_of_dfs = dask.compute(*delayed_list, num_workers=num_workers)
             list_of_dfs = [tuple_of_dfs[i] for i in range(len(tuple_of_dfs))]
 
             df = reduce(
                 lambda x, y: pd.merge(
-                    x,
-                    y[[i for i in y.columns if i not in x.columns]],
-                    how="inner",
-                    left_index=True,
-                    right_index=True,
+                    x, y[[i for i in y.columns if i not in x.columns]], how="inner", left_index=True, right_index=True
                 ),
                 list_of_dfs,
             )
@@ -269,14 +223,7 @@ class CalcAmexMetrics:
     round_importance_decimals: int to round the output feature importance text for easier reading
     """
 
-    def __init__(
-        self,
-        df,
-        target,
-        fits,
-        split_colname="dataset_split",
-        round_importance_decimals=3,
-    ):
+    def __init__(self, df, target, fits, split_colname="dataset_split", round_importance_decimals=3):
 
         self.df = df
         self.target = target
@@ -284,9 +231,7 @@ class CalcAmexMetrics:
         self.split_colname = split_colname
         self.round_importance_decimals = round_importance_decimals
 
-        assert (
-            self.df[self.target].isnull().sum() == 0
-        ), "There cannot be NAs in the target variable"
+        assert self.df[self.target].isnull().sum() == 0, "There cannot be NAs in the target variable"
 
     @staticmethod
     def amex_metric(y_true: pd.Series, y_pred: pd.Series) -> float:
@@ -298,12 +243,8 @@ class CalcAmexMetrics:
             Normalized Gini Coefficient, G, and default rate captured at 4%, D.
         """
 
-        def top_four_percent_captured(
-            y_true: pd.DataFrame, y_pred: pd.DataFrame
-        ) -> float:
-            df = pd.concat([y_true, y_pred], axis="columns").sort_values(
-                y_pred.name, ascending=False
-            )
+        def top_four_percent_captured(y_true: pd.DataFrame, y_pred: pd.DataFrame) -> float:
+            df = pd.concat([y_true, y_pred], axis="columns").sort_values(y_pred.name, ascending=False)
             df["weight"] = df[y_true.name].apply(lambda x: 20 if x == 0 else 1)
             four_pct_cutoff = int(0.04 * df["weight"].sum())
             df["weight_cumsum"] = df["weight"].cumsum()
@@ -311,9 +252,7 @@ class CalcAmexMetrics:
             return (df_cutoff[y_true.name] == 1).sum() / (df[y_true.name] == 1).sum()
 
         def weighted_gini(y_true: pd.DataFrame, y_pred: pd.DataFrame) -> float:
-            df = pd.concat([y_true, y_pred], axis="columns").sort_values(
-                y_pred.name, ascending=False
-            )
+            df = pd.concat([y_true, y_pred], axis="columns").sort_values(y_pred.name, ascending=False)
             df["weight"] = df[y_true.name].apply(lambda x: 20 if x == 0 else 1)
             df["random"] = (df["weight"] / df["weight"].sum()).cumsum()
             total_pos = (df[y_true.name] * df["weight"]).sum()
@@ -322,9 +261,7 @@ class CalcAmexMetrics:
             df["gini"] = (df["lorentz"] - df["random"]) * df["weight"]
             return df["gini"].sum()
 
-        def normalized_weighted_gini(
-            y_true: pd.DataFrame, y_pred: pd.DataFrame
-        ) -> float:
+        def normalized_weighted_gini(y_true: pd.DataFrame, y_pred: pd.DataFrame) -> float:
             y_true_pred = y_true.copy()
             y_true_pred.name = "prediction"
             return weighted_gini(y_true, y_pred) / weighted_gini(y_true, y_true_pred)
@@ -358,9 +295,7 @@ class CalcAmexMetrics:
 
         return output_dict
 
-    def calc_amex_metrics(
-        self, groupby_split=True, melt_id_vars=None, dataset_order=None, drop_nas=True
-    ):
+    def calc_amex_metrics(self, groupby_split=True, melt_id_vars=None, dataset_order=None, drop_nas=True):
         """
         Description
         -----------
@@ -395,57 +330,28 @@ class CalcAmexMetrics:
             if len(melt_id_vars) == 1:
                 melted_metrics_df = (
                     self.df.loc[:, all_needed_cols]
-                    .melt(
-                        id_vars=list(set(list(melt_id_vars) + [self.target])),
-                        var_name="fit",
-                        value_name="value",
-                    )
+                    .melt(id_vars=list(set(list(melt_id_vars) + [self.target])), var_name="fit", value_name="value")
                     .pipe(lambda df: df.dropna() if drop_nas else df)
                     .groupby([self.split_colname, "fit"])
-                    .apply(
-                        lambda df: self.create_metric_dict(df[self.target], df["value"])
-                    )
+                    .apply(lambda df: self.create_metric_dict(df[self.target], df["value"]))
                     .pipe(lambda x: pd.DataFrame(dict(x)))
                     .pipe(pd.melt, ignore_index=False)
                     .reset_index()
-                    .rename(
-                        columns=dict(
-                            index="metric",
-                            variable_0=self.split_colname,
-                            variable_1="fit",
-                        )
-                    )
-                    .sort_values(
-                        by=self.split_colname, key=lambda x: x.map(dataset_order)
-                    )
-                    .assign(
-                        value=lambda df: df.value.values.round(
-                            self.round_importance_decimals
-                        )
-                    )
+                    .rename(columns=dict(index="metric", variable_0=self.split_colname, variable_1="fit"))
+                    .sort_values(by=self.split_colname, key=lambda x: x.map(dataset_order))
+                    .assign(value=lambda df: df.value.values.round(self.round_importance_decimals))
                 )
 
             else:
                 melted_metrics_df = (
                     self.df.loc[:, all_needed_cols]
-                    .melt(
-                        id_vars=list(set(list(melt_id_vars) + [self.target])),
-                        var_name="fit",
-                        value_name="value",
-                    )
+                    .melt(id_vars=list(set(list(melt_id_vars) + [self.target])), var_name="fit", value_name="value")
                     .pipe(lambda df: df.dropna() if drop_nas else df)
                     .groupby(list(melt_id_vars) + ["fit"])
-                    .apply(
-                        lambda df: self.create_metric_dict(df[self.target], df["value"])
-                    )
+                    .apply(lambda df: self.create_metric_dict(df[self.target], df["value"]))
                     .pipe(
                         lambda df: pd.concat(
-                            [
-                                pd.DataFrame(df),
-                                pd.json_normalize(pd.DataFrame(df)[0]).set_index(
-                                    pd.DataFrame(df).index
-                                ),
-                            ],
+                            [pd.DataFrame(df), pd.json_normalize(pd.DataFrame(df)[0]).set_index(pd.DataFrame(df).index)],
                             axis=1,
                             sort=False,
                         )
@@ -453,32 +359,15 @@ class CalcAmexMetrics:
                     .drop(0, axis=1)
                     .melt(ignore_index=False)
                     .reset_index()
-                    .rename(
-                        columns=dict(
-                            index="metric",
-                            variable_0=self.split_colname,
-                            variable_1="fit",
-                        )
-                    )
-                    .sort_values(
-                        by=self.split_colname, key=lambda x: x.map(dataset_order)
-                    )
-                    .assign(
-                        value=lambda df: df.value.values.round(
-                            self.round_importance_decimals
-                        )
-                    )
+                    .rename(columns=dict(index="metric", variable_0=self.split_colname, variable_1="fit"))
+                    .sort_values(by=self.split_colname, key=lambda x: x.map(dataset_order))
+                    .assign(value=lambda df: df.value.values.round(self.round_importance_decimals))
                 )
         else:
             melted_metrics_df = (
                 df[self.fits + [self.target]]
                 .melt(id_vars=self.target, value_name="value")
-                .pipe(
-                    lambda df: pd.DataFrame.from_dict(
-                        self.create_metric_dict(df[self.target], df["value"]),
-                        orient="index",
-                    )
-                )
+                .pipe(lambda df: pd.DataFrame.from_dict(self.create_metric_dict(df[self.target], df["value"]), orient="index"))
                 .pipe(lambda df: df.reset_index())
             )
 
@@ -507,9 +396,7 @@ class CalcAmexMetrics:
         metrics_df = self.calc_amex_metrics() if metrics_df is None else metrics_df
         color = self.split_colname if color is None else color
 
-        metrics_df["text"] = (
-            (metrics_df["value"] * 100).round(2).astype(str).pipe(lambda x: x + "%")
-        )
+        metrics_df["text"] = (metrics_df["value"] * 100).round(2).astype(str).pipe(lambda x: x + "%")
 
         fig = px.bar(
             metrics_df,
@@ -527,10 +414,7 @@ class CalcAmexMetrics:
         )
 
         fig.update_traces(textposition=text_position)
-        fig.update_yaxes(
-            range=[metrics_df[y].min() - 0.05, metrics_df[y].max() + 0.05],
-            matches=y_matches,
-        )
+        fig.update_yaxes(range=[metrics_df[y].min() - 0.05, metrics_df[y].max() + 0.05], matches=y_matches)
 
         if save_plot_loc:
             plotly.offline.plot(fig, filename=save_plot_loc)
@@ -578,26 +462,20 @@ def amex_loss():
             Normalized Gini Coefficient, G, and default rate captured at 4%, D.
         """
 
-        def top_four_percent_captured(
-            y_true: pd.DataFrame, y_pred: pd.DataFrame
-        ) -> float:
+        def top_four_percent_captured(y_true: pd.DataFrame, y_pred: pd.DataFrame) -> float:
 
             y_true_s = pd.Series(y_true)
             y_pred_s = pd.Series(y_pred)
             y_true_s.name = "y_true"
             y_pred_s.name = "y_pred"
 
-            df = pd.concat([y_true_s, y_pred_s], axis="columns").sort_values(
-                y_pred_s.name, ascending=False
-            )
+            df = pd.concat([y_true_s, y_pred_s], axis="columns").sort_values(y_pred_s.name, ascending=False)
 
             df["weight"] = df[y_true_s.name].apply(lambda x: 20 if x == 0 else 1)
             four_pct_cutoff = int(0.04 * df["weight"].sum())
             df["weight_cumsum"] = df["weight"].cumsum()
             df_cutoff = df.loc[df["weight_cumsum"] <= four_pct_cutoff]
-            return (df_cutoff[y_true_s.name] == 1).sum() / (
-                df[y_true_s.name] == 1
-            ).sum()
+            return (df_cutoff[y_true_s.name] == 1).sum() / (df[y_true_s.name] == 1).sum()
 
         def weighted_gini(y_true: pd.DataFrame, y_pred: pd.DataFrame) -> float:
 
@@ -606,9 +484,7 @@ def amex_loss():
             y_true_s.name = "y_true"
             y_pred_s.name = "y_pred"
 
-            df = pd.concat([y_true_s, y_pred_s], axis="columns").sort_values(
-                y_pred_s.name, ascending=False
-            )
+            df = pd.concat([y_true_s, y_pred_s], axis="columns").sort_values(y_pred_s.name, ascending=False)
             df["weight"] = df[y_true_s.name].apply(lambda x: 20 if x == 0 else 1)
             df["random"] = (df["weight"] / df["weight"].sum()).cumsum()
             total_pos = (df[y_true_s.name] * df["weight"]).sum()
@@ -617,9 +493,7 @@ def amex_loss():
             df["gini"] = (df["lorentz"] - df["random"]) * df["weight"]
             return df["gini"].sum()
 
-        def normalized_weighted_gini(
-            y_true: pd.DataFrame, y_pred: pd.DataFrame
-        ) -> float:
+        def normalized_weighted_gini(y_true: pd.DataFrame, y_pred: pd.DataFrame) -> float:
             # y_true_pred = y_true.copy()
             # y_true_pred.name = 'prediction'
             return weighted_gini(y_true, y_pred) / weighted_gini(y_true, y_true)
@@ -642,9 +516,7 @@ class AmexSplitter(AbstractSplitter):
         df = df.reset_index(drop=True)
         non_submission_shape = df[df[target_name].notnull()].shape[0]
 
-        df.loc[0 : int(non_submission_shape * self.train_pct), self.split_colname] = (
-            "train"
-        )
+        df.loc[0 : int(non_submission_shape * self.train_pct), self.split_colname] = "train"
 
         df.loc[
             int(non_submission_shape * self.train_pct)

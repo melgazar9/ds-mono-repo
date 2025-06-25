@@ -1,7 +1,5 @@
 [flake8]
-
 max-line-length = 128
-
 exclude =
     .meltano,
     .venv,
@@ -14,5 +12,4 @@ exclude =
     **/site-packages/*
     **/legacy/*
     projects/financial-elt/dbt_financial/
-
 ignore = F405, F403, W503, E203, E266

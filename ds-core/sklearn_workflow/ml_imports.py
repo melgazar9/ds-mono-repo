@@ -8,11 +8,7 @@ from category_encoders.target_encoder import TargetEncoder
 from feature_engine.encoding import MeanEncoder
 from feature_engine.outliers import ArbitraryOutlierCapper, OutlierTrimmer, Winsorizer
 from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.compose import (
-    ColumnTransformer,
-    make_column_selector,
-    make_column_transformer,
-)
+from sklearn.compose import ColumnTransformer, make_column_selector, make_column_transformer
 from sklearn.ensemble import (
     AdaBoostClassifier,
     AdaBoostRegressor,
@@ -41,12 +37,7 @@ from sklearn.metrics import (  # classification metrics; regression metrics
     roc_auc_score,
     roc_curve,
 )
-from sklearn.model_selection import (
-    GridSearchCV,
-    RandomizedSearchCV,
-    StratifiedGroupKFold,
-    train_test_split,
-)
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, StratifiedGroupKFold, train_test_split
 from sklearn.pipeline import Pipeline, make_pipeline
 from sklearn.preprocessing import (
     FunctionTransformer,

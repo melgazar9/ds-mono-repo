@@ -53,10 +53,7 @@ class MetaclassMethodEnforcer:
                             break
 
                 if len(method_map) < len(self.required_methods):
-                    raise ValueError(
-                        f"{cls.__name__} must have (or inherit) methods "
-                        f"[{', '.join(self.required_methods)}]"
-                    )
+                    raise ValueError(f"{cls.__name__} must have (or inherit) methods " f"[{', '.join(self.required_methods)}]")
 
                 for m in self.required_methods:
                     setattr(cls, m, self.override(method_map[m], cls))
@@ -81,11 +78,7 @@ def merge_dicts(*dict_args):
 
 
 def flatten_multindex_columns(df):
-    new_cols = list(
-        pd.Index(
-            [str(e[0]).lower() + "_" + str(e[1]).lower() for e in df.columns.tolist()]
-        ).str.replace(" ", "_")
-    )
+    new_cols = list(pd.Index([str(e[0]).lower() + "_" + str(e[1]).lower() for e in df.columns.tolist()]).str.replace(" ", "_"))
     return new_cols
 
 
@@ -140,11 +133,7 @@ def json_string_to_dict(json_string):
 
 
 def get_contents_timestamps_from_dir(
-    directory,
-    get_files_only=False,
-    get_directories_only=False,
-    excluded_files=None,
-    excluded_dirs=None,
+    directory, get_files_only=False, get_directories_only=False, excluded_files=None, excluded_dirs=None
 ):
     assert not (
         get_files_only and get_directories_only
@@ -153,37 +142,23 @@ def get_contents_timestamps_from_dir(
     if not directory.endswith("/"):
         directory = f"{directory}/"
 
-    excluded_files = (
-        (excluded_files,) if isinstance(excluded_files, str) else excluded_files
-    )
+    excluded_files = (excluded_files,) if isinstance(excluded_files, str) else excluded_files
     if excluded_dirs is not None:
         if isinstance(excluded_dirs, str):
             excluded_dirs = (excluded_dirs,)
         excluded_dirs = [i[0:-1] if i.endswith("/") else i for i in excluded_dirs]
 
     if not get_directories_only:
-        list_of_files = sorted(
-            filter(os.path.isfile, glob(directory + "*")), key=os.path.getmtime
-        )
+        list_of_files = sorted(filter(os.path.isfile, glob(directory + "*")), key=os.path.getmtime)
         if excluded_files is not None and len(excluded_files):
-            list_of_files = [
-                i
-                for i in list_of_files
-                if i not in [f"{directory}{j}" for j in excluded_files]
-            ]
+            list_of_files = [i for i in list_of_files if i not in [f"{directory}{j}" for j in excluded_files]]
     else:
         list_of_files = []
 
     if not get_files_only:
-        list_of_dirs = sorted(
-            filter(os.path.isdir, glob(directory + "*")), key=os.path.getmtime
-        )
+        list_of_dirs = sorted(filter(os.path.isdir, glob(directory + "*")), key=os.path.getmtime)
         if excluded_dirs is not None and len(excluded_dirs):
-            list_of_dirs = [
-                i
-                for i in list_of_dirs
-                if i not in [f"{directory}{j}" for j in excluded_dirs]
-            ]
+            list_of_dirs = [i for i in list_of_dirs if i not in [f"{directory}{j}" for j in excluded_dirs]]
     else:
         list_of_dirs = []
 
@@ -193,12 +168,8 @@ def get_contents_timestamps_from_dir(
     if list_of_contents:
         print(f"*** {df_contents} ***")
         for content_path in list_of_contents:
-            modified_timestamp = time.strftime(
-                "%Y-%m-%d %H:%M:%S", time.gmtime(os.path.getmtime(content_path))
-            )
-            df_tmp = pd.DataFrame(
-                {"content_path": [content_path], "last_modified": [modified_timestamp]}
-            )
+            modified_timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(os.path.getmtime(content_path)))
+            df_tmp = pd.DataFrame({"content_path": [content_path], "last_modified": [modified_timestamp]})
             df_contents = pd.concat([df_contents, df_tmp], axis=0)
 
         df_contents = df_contents.drop_duplicates()
@@ -226,12 +197,8 @@ def remove_old_contents(
     )
 
     if df_contents.shape[0]:
-        min_keep_timestamp = pd.to_datetime(
-            start_timestamp - pd.Timedelta(days=lookback_days)
-        )
-        contents_to_delete = df_contents[
-            df_contents["last_modified"] < min_keep_timestamp
-        ]["content_path"].tolist()
+        min_keep_timestamp = pd.to_datetime(start_timestamp - pd.Timedelta(days=lookback_days))
+        contents_to_delete = df_contents[df_contents["last_modified"] < min_keep_timestamp]["content_path"].tolist()
 
         ### delete the files ###
         subprocess.run(f"rm -rf {' '.join(contents_to_delete)}", shell=True)
@@ -239,15 +206,9 @@ def remove_old_contents(
 
 
 def clean_strings(lst):
-    cleaned_list = [
-        re.sub(r"[^a-zA-Z0-9_]", "_", s) for s in lst
-    ]  # remove special characters
-    cleaned_list = [
-        re.sub(r"(?<!^)(?=[A-Z])", "_", s).lower() for s in cleaned_list
-    ]  # camel case -> snake case
-    cleaned_list = [
-        re.sub(r"_+", "_", s).strip("_").lower() for s in cleaned_list
-    ]  # clean leading and trailing underscores
+    cleaned_list = [re.sub(r"[^a-zA-Z0-9_]", "_", s) for s in lst]  # remove special characters
+    cleaned_list = [re.sub(r"(?<!^)(?=[A-Z])", "_", s).lower() for s in cleaned_list]  # camel case -> snake case
+    cleaned_list = [re.sub(r"_+", "_", s).strip("_").lower() for s in cleaned_list]  # clean leading and trailing underscores
     return cleaned_list
 
 
@@ -256,9 +217,7 @@ def clean_columns(df):
     return df
 
 
-def send_email(
-    to_addrs, from_addr=None, subject="", body="", files=None, password=None
-):
+def send_email(to_addrs, from_addr=None, subject="", body="", files=None, password=None):
     if password is None or from_addr is None:
         email_credentials = os.environ.get("EMAIL_CREDENTIALS")
 

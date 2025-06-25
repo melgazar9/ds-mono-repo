@@ -92,9 +92,6 @@ apscheduler = "^3.11.0"
 optional = true
 
 [tool.poetry.group.dev.dependencies]
-black = {extras = ["jupyter"], version = "^25.1.0"}
-autopep8 = "^2.3.2"
-
 
 ### External Group ###
 
@@ -103,25 +100,3 @@ optional = true
 
 [tool.poetry.group.external.dependencies]
 kagglehub = "^0.3.11"
-
-[tool.black]
-line-length = 90
-exclude = '''
-(^|/)(
-    \.meltano
-  | .*venv
-  | build
-  | dist
-  | site-packages
-)
-'''
-
-[tool.pylint]
-disable = "C0111"
-max-line-length = 90
-ignore = ".meltano,*/.meltano,.venv,*/venv,build,dist,site-packages,*/site-packages"
-
-[tool.isort]
-profile = "black"
-known_third_party = ["meltano"]
-skip = [".meltano", ".venv", "build", "dist", "site-packages"]

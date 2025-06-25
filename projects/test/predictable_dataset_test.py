@@ -7,23 +7,7 @@ from ds_core.sklearn_workflow.ml_utils import *  # noqa: F403, F405
 
 df = pd.DataFrame(
     {
-        "feature1": [
-            "A",
-            "B",
-            "C",
-            "A",
-            "A",
-            "B",
-            "C",
-            "A",
-            "B",
-            "D",
-            "E",
-            "C",
-            "A",
-            "A",
-            "B",
-        ],
+        "feature1": ["A", "B", "C", "A", "A", "B", "C", "A", "B", "D", "E", "C", "A", "A", "B"],
         "preserve_var": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
         "target": [1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
     }
@@ -36,17 +20,13 @@ mlf = SklearnMLFlow(
     preserve_vars=["preserve_var", "dataset_split"],
     feature_creator=None,
     splitter=SimpleSplitter(train_pct=0.75, val_pct=0.1),
-    feature_transformer=FeatureTransformer(
-        target_name="target", preserve_vars="preserve_var"
-    ),
+    feature_transformer=FeatureTransformer(target_name="target", preserve_vars="preserve_var"),
     algorithms=[
         CatBoostClassifier(iterations=300, learning_rate=0.02, random_state=9),
         XGBClassifier(learning_rate=1, random_state=9),
     ],
     optimizer=ScoreThresholdOptimizer(accuracy_score),
-    evaluator=GenericMLEvaluator(
-        classification_or_regression="classification", groupby_cols="dataset_split"
-    ),
+    evaluator=GenericMLEvaluator(classification_or_regression="classification", groupby_cols="dataset_split"),
 )
 
 mlf.split()

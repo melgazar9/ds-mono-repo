@@ -35,9 +35,7 @@ df_test = df.iloc[int(len(df) * 0.66) :]
 
 ## intersection of features between train / test datasets ##
 
-keep_cols = list(
-    set(list(np.intersect1d(df_train.columns, df_test.columns)) + [TARGET_NAME])
-)
+keep_cols = list(set(list(np.intersect1d(df_train.columns, df_test.columns)) + [TARGET_NAME]))
 
 df_train = df_train[keep_cols]
 df_test = df_test[[i for i in keep_cols if i != TARGET_NAME]]
@@ -59,17 +57,13 @@ mlf = SklearnMLFlow(
     preserve_vars=PRESERVE_VARS,
     feature_creator=TitanicFeatureCreator(),
     splitter=TitanicSplitter(train_pct=1, val_pct=0),
-    feature_transformer=FeatureTransformer(
-        target_name=TARGET_NAME, preserve_vars=PRESERVE_VARS
-    ),
+    feature_transformer=FeatureTransformer(target_name=TARGET_NAME, preserve_vars=PRESERVE_VARS),
     algorithms=[
         CatBoostClassifier(iterations=300, learning_rate=0.02, random_state=9),
         XGBClassifier(learning_rate=0.05, max_depth=3, random_state=9),
     ],
     optimizer=ScoreThresholdOptimizer(accuracy_score),
-    evaluator=GenericMLEvaluator(
-        classification_or_regression="classification", groupby_cols="dataset_split"
-    ),
+    evaluator=GenericMLEvaluator(classification_or_regression="classification", groupby_cols="dataset_split"),
 )
 
 mlf.split()
@@ -84,15 +78,13 @@ mlf.get_feature_importances()
 print(mlf.feature_importances)
 
 for pred in [i for i in mlf.df_out.columns if i.endswith("_pred_class")]:
-    duplicate_name_indices = mlf.df_out[mlf.df_out[mlf.split_colname] != "submission"][
-        "name"
-    ].isin(mlf.df_out[mlf.df_out[mlf.split_colname] == "submission"]["name"].tolist())
+    duplicate_name_indices = mlf.df_out[mlf.df_out[mlf.split_colname] != "submission"]["name"].isin(
+        mlf.df_out[mlf.df_out[mlf.split_colname] == "submission"]["name"].tolist()
+    )
     duplicate_name_indices = duplicate_name_indices[duplicate_name_indices]
     duplicate_names = mlf.df_out.loc[duplicate_name_indices.index, "name"]
     for name in duplicate_names:
-        mlf.df_out.loc[mlf.df_out["name"] == name, pred] = mlf.df_out.loc[
-            mlf.df_out["name"] == name
-        ][mlf.target_name].max()
+        mlf.df_out.loc[mlf.df_out["name"] == name, pred] = mlf.df_out.loc[mlf.df_out["name"] == name][mlf.target_name].max()
 
 
 mlf.evaluate()
@@ -100,15 +92,11 @@ print(mlf.evaluator.evaluation_output)
 
 ## save output ##
 
-df_catboost = mlf.df_out[mlf.df_out["dataset_split"] == "submission"][
-    ["passenger_id", "CatBoostClassifier_pred_class"]
-].rename(
+df_catboost = mlf.df_out[mlf.df_out["dataset_split"] == "submission"][["passenger_id", "CatBoostClassifier_pred_class"]].rename(
     columns={"passenger_id": "PassengerId", "CatBoostClassifier_pred_class": "Survived"}
 )
 
-df_xgb = mlf.df_out[mlf.df_out["dataset_split"] == "submission"][
-    ["passenger_id", "XGBClassifier_pred_class"]
-].rename(
+df_xgb = mlf.df_out[mlf.df_out["dataset_split"] == "submission"][["passenger_id", "XGBClassifier_pred_class"]].rename(
     columns={"passenger_id": "PassengerId", "XGBClassifier_pred_class": "Survived"}
 )
 
@@ -124,9 +112,7 @@ mlf = SklearnMLFlow(
     preserve_vars=PRESERVE_VARS,
     feature_creator=TitanicFeatureCreator(),
     splitter=TitanicSplitter(train_pct=0.7, val_pct=0.15),
-    feature_transformer=FeatureTransformer(
-        target_name=TARGET_NAME, preserve_vars=PRESERVE_VARS
-    ),
+    feature_transformer=FeatureTransformer(target_name=TARGET_NAME, preserve_vars=PRESERVE_VARS),
     algorithms=[
         CatBoostClassifier(
             loss_function="Logloss",
@@ -156,9 +142,7 @@ mlf = SklearnMLFlow(
         ),
     ],
     optimizer=ScoreThresholdOptimizer(f1_score),
-    evaluator=GenericMLEvaluator(
-        classification_or_regression="classification", groupby_cols="dataset_split"
-    ),
+    evaluator=GenericMLEvaluator(classification_or_regression="classification", groupby_cols="dataset_split"),
 )
 
 mlf.split()
@@ -182,15 +166,13 @@ mlf.assign_threshold_opt_rows(pct_train_for_opt=0.90, pct_val_for_opt=1)
 mlf.optimize("maximize")
 
 for pred in [i for i in mlf.df_out.columns if i.endswith("_pred_class")]:
-    duplicate_name_indices = mlf.df_out[mlf.df_out[mlf.split_colname] != "submission"][
-        "name"
-    ].isin(mlf.df_out[mlf.df_out[mlf.split_colname] == "submission"]["name"].tolist())
+    duplicate_name_indices = mlf.df_out[mlf.df_out[mlf.split_colname] != "submission"]["name"].isin(
+        mlf.df_out[mlf.df_out[mlf.split_colname] == "submission"]["name"].tolist()
+    )
     duplicate_name_indices = duplicate_name_indices[duplicate_name_indices]
     duplicate_names = mlf.df_out.loc[duplicate_name_indices.index, "name"]
     for name in duplicate_names:
-        mlf.df_out.loc[mlf.df_out["name"] == name, pred] = mlf.df_out.loc[
-            mlf.df_out["name"] == name
-        ][mlf.target_name].max()
+        mlf.df_out.loc[mlf.df_out["name"] == name, pred] = mlf.df_out.loc[mlf.df_out["name"] == name][mlf.target_name].max()
 
 mlf.evaluate()
 mlf.get_feature_importances()
