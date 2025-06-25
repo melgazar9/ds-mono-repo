@@ -770,6 +770,12 @@ class GapStrategyEvaluator(StrategyEvaluator):
         return df
 
     @staticmethod
+    def get_is_earnings_event(df):
+        with PostgresConnect(database="financial_elt") as db:
+            df_earnings = db.run_sql("select * from financial_analytics.earnings_dates")
+        return df
+
+    @staticmethod
     def _get_market_cap_bucket(df):
         return df
 
