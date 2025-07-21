@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from scipy.interpolate import interp1d
 import numpy as np
 import argparse
+import logging
 
 
 class MarketDataExtractor:
@@ -17,7 +18,7 @@ class MarketDataExtractor:
         self.qualified_contracts = None
         self.df_1min = None
         self.df_90days = None
-        self.option_chain_definition = None
+        self.option_chain_definitions = None
 
         self._setup_contract()
 
@@ -26,7 +27,7 @@ class MarketDataExtractor:
         self.qualified_contracts = ib.qualifyContracts(self.contract)
 
         if not self.qualified_contracts:
-            print("Could not qualify contract")
+            logging.error("Could not qualify contract")
             ib.disconnect()
             return None
 
@@ -83,13 +84,18 @@ class MarketDataExtractor:
         df = df.sort_values(by="date")
         return df
 
-    def get_option_chain_definition(self):
-        chains = ib.reqSecDefOptParams(self.contract.symbol, "", self.contract.secType, self.contract.conId)
-        if not chains:
-            return None
-        self.option_chain_definition = next(c for c in chains if c.exchange == self.exchange)
-        if not self.option_chain_definition:
-            raise ValueError(f"No option chain definition found for ticker {self.ticker}.")
+    def _get_option_chain_definitions(self):
+        self.option_chain_definitions = ib.reqSecDefOptParams(
+            self.contract.symbol, "", self.contract.secType, self.contract.conId
+        )
+        if not self.option_chain_definitions:
+            raise ValueError(f"No option chain definitions found for ticker {self.ticker}.")
+        return self
+
+    def get_relevant_option_chain_definition(self):
+        self._get_option_chain_definitions()
+        assert self.option_chain_definitions is not None, f"Could not get option chain for ticker {self.ticker}"
+        self.option_chain_definition = next(c for c in self.option_chain_definitions if c.exchange == self.exchange)
         return self
 
     def get_atm_calendar(self):
@@ -149,16 +155,16 @@ class MarketDataExtractor:
         return call_near_exp, put_near_exp, call_exp_30days_out, put_exp_30days_out
 
     @staticmethod
-    def filter_options_expirations(dates):
+    def _filter_expirations(exp_dates):
         today = datetime.today().date()
         cutoff_date = today + timedelta(days=45)
 
-        sorted_dates = sorted(datetime.strptime(date, "%Y%m%d").date() for date in dates)
+        sorted_exp_dates = sorted(datetime.strptime(date, "%Y%m%d").date() for date in exp_dates)
 
         arr = []
-        for i, date in enumerate(sorted_dates):
+        for i, date in enumerate(sorted_exp_dates):
             if date >= cutoff_date:
-                arr = [d.strftime("%Y%m%d") for d in sorted_dates[: i + 1]]
+                arr = [d.strftime("%Y%m%d") for d in sorted_exp_dates[: i + 1]]
                 break
 
         if len(arr) > 0:
@@ -268,69 +274,76 @@ class EarningsIVCrushScanner(MarketDataExtractor):
         bet_amount = bet_amount * pct_kelly
         return round(bet_amount, 2)
 
+    def get_option_chain(self):
+        # ticker = ib.reqMktData(self.contract, "", True)
+        # ib.sleep(1)
+        return self
+
     def compute_recommendation(self, ticker: str, min_avg_30d_volume=1500000, min_iv30_rv30=2.0, max_ts_slope_0_45=-0.0075):
         try:
             ticker = ticker.upper()
             if not ticker:
                 return "No stock symbol provided."
 
-            self.get_option_chain_definition()
-            assert self.option_chain_definition is not None, f"Could not get option chain for ticker {ticker}"
+            self.get_relevant_option_chain_definition()
+            assert self.option_chain_definitions is not None, f"Could not get option chain for ticker {ticker}"
 
             self.get_prev_3mo_history()
             self.get_1min_bars()
 
             try:
-                underlying_price = self.get_current_price()
-                if underlying_price is None:
+                self.underlying_price = self.get_current_price()
+                if self.underlying_price is None:
                     raise ValueError("No market price found.")
             except Exception as e:
                 raise Exception(f"Error: Unable to retrieve underlying stock price. {e}")
 
             atm_iv = {}
-            # straddle = None
-            i = 0
-
             self.get_atm_calendar()
 
-            for exp_date, chain in self.option_chain_definition.items():
-                calls = chain.calls
-                puts = chain.puts
+            exp_dates = self.option_chain_definition.expirations
+            filtered_expirations = self._filter_expirations(exp_dates)
 
-                if calls.empty or puts.empty:
-                    continue
-
-                call_diffs = (calls["strike"] - underlying_price).abs()
-                call_idx = call_diffs.idxmin()
-                call_iv = calls.loc[call_idx, "impliedVolatility"]
-
-                put_diffs = (puts["strike"] - underlying_price).abs()
-                put_idx = put_diffs.idxmin()
-                put_iv = puts.loc[put_idx, "impliedVolatility"]
-
-                atm_iv_value = (call_iv + put_iv) / 2.0
-                atm_iv[exp_date] = atm_iv_value
-
-                if i == 0:
-                    call_bid = calls.loc[call_idx, "bid"]
-                    call_ask = calls.loc[call_idx, "ask"]
-                    put_bid = puts.loc[put_idx, "bid"]
-                    put_ask = puts.loc[put_idx, "ask"]
-
-                    if call_bid is not None and call_ask is not None:
-                        call_mid = (call_bid + call_ask) / 2.0
-                    else:
-                        call_mid = None
-
-                    if put_bid is not None and put_ask is not None:
-                        put_mid = (put_bid + put_ask) / 2.0
-                    else:
-                        put_mid = None
-
-                    if call_mid is not None and put_mid is not None:
-                        pass  # straddle = call_mid + put_mid
-
-                i += 1
+            self.get_option_chain()  # TODO: Stuck here pulling options data --> May need subscription even for delayed data?
+            for exp_date in filtered_expirations:
+                print(exp_date)
+            #     calls = self.option_chain.calls
+            #     puts = chain.puts
+            #
+            #     if calls.empty or puts.empty:
+            #         continue
+            #
+            #     call_diffs = (calls["strike"] - underlying_price).abs()
+            #     call_idx = call_diffs.idxmin()
+            #     call_iv = calls.loc[call_idx, "impliedVolatility"]
+            #
+            #     put_diffs = (puts["strike"] - underlying_price).abs()
+            #     put_idx = put_diffs.idxmin()
+            #     put_iv = puts.loc[put_idx, "impliedVolatility"]
+            #
+            #     atm_iv_value = (call_iv + put_iv) / 2.0
+            #     atm_iv[exp_date] = atm_iv_value
+            #
+            #     if i == 0:
+            #         call_bid = calls.loc[call_idx, "bid"]
+            #         call_ask = calls.loc[call_idx, "ask"]
+            #         put_bid = puts.loc[put_idx, "bid"]
+            #         put_ask = puts.loc[put_idx, "ask"]
+            #
+            #         if call_bid is not None and call_ask is not None:
+            #             call_mid = (call_bid + call_ask) / 2.0
+            #         else:
+            #             call_mid = None
+            #
+            #         if put_bid is not None and put_ask is not None:
+            #             put_mid = (put_bid + put_ask) / 2.0
+            #         else:
+            #             put_mid = None
+            #
+            #         if call_mid is not None and put_mid is not None:
+            #             pass  # straddle = call_mid + put_mid
+            #
+            #     i += 1
 
             if not atm_iv:
                 return "Error: Could not determine ATM IV for any expiration dates."
