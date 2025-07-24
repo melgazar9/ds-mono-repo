@@ -8,6 +8,8 @@ import pandas as pd
 import os
 import requests
 
+warnings.filterwarnings("ignore", message="Not enough unique days to interpolate for ticker")
+
 
 def filter_dates(dates):
     today = datetime.today().date()
@@ -135,18 +137,23 @@ def calc_kelly_bet(p_win: float = 0.66, odds_decimal: float = 1.66, current_bank
 
 def get_all_usa_tickers(use_yf_db=True):
     todays_date = datetime.today().strftime("%Y-%m-%d")
+    # todays_date = (datetime.today() + timedelta(days=1)).strftime("%Y-%m-%d")
 
     ### FMP ###
 
-    fmp_apikey = os.getenv("FMP_API_KEY")
-    fmp_url = (
-        f"https://financialmodelingprep.com/api/v3/earning_calendar?from={todays_date}&to={todays_date}&apikey={fmp_apikey}"
-    )
-    fmp_response = requests.get(fmp_url)
-    df_fmp = pd.DataFrame(fmp_response.json())
-    df_fmp_usa = df_fmp[df_fmp["symbol"].str.fullmatch(r"[A-Z]{1,4}") & ~df_fmp["symbol"].str.contains(r"[.-]")]
+    try:
+        fmp_apikey = os.getenv("FMP_API_KEY")
+        fmp_url = (
+            f"https://financialmodelingprep.com/api/v3/earning_calendar?from={todays_date}&to={todays_date}&apikey={fmp_apikey}"
+        )
+        fmp_response = requests.get(fmp_url)
+        df_fmp = pd.DataFrame(fmp_response.json())
+        df_fmp_usa = df_fmp[df_fmp["symbol"].str.fullmatch(r"[A-Z]{1,4}") & ~df_fmp["symbol"].str.contains(r"[.-]")]
 
-    fmp_usa_symbols = sorted(df_fmp_usa["symbol"].unique().tolist())
+        fmp_usa_symbols = sorted(df_fmp_usa["symbol"].unique().tolist())
+    except Exception:
+        print("No FMP API Key found. Only using NASDAQ")
+        fmp_usa_symbols = []
 
     ### NASDAQ ###
 
@@ -155,26 +162,11 @@ def get_all_usa_tickers(use_yf_db=True):
     nasdaq_response = requests.get(nasdaq_url, headers=nasdaq_headers)
     nasdaq_calendar = nasdaq_response.json().get("data").get("rows")
     df_nasdaq = pd.DataFrame(nasdaq_calendar)
+    df_nasdaq = df_nasdaq[df_nasdaq["symbol"].str.fullmatch(r"[A-Z]{1,4}") & ~df_nasdaq["symbol"].str.contains(r"[.-]")]
+
     nasdaq_tickers = sorted(df_nasdaq["symbol"].unique().tolist())
 
     all_usa_earnings_tickers_today = sorted(list(set(fmp_usa_symbols + nasdaq_tickers)))
-
-    ### YFinance (local postgres DB) ###
-
-    if use_yf_db:
-        from ds_core.db_connectors import PostgresConnect
-
-        db = PostgresConnect(database="financial_elt")
-        df_yfinance_earnings = db.run_sql(
-            f"select distinct(ticker) from tap_yfinance_production.earnings_dates where date(timestamp) = '{todays_date}';"
-        )
-        yfinance_usa_earnings_tickers = sorted(
-            df_yfinance_earnings[
-                df_yfinance_earnings["ticker"].str.fullmatch(r"[A-Z]{1,4}")
-                & ~df_yfinance_earnings["ticker"].str.contains(r"[.-]")
-            ]["ticker"].tolist()
-        )
-        all_usa_earnings_tickers_today = sorted(list(set(all_usa_earnings_tickers_today + yfinance_usa_earnings_tickers)))
     return all_usa_earnings_tickers_today
 
 
@@ -314,26 +306,68 @@ def compute_recommendation(
     else:
         suggestion = "Avoid"
 
+    edge_score = 0
+
+    # IV to RV ratio
+    if iv30_rv30 > 2.0:
+        edge_score += 1.0
+    elif iv30_rv30 > 1.5:
+        edge_score += 0.5
+
+    # Term structure slope
+    if ts_slope_0_45 < -0.01:
+        edge_score += 0.5
+
+    # Liquidity
+    if avg_dollar_volume > 50_000_000:
+        edge_score += 0.5
+
+    if suggestion == "Recommended":
+        # Map score to Kelly multiplier
+        if edge_score >= 2.0:
+            kelly_multiplier_from_base = 1.5
+        elif edge_score >= 1.5:
+            kelly_multiplier_from_base = 1.25
+        elif edge_score >= 1:
+            kelly_multiplier_from_base = 1.1
+        elif edge_score >= 0.5:
+            kelly_multiplier_from_base = 1.0
+        elif edge_score == 0:
+            kelly_multiplier_from_base = 0.80
+    elif suggestion == "Consider":
+        kelly_multiplier_from_base = 0.2
+    else:
+        kelly_multiplier_from_base = 0
+
     result_summary["suggestion"] = suggestion
     kelly_bet = calc_kelly_bet()
-
-    if result_summary["suggestion"] == "Recommended":
-        if result_summary["ts_slope_0_45"] < -0.015:
-            kelly_multiplier_from_base = 1.5
-        elif result_summary["ts_slope_0_45"] < -0.01:
-            kelly_multiplier_from_base = 1.25
-        elif result_summary["ts_slope_0_45"] < -0.0075:
-            kelly_multiplier_from_base = 1.1
-    elif suggestion == "Consider":
-        kelly_multiplier_from_base = 0.20
-    elif suggestion == "Avoid":
-        kelly_multiplier_from_base = 0
 
     kelly_bet = round(kelly_bet * kelly_multiplier_from_base, 2)
     result_summary["kelly_multiplier_from_base"] = kelly_multiplier_from_base
     result_summary["kelly_bet"] = kelly_bet
     return result_summary
 
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run calculations for given tickers")
+    parser.add_argument("--tickers", nargs="+", required=True, help="List of ticker symbols (e.g., NVDA AAPL TSLA)")
+
+    args = parser.parse_args()
+    tickers = args.tickers
+
+    if tickers == ["_all"]:
+        tickers = get_all_usa_tickers()
+
+    print(f"Scanning {len(tickers)} tickers: \n{tickers}")
+
+    for ticker in tickers:
+        print(f"Scanning ticker: {ticker}")
+        result = compute_recommendation(ticker)
+        if isinstance(result, dict) and result["suggestion"] == "Recommended":
+            print(f"\n *** EDGE FOUND *** \nticker: {ticker}: {result}\n---------------")
+        else:
+            # print(f"ticker: {ticker}: {result}\n---------------")
+            pass
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run calculations for given tickers")
