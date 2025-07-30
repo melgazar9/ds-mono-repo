@@ -310,14 +310,11 @@ plugins:
       base_url: https://financialmodelingprep.com
       symbols:
         select_symbols:
-          - "AAPL"
-          - "META"
+          - "*"
 
       ciks:
         select_ciks:
-          - "0000320193"  # AAPL
-          - "0001045810"  # NVDA
-          - "0001326801"  # META
+          - "*"
 
       ### Search Streams ###
 
