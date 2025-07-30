@@ -268,6 +268,8 @@ def find_monorepo_root(start_path=None):
         "state.json",
         "tap-polygon",
         "tap-yfinance",
+        "tap-yahooquery",
+        "tap-fmp",
         "legacy",
         "tests",
     ]

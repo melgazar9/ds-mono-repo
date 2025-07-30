@@ -40,6 +40,11 @@ if __name__ == "__main__":
         scheduler.add_job(tap_polygon, trigger="cron", **tap_polygon_cron, jitter=120)
         logging.info(f"Added tap-polygon job with cron: {tap_polygon_cron}")
 
+    if "tap-fmp" in os.getenv("FINANCIAL_ELT_TAPS_TO_RUN"):
+        tap_fmp_cron = json.loads(os.getenv("TAP_FMP_CRON"))
+        scheduler.add_job(tap_fmp, trigger="cron", **tap_fmp_cron, jitter=120)
+        logging.info(f"Added tap-fmp job with cron: {tap_fmp_cron}")
+
     ###### host ######
 
     HOST = "0.0.0.0"
