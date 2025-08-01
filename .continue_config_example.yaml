@@ -3,102 +3,17 @@ version: 1.0.0
 schema: v1
 
 models:
+  - name: OpenRouter LLaMA 70 8B
+    provider: openrouter
+    model: meta-llama/llama-3-70b-instruct
+    apiBase: https://openrouter.ai/api/v1
+    apiKey: ${OPENROUTER_APIKEY}  # placeholder, continue.dev does not currently support .env variables. Need to replace before launching pycharm
+
   - name: Horizon Alpha
     provider: openrouter
     model: openrouter/horizon-alpha
     apiBase: https://openrouter.ai/api/v1
-    
-
-  - name: DeepSeek R1 0528 (free)
-    provider: openrouter
-    model: deepseek/deepseek-r1-0528:free
-    apiBase: https://openrouter.ai/api/v1
-    
-
-  - name: Qwen3 Coder (free)
-    provider: openrouter
-    model: qwen/qwen3-coder:free
-    apiBase: https://openrouter.ai/api/v1
-    
-
-  - name: Mistral Nemo
-    provider: openrouter
-    model: mistralai/mistral-nemo
-    apiBase: https://openrouter.ai/api/v1
-    
-
-  - name: OpenAI GPT-4.1 Nano
-    provider: openrouter
-    model: openai/gpt-4.1-nano
-    apiBase: https://openrouter.ai/api/v1
-    
-
-  - name: Meta Llama 4 Maverick
-    provider: openrouter
-    model: meta-llama/llama-4-maverick
-    apiBase: https://openrouter.ai/api/v1
-    
-
-  - name: DeepSeek V3 0324
-    provider: openrouter
-    model: deepseek/deepseek-chat-v3-0324
-    apiBase: https://openrouter.ai/api/v1
-    
-  
-  - name: Qwen3 Coder
-    provider: openrouter
-    model: qwen/qwen3-coder
-    apiBase: https://openrouter.ai/api/v1
-    
-    
-  - name: OpenAI GPT-4.1 Mini
-    provider: openrouter
-    model: openai/gpt-4.1-mini
-    apiBase: https://openrouter.ai/api/v1
-    
-
-  - name: Google Gemini 2.5 Flash
-    provider: openrouter
-    model: google/gemini-2.5-flash
-    apiBase: https://openrouter.ai/api/v1
-    
-
-  - name: OpenAI GPT-4.1
-    provider: openrouter
-    model: openai/gpt-4.1
-    apiBase: https://openrouter.ai/api/v1
-    
-  
-  - name: Google Gemini 2.5 Pro
-    provider: openrouter
-    model: google/gemini-2.5-pro
-    apiBase: https://openrouter.ai/api/v1
-    
-
-  - name: Anthropic Claude Sonnet 3.7
-    provider: openrouter
-    model: anthropic/claude-3.7-sonnet
-    apiBase: https://openrouter.ai/api/v1
-    
-
-  - name: Anthropic Claude Sonnet 3.7 (Thinking)
-    provider: openrouter
-    model: anthropic/claude-3.7-sonnet:thinking
-    apiBase: https://openrouter.ai/api/v1
-    
-
-  - name: Anthropic Claude Sonnet 4
-    provider: openrouter
-    model: anthropic/claude-sonnet-4
-    apiBase: https://openrouter.ai/api/v1
-    
-
-  - name: Anthropic Claude Opus 4
-    provider: openrouter
-    model: anthropic/claude-opus-4
-    apiBase: https://openrouter.ai/api/v1
-    
-
+    apiKey: ${OPENROUTER_APIKEY}  # placeholder, continue.dev does not currently support .env variables. Need to replace before launching pycharm
 
 context:
   - provider: code
