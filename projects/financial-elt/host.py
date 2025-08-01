@@ -1,6 +1,6 @@
 import json
-import signal
 import logging
+import signal
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from routes import *
@@ -20,6 +20,7 @@ if __name__ == "__main__":
 
     mp.set_start_method("spawn", force=True)
     setup_logging()
+
     scheduler = BackgroundScheduler(job_defaults={"max_instances": 3})
 
     ###### tap-yfinance ######
