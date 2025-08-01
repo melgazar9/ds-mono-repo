@@ -23,6 +23,22 @@ if __name__ == "__main__":
 
     scheduler = BackgroundScheduler(job_defaults={"max_instances": 3})
 
+    ###### host ######
+
+    HOST = "0.0.0.0"
+    PORT = 5000
+    logging.info(f"Server is listening on port {PORT}")
+    logging.info(f"Hosting environment {ENVIRONMENT}")
+
+    if DEBUG:
+        tap = MeltanoTap(
+            project_dir="tap-yahooquery",
+            num_workers=int(os.getenv("TAP_YAHOOQUERY_NUM_WORKERS")),
+            tap_name="tap-yahooquery",
+            target_name="jsonl",
+        )
+        tap.run_tap()
+
     ###### tap-yfinance ######
 
     if "tap-yfinance" in os.getenv("FINANCIAL_ELT_TAPS_TO_RUN"):
@@ -45,17 +61,5 @@ if __name__ == "__main__":
         scheduler.add_job(tap_fmp, trigger="cron", **tap_fmp_cron, jitter=120)
         logging.info(f"Added tap-fmp job with cron: {tap_fmp_cron}")
 
-    ###### host ######
-
-    HOST = "0.0.0.0"
-    PORT = 5000
-    logging.info(f"Server is listening on port {PORT}")
-    logging.info(f"Hosting environment {ENVIRONMENT}")
-
     scheduler.start()
-
-    if DEBUG:
-        tap = MeltanoTap(project_dir="tap-polygon", num_workers=10, tap_name="tap-polygon", target_name="jsonl")
-        tap.run_tap()
-
     serve(app, host=HOST, port=PORT, threads=2)  # waitress wsgi production server

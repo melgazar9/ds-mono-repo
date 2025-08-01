@@ -84,9 +84,6 @@ class MeltanoTap:
 
         self.task_chunks = get_task_chunks(num_workers, self.tap_name) if num_workers > 1 else None
 
-        # if DEBUG:
-        #     self.task_chunks = self.task_chunks[-1:]
-
     def run_tap_single_threaded(self):
         logging.info("Running meltano ELT without multiprocessing.")
 
