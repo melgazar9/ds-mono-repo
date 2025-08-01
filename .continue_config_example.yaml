@@ -1,0 +1,25 @@
+name: Local Assistant
+version: 1.0.0
+schema: v1
+
+models:
+  - name: OpenRouter LLaMA 70 8B
+    provider: openrouter
+    model: meta-llama/llama-3-70b-instruct
+    apiBase: https://openrouter.ai/api/v1
+    apiKey: ${OPENROUTER_APIKEY}  # placeholder, continue.dev does not currently support .env variables. Need to replace before launching pycharm
+
+  - name: Horizon Alpha
+    provider: openrouter
+    model: openrouter/horizon-alpha
+    apiBase: https://openrouter.ai/api/v1
+    apiKey: ${OPENROUTER_APIKEY}  # placeholder, continue.dev does not currently support .env variables. Need to replace before launching pycharm
+
+context:
+  - provider: code
+  - provider: docs
+  - provider: diff
+  - provider: terminal
+  - provider: problems
+  - provider: folder
+  - provider: codebase
