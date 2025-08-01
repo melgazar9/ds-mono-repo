@@ -1,6 +1,6 @@
 import json
-import logging
 import signal
+import logging
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from routes import *
@@ -20,7 +20,6 @@ if __name__ == "__main__":
 
     mp.set_start_method("spawn", force=True)
     setup_logging()
-
     scheduler = BackgroundScheduler(job_defaults={"max_instances": 3})
 
     ###### tap-yfinance ######
@@ -48,7 +47,7 @@ if __name__ == "__main__":
     ###### host ######
 
     HOST = "0.0.0.0"
-    PORT = 5000
+    PORT = 8888
     logging.info(f"Server is listening on port {PORT}")
     logging.info(f"Hosting environment {ENVIRONMENT}")
 

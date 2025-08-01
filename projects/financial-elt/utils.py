@@ -1,7 +1,6 @@
 import logging
 import multiprocessing as mp
 import os
-import queue
 import shutil
 import subprocess
 import sys
@@ -11,13 +10,15 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_compl
 from datetime import datetime
 from functools import lru_cache
 from glob import glob
-
 import yaml
 
 ENVIRONMENT = os.getenv("ENVIRONMENT")
 if ENVIRONMENT is None:
     raise ValueError("Environment variable ENVIRONMENT is not set. Please set it to 'dev', 'staging', or 'production'.")
-TIMEOUT_SECONDS = 777600  # 9 days just for safety, but should not be needed... set this high because of the first stream
+
+TIMEOUT_SECONDS = (
+    777600  # 9 days just for safety on the first run, but should not be needed... set this high because of the first stream
+)
 
 
 def ensure_dir(path):
@@ -122,74 +123,119 @@ def get_task_chunks(num_tasks: int, tap_name):
     return chunks_by_target
 
 
+def get_run_commands(base_run_command: str, task_chunks_dict: dict, tap_name: str):
+    """
+    Generate individual meltano commands for each stream, one command per stream.
+    This ensures proper state isolation and prevents concatenated state IDs.
+    """
+    run_commands = []
+
+    target_mapping = {"file": "parquet", "db": "postgres"}
+
+    for target_type in ["file", "db"]:
+        if target_type in task_chunks_dict and task_chunks_dict[target_type]:
+            target_name = target_mapping[target_type]
+            for chunk in task_chunks_dict[target_type]:
+                for stream_select in chunk:
+                    stream_name = stream_select.replace("--select ", "").replace(".*", "").strip()
+
+                    if stream_name:
+                        state_id = f"{tap_name.replace('-', '_')}_{target_name}_{ENVIRONMENT}__{stream_name}"
+                        command = f"{base_run_command} target-{target_name} --state-id {state_id} --select {stream_name}"
+                        run_commands.append(command.split())
+
+    return run_commands
+
+
 def run_pool_task(run_commands, cwd, num_workers, pool_task):
-    ExecutorClass = {"processpool": ProcessPoolExecutor, "threadpool": ThreadPoolExecutor}[pool_task.lower()]
-    cmd_return_codes = {}
-    with ExecutorClass(max_workers=num_workers) as executor:
+    """
+    Run individual meltano commands using ThreadPoolExecutor or ProcessPoolExecutor.
+    Each command runs independently with proper concurrency control.
+    """
+    logging.info(f"Starting {pool_task} with {num_workers} workers for {len(run_commands)} individual streams")
+
+    if pool_task == "threadpool":
+        executor_class = ThreadPoolExecutor
+    elif pool_task == "processpool":
+        executor_class = ProcessPoolExecutor
+    else:
+        raise ValueError(f"Unknown pool_task: {pool_task}")
+
+    results = []
+
+    with executor_class(max_workers=num_workers) as executor:
         futures = [executor.submit(run_meltano_task, run_command, cwd=cwd) for run_command in run_commands]
+
+        for future in as_completed(futures):
+            try:
+                command, return_code = future.result(timeout=TIMEOUT_SECONDS)
+                results.append((command, return_code))
+                logging.info(f"Completed: {' '.join(command)} -> return_code: {return_code}")
+            except TimeoutError:
+                logging.error(f"Task timed out after {TIMEOUT_SECONDS} seconds")
+                results.append(("TIMEOUT", -1))
+            except Exception as e:
+                logging.error(f"Task failed with error: {str(e)}")
+                results.append(("ERROR", -1))
+
+    logging.info(f"\n{'=' * 50}")
+    logging.info(f"{pool_task.upper()} EXECUTION SUMMARY:")
+    logging.info(f"{'=' * 50}")
+    successful = sum(1 for _, code in results if code == 0)
+    failed = len(results) - successful
+    logging.info(f"Total commands: {len(results)}")
+    logging.info(f"Successful: {successful}")
+    logging.info(f"Failed: {failed}")
+
+    for command, return_code in results:
+        status = "✓" if return_code == 0 else "✗"
+        if isinstance(command, list):
+            cmd_str = " ".join(command)
+        else:
+            cmd_str = str(command)
+        logging.info(f"{status} {cmd_str} -> {return_code}")
+
+
+def _run_with_semaphore(run_command, cwd, semaphore, result_queue):
+    """Run a single command with semaphore control - module level function for pickling"""
+    with semaphore:
         try:
-            for future in as_completed(futures, timeout=TIMEOUT_SECONDS):
-                try:
-                    command, return_code = future.result()
-                    logging.info(f"command: {command} ---> return_code: {return_code}")
-                    cmd_return_codes[str(command)] = return_code
-                except Exception as e:
-                    logging.error(f"A task in the pool failed: {e}")
-        except TimeoutError:
-            logging.error("Overall pool execution timed out after 8 hours. Attempting to terminate remaining processes.")
-            executor.shutdown(wait=False, cancel_futures=True)
-            raise
-    logging.info("\n".join([f"{k} ---> {v}" for k, v in cmd_return_codes.items()]))
-    return cmd_return_codes
+            command, return_code = run_meltano_task(run_command, cwd=cwd)
+            result_queue.put((command, return_code))
+            logging.info(f"Process completed: {' '.join(command)} -> return_code: {return_code}")
+        except Exception as e:
+            logging.error(f"Process failed: {str(e)}")
+            result_queue.put(("ERROR", -1))
 
 
 def run_process_task(run_commands, cwd, concurrency_semaphore):
+    """
+    Run individual meltano commands using multiprocessing.Process with semaphore control.
+    Each command runs independently with proper concurrency limiting.
+    """
+
+    try:
+        logging.info(
+            f"Starting multiprocessing with semaphore limit {concurrency_semaphore._value} for {len(run_commands)} streams"
+        )
+    except (NotImplementedError, AttributeError):
+        semaphore_cfg_value = os.getenv(f"{run_commands[0][3].upper()}_MP_SEMAPHORE".replace("-", "_"))
+        logging.info(
+            f"Starting multiprocessing with semaphore limit {concurrency_semaphore} for {len(run_commands)} individual"
+            f"streams. Platform specific issue where get_value() is not implemented. Fall back to env variable "
+            f"{semaphore_cfg_value}"
+        )
+        semaphore_value = "configured"
+
+    logging.info(f"Starting multiprocessing with semaphore limit {semaphore_value} for {len(run_commands)} individual streams")
+
+    result_queue = mp.Queue()
     processes = []
-    cmd_return_codes = {}
-    return_queue = mp.Queue()
-    process_map = {}
 
     for run_command in run_commands:
-        process = mp.Process(
-            target=run_meltano_task,
-            kwargs={
-                "run_command": run_command,
-                "concurrency_semaphore": concurrency_semaphore,
-                "cwd": cwd,
-                "return_queue": return_queue,
-            },
-        )
-        logging.info(f"Running command {run_command}")
-        try:
-            process.start()
-            processes.append(process)
-            process_map[process.pid] = process
-        except Exception as e:
-            logging.error(f"Failed to start process for {run_command}: {e}")
-            continue
-
-    num_finished = 0
-    total = len(processes)
-    joined_pids = set()
-
-    while num_finished < total:
-        try:
-            command, return_code = return_queue.get(timeout=3)
-            logging.info(f"SUBPROCESS COMMAND: {command} FINISHED WITH RETURN CODE ---> return_code: {return_code}")
-            cmd_return_codes[str(command)] = return_code
-            num_finished += 1
-        except queue.Empty:
-            pass
-
-        for process in processes:
-            if process.pid not in joined_pids and not process.is_alive():
-                process.join(timeout=1)
-                joined_pids.add(process.pid)
-
-    return_queue.close()
-    return_queue.join_thread()
-    logging.info("\n".join([f"{k} ---> {v}" for k, v in cmd_return_codes.items()]))
-    return cmd_return_codes
+        process = mp.Process(target=_run_with_semaphore, args=(run_command, cwd, concurrency_semaphore, result_queue))
+        processes.append(process)
+        process.start()
 
 
 def setup_logging():
@@ -218,44 +264,6 @@ def critical_shutdown_handler(signum, frame):
         process.terminate()
         process.join(timeout=5)
     sys.exit(1)
-
-
-def get_run_commands(base_run_command: str, task_chunks_dict: dict, tap_name: str):
-    """
-    Flatten the dictionary into a list of commands. Parallelism is automatically handled by the MeltanoTap class.
-    We don't want to mix two different targets in the same run_commands list. This is handled here and get_task_chunks.
-
-    Returns
-    -------
-    list of meltano run commands
-    """
-    run_commands = []
-    tap_env_prefix = tap_name.upper().replace("-", "_")
-    target_env_vars = {"file": f"{tap_env_prefix}_FILE_TARGET", "db": f"{tap_env_prefix}_DB_TARGET"}
-    for target_type, task_chunks in task_chunks_dict.items():
-        if not task_chunks:
-            logging.info(
-                f"No tasks for target type: '{target_type}' in {tap_name}. Task chunks: {task_chunks}."
-                f"Skipping target-type {target_type}."
-            )
-            continue
-        target_name = os.getenv(target_env_vars[target_type])
-        if not target_name:
-            raise ValueError(f"Missing environment variable: {target_env_vars[target_type]}")
-        run_command = f"{base_run_command} target-{target_name}"
-        for chunk in task_chunks:
-            assert isinstance(chunk, list), "Invalid datatype task_chunks. Must be list."
-            state_id = " ".join(chunk).replace("--select ", "").replace(" ", "__").replace(".*", "")
-            select_param = " ".join(chunk).replace(".*", "")
-            cmd = (
-                f"{run_command} "
-                f"--state-id {tap_name.replace('tap-', 'tap_')}_"
-                f"target_{target_name}_"
-                f"{ENVIRONMENT}__{state_id} "
-                f"{select_param}".split(" ")
-            )
-            run_commands.append(cmd)
-    return run_commands
 
 
 @lru_cache(maxsize=None)
@@ -370,13 +378,16 @@ def execute_command_stg(run_command, cwd):
                     shutil.copytree(s, d, symlinks=True)
                 else:
                     shutil.copy2(s, d)
+
         # Copy .meltano (except state), symlink .meltano/state to cwd .meltano/state
         meltano_src = os.path.join(cwd, ".meltano")
         meltano_dst = os.path.join(tmp_project_dir, ".meltano")
         shutil.copytree(meltano_src, meltano_dst, symlinks=True, ignore=shutil.ignore_patterns("state"))
+
         # Remove the empty/newly created .meltano/state (if it exists), then symlink it to the real state dir
         meltano_state_dst = os.path.join(meltano_dst, "state")
         meltano_state_src = os.path.join(meltano_src, "state")
+
         try:
             if os.path.islink(meltano_state_dst) or os.path.isfile(meltano_state_dst):
                 os.unlink(meltano_state_dst)
@@ -384,6 +395,7 @@ def execute_command_stg(run_command, cwd):
                 shutil.rmtree(meltano_state_dst)
         except FileNotFoundError:
             pass
+
         os.symlink(meltano_state_src, meltano_state_dst, target_is_directory=True)
 
         env = os.environ.copy()
