@@ -110,7 +110,7 @@ plugins:
       - company_employee_count.*
       - company_historical_employee_count.*
       - company_market_cap.*
-      - company_batch_market_cap.*
+#      - company_batch_market_cap.*
       - historical_market_cap.*
       - company_share_and_liquidity_float.*
       - all_shares_float.*
@@ -308,6 +308,8 @@ plugins:
       start_date: '2010-01-01T00:00:00Z'
       api_key: ${FMP_API_KEY}
       base_url: https://financialmodelingprep.com
+      min_backoff_seconds: 3
+
       symbols:
         select_symbols:
           - "*"
