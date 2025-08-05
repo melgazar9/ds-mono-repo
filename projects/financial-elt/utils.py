@@ -142,13 +142,13 @@ def run_pool_task(run_commands, cwd, num_workers, pool_task):
 def run_process_task(run_commands, cwd, concurrency_semaphore=None):
     """
     Run commands (list-of-args) in parallel using processes, limiting concurrency
-    with an optional semaphore acquired in the parent.
+    with a semaphore acquired inside each worker process.
     """
     return_queue = mp.Queue()
     results = {}
-    alive = []
+    processes = []
 
-    def spawn(cmd):
+    for cmd in run_commands:
         p = mp.Process(
             target=run_meltano_task,
             kwargs={
@@ -159,44 +159,29 @@ def run_process_task(run_commands, cwd, concurrency_semaphore=None):
             },
         )
         p.start()
-        alive.append(p)
-
-    started = 0
-    total = len(run_commands)
-
-    while started < total and (not concurrency_semaphore or concurrency_semaphore.acquire(timeout=10)):
-        spawn(run_commands[started])
-        started += 1
+        processes.append(p)
 
     try:
         completed = 0
+        total = len(run_commands)
+
         while completed < total:
             try:
-                cmd, rc = return_queue.get(timeout=5)
+                cmd, rc = return_queue.get(timeout=10)
                 results[str(cmd)] = rc
                 completed += 1
-                if started < total:
-                    if not concurrency_semaphore or concurrency_semaphore.acquire(timeout=10):
-                        spawn(run_commands[started])
-                        started += 1
-                    else:
-                        logging.error(f"Failed to acquire semaphore after completion. Started: {started}, Total: {total}")
             except queue.Empty:
-                # Clean up dead processes that didn't report (crashed)
-                for p in list(alive):
+                for p in list(processes):
                     if not p.is_alive():
                         p.join(timeout=5)
-                        alive.remove(p)
-                        logging.warning(f"Process {p.pid} died without reporting. Free slot replacement.")
-                        if started < total:
-                            if not concurrency_semaphore or concurrency_semaphore.acquire(timeout=10):
-                                spawn(run_commands[started])
-                                started += 1
-                            else:
-                                logging.error("Failed to acquire semaphore for replacement process")
+                        if p not in [proc for proc in processes if not proc.is_alive()]:
+                            logging.warning(f"Process {p.pid} died without reporting")
+                            completed += 1
+
         return results
     finally:
-        for p in alive:
+        # Clean up all processes
+        for p in processes:
             if p.is_alive():
                 p.terminate()
             p.join(timeout=10)
@@ -463,9 +448,17 @@ def run_meltano_task(run_command, cwd, concurrency_semaphore=None, return_queue=
     Runs the Meltano task, handling exceptions from execute_command_stg and
     putting the result (or error code) into the queue.
     """
-    return_code = 1
+    return_code = 1  # Default error code
+
     try:
-        result = execute_command(run_command=run_command, cwd=cwd, concurrency_semaphore=concurrency_semaphore)
+        # When using run_process_task, acquire semaphore inside each worker process
+        if return_queue is not None and concurrency_semaphore:  # Multiprocess context with semaphore
+            with concurrency_semaphore:
+                result = execute_command_stg(run_command=run_command, cwd=cwd)
+        elif return_queue is not None:  # Multiprocess context without semaphore
+            result = execute_command_stg(run_command=run_command, cwd=cwd)
+        else:  # Thread/pool context
+            result = execute_command(run_command=run_command, cwd=cwd, concurrency_semaphore=concurrency_semaphore)
         return_code = result.returncode
     except subprocess.TimeoutExpired:
         logging.error(f"Meltano task {' '.join(run_command)} timed out.")
@@ -475,13 +468,10 @@ def run_meltano_task(run_command, cwd, concurrency_semaphore=None, return_queue=
         return_code = e.returncode
     except FileNotFoundError:
         logging.error(f"Meltano executable not found for task {' '.join(run_command)}. Please check system PATH.")
-        return_code = 127  # Standard exit code for command not found
+        return_code = 127
     except Exception as e:
         logging.error(f"An unexpected error occurred during Meltano task {' '.join(run_command)}: {e}")
         return_code = 1
-
-    if concurrency_semaphore:
-        concurrency_semaphore.release()
 
     if return_queue:
         try:

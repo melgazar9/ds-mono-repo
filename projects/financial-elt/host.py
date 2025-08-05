@@ -32,9 +32,9 @@ if __name__ == "__main__":
 
     if DEBUG:
         tap = MeltanoTap(
-            project_dir="tap-yahooquery",
-            num_workers=int(os.getenv("TAP_YAHOOQUERY_NUM_WORKERS")),
-            tap_name="tap-yahooquery",
+            project_dir="tap-fmp",
+            num_workers=int(os.getenv("TAP_FMP_NUM_WORKERS")),
+            tap_name="tap-fmp",
             target_name="jsonl",
         )
         tap.run_tap()
