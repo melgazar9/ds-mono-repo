@@ -20,7 +20,6 @@ if __name__ == "__main__":
 
     mp.set_start_method("spawn", force=True)
     setup_logging()
-
     scheduler = BackgroundScheduler(job_defaults={"max_instances": 3})
 
     ###### host ######

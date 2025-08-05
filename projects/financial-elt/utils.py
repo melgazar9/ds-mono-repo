@@ -168,6 +168,7 @@ def run_process_task(run_commands, cwd, concurrency_semaphore=None):
         while completed < total:
             try:
                 cmd, rc = return_queue.get(timeout=10)
+                logging.info(f"command: {cmd} ---> return_code: {rc}")
                 results[str(cmd)] = rc
                 completed += 1
             except queue.Empty:
