@@ -155,7 +155,7 @@ def run_process_task(run_commands, cwd, concurrency_semaphore=None):
                 "run_command": cmd,
                 "cwd": cwd,
                 "return_queue": return_queue,
-                "concurrency_semaphore": None,  # semaphore handled in parent
+                "concurrency_semaphore": concurrency_semaphore,
             },
         )
         p.start()
@@ -172,25 +172,28 @@ def run_process_task(run_commands, cwd, concurrency_semaphore=None):
         completed = 0
         while completed < total:
             try:
-                cmd, rc = return_queue.get(timeout=3)
+                cmd, rc = return_queue.get(timeout=5)
                 results[str(cmd)] = rc
                 completed += 1
-                if concurrency_semaphore:
-                    concurrency_semaphore.release()
-                if started < total and (not concurrency_semaphore or concurrency_semaphore.acquire(timeout=10)):
-                    spawn(run_commands[started])
-                    started += 1
+                if started < total:
+                    if not concurrency_semaphore or concurrency_semaphore.acquire(timeout=10):
+                        spawn(run_commands[started])
+                        started += 1
+                    else:
+                        logging.error(f"Failed to acquire semaphore after completion. Started: {started}, Total: {total}")
             except queue.Empty:
+                # Clean up dead processes that didn't report (crashed)
                 for p in list(alive):
                     if not p.is_alive():
-                        p.join(timeout=0.1)
+                        p.join(timeout=5)
                         alive.remove(p)
-                        # If a process finished without reporting (crash), free a slot (and attempt to avoid deadlocks).
-                        if concurrency_semaphore:
-                            concurrency_semaphore.release()
-                        if started < total and (not concurrency_semaphore or concurrency_semaphore.acquire(timeout=10)):
-                            spawn(run_commands[started])
-                            started += 1
+                        logging.warning(f"Process {p.pid} died without reporting. Free slot replacement.")
+                        if started < total:
+                            if not concurrency_semaphore or concurrency_semaphore.acquire(timeout=10):
+                                spawn(run_commands[started])
+                                started += 1
+                            else:
+                                logging.error("Failed to acquire semaphore for replacement process")
         return results
     finally:
         for p in alive:
@@ -476,6 +479,9 @@ def run_meltano_task(run_command, cwd, concurrency_semaphore=None, return_queue=
     except Exception as e:
         logging.error(f"An unexpected error occurred during Meltano task {' '.join(run_command)}: {e}")
         return_code = 1
+
+    if concurrency_semaphore:
+        concurrency_semaphore.release()
 
     if return_queue:
         try:
