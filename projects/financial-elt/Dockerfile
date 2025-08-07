@@ -27,15 +27,21 @@ RUN meltano install
 
 WORKDIR $APP_HOME/tap-polygon
 RUN meltano install
+
+WORKDIR $APP_HOME/tap-fmp
+RUN meltano install
+
+
 WORKDIR $APP_HOME
 
-# Create directories to hold the symlinked state files
 RUN mkdir -p /app/tap-yfinance/state && \
     mkdir -p /app/tap-yahooquery/state && \
-    mkdir -p /app/tap-polygon/state
+    mkdir -p /app/tap-polygon/state && \
+    mkdir -p /app/tap-fmp/state
 
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
+
 ENTRYPOINT ["/app/entrypoint.sh"]
 
 EXPOSE 5000

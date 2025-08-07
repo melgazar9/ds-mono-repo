@@ -1,18 +1,12 @@
 #!/bin/bash
 
-# Execute the original command
-exec "$@"
+TAPS="tap-polygon|tap-yfinance|tap-yahooquery|tap-fmp"
 
-# Determine the tap and create the symlink
 for arg in "$@"; do
-  if [[ "$arg" == "tap-polygon" ]]; then
-    find state/*/state.json -exec ln -sf {} /app/tap-polygon/state/state.json \;
-    break
-  elif [[ "$arg" == "tap-yfinance" ]]; then
-    find state/*/state.json -exec ln -sf {} /app/tap-yfinance/state/state.json \;
-    break
-  elif [[ "$arg" == "tap-yahooquery" ]]; then
-    find state/*/state.json -exec ln -sf {} /app/tap-yahooquery/state/state.json \;
+  if [[ "$arg" =~ ^($TAPS)$ ]]; then
+    find state/*/state.json -exec ln -sf {} "/app/$arg/state/state.json" \;
     break
   fi
 done
+
+exec "$@"

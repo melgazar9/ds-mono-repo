@@ -30,6 +30,13 @@ TAP_CONFIGS = {
         "parallelism_method": os.getenv("TAP_POLYGON_PARALLELISM_METHOD"),
         "semaphore": int(os.getenv("TAP_POLYGON_MP_SEMAPHORE", "8")),
     },
+    "tap-fmp": {
+        "file_target": os.getenv("TAP_FMP_FILE_TARGET"),
+        "db_target": os.getenv("TAP_FMP_DB_TARGET"),
+        "num_workers": int(os.getenv("TAP_FMP_NUM_WORKERS")),
+        "parallelism_method": os.getenv("TAP_FMP_PARALLELISM_METHOD"),
+        "semaphore": int(os.getenv("TAP_FMP_MP_SEMAPHORE", "8")),
+    },
 }
 
 
@@ -76,9 +83,6 @@ class MeltanoTap:
         self.cwd = os.path.join(app.root_path, project_dir)
 
         self.task_chunks = get_task_chunks(num_workers, self.tap_name) if num_workers > 1 else None
-
-        # if DEBUG:
-        #     self.task_chunks = self.task_chunks[-1:]
 
     def run_tap_single_threaded(self):
         logging.info("Running meltano ELT without multiprocessing.")
@@ -175,3 +179,8 @@ def tap_yahooquery():
 @app.route(f"/financial-elt/tap-polygon-{ENVIRONMENT}", methods=["GET"])
 def tap_polygon():
     return run_tap_route("tap-polygon")
+
+
+@app.route(f"/financial-elt/tap-fmp-{ENVIRONMENT}", methods=["GET"])
+def tap_fmp():
+    return run_tap_route("tap-fmp")

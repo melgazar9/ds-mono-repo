@@ -5,7 +5,7 @@ from bt_engine.central_loaders import PolygonBarLoader, StreamingFileProcessor
 from bt_engine.engine import BacktestEngine
 from datetime import time as dtime, datetime
 import logging
-from typing import Optional, List, Dict
+from typing import Union, Optional, List, Dict, Tuple
 import pandas as pd
 from concurrent.futures import ProcessPoolExecutor, Future
 import shutil
@@ -42,12 +42,17 @@ class BacktestParams:
     flatten_trade_time_cst: tuple = (14, 55)
     slippage_amount: float = 0.61
     slippage_mode: str = "partway"
-    segment_cols: List[str] = None
+    segment_cols: Union[Tuple[str], None] = (
+        "market_cap_bucket",
+        "market",
+        "prev_day_vix_close_bucket",
+        "prev_day_volume_bucket",
+    )
     num_workers: int = 1
 
     def __post_init__(self):
         if self.segment_cols is None:
-            self.segment_cols = ["market", "prev_day_vix_close_bucket", "prev_day_volume_bucket"]
+            self.segment_cols = ("market", "prev_day_vix_close_bucket", "prev_day_volume_bucket")
 
 
 def run_single_backtest_worker(
@@ -160,7 +165,8 @@ class GapBacktestRunner(BacktestEngine):
         self.processing_dir = self.results_dir / f"processing_{self.run_timestamp}"
         self.processing_dir.mkdir(exist_ok=True)
 
-    def _load_corporate_actions(self) -> pd.DataFrame:
+    @staticmethod
+    def _load_corporate_actions() -> pd.DataFrame:
         """Load corporate actions data once and cache it"""
         if GapBacktestRunner._df_corporate_actions is None:
             logging.info("🔄 Loading corporate actions data once for all workers...")
@@ -213,7 +219,8 @@ class GapBacktestRunner(BacktestEngine):
             result_files["by_ticker_and_segment"], index=False, header=header, mode="a"
         )
 
-    def _save_results(self, all_results: List[dict], result_files: Dict[str, Path]):
+    @staticmethod
+    def _save_results(all_results: List[dict], result_files: Dict[str, Path]):
         """Centralized result saving logic - combines all results and saves once"""
         combined_results = {"simplified": [], "by_ticker": [], "by_segment": [], "by_ticker_and_segment": []}
 
@@ -253,8 +260,9 @@ class GapBacktestRunner(BacktestEngine):
             except Exception as e:
                 logging.error(f"❌ Error in file {completed_file_index + 1}: {e}")
 
+    @staticmethod
     def _cleanup_old_protected_file(
-        self, completed_file_index: int, protected_files: Dict[int, Path], active_futures: Dict[Future, int]
+        completed_file_index: int, protected_files: Dict[int, Path], active_futures: Dict[Future, int]
     ) -> None:
         """
         DRY helper method to clean up old protected files.
@@ -285,7 +293,6 @@ class GapBacktestRunner(BacktestEngine):
             <= datetime.strptime(END_DATE, "%Y-%m-%d")
         ]
         remote_files = sorted(filtered_dates)
-
         result_files = self._get_result_file_paths()
 
         try:
@@ -430,7 +437,6 @@ if __name__ == "__main__":
             stop_loss_pct=stop,
             take_profit_pct=tp,
             overnight_gap=gap,
-            num_workers=16,
         )
         print(f"Running for stop={stop}, tp={tp}, gap={gap} in {result_dir}")
         asyncio.run(main(params, result_dir))

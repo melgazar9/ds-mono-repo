@@ -20,8 +20,23 @@ if __name__ == "__main__":
 
     mp.set_start_method("spawn", force=True)
     setup_logging()
-
     scheduler = BackgroundScheduler(job_defaults={"max_instances": 3})
+
+    ###### host ######
+
+    HOST = "0.0.0.0"
+    PORT = 5000
+    logging.info(f"Server is listening on port {PORT}")
+    logging.info(f"Hosting environment {ENVIRONMENT}")
+
+    if DEBUG:
+        tap = MeltanoTap(
+            project_dir="tap-fmp",
+            num_workers=int(os.getenv("TAP_FMP_NUM_WORKERS")),
+            tap_name="tap-fmp",
+            target_name="jsonl",
+        )
+        tap.run_tap()
 
     ###### tap-yfinance ######
 
@@ -40,17 +55,10 @@ if __name__ == "__main__":
         scheduler.add_job(tap_polygon, trigger="cron", **tap_polygon_cron, jitter=120)
         logging.info(f"Added tap-polygon job with cron: {tap_polygon_cron}")
 
-    ###### host ######
-
-    HOST = "0.0.0.0"
-    PORT = 5000
-    logging.info(f"Server is listening on port {PORT}")
-    logging.info(f"Hosting environment {ENVIRONMENT}")
+    if "tap-fmp" in os.getenv("FINANCIAL_ELT_TAPS_TO_RUN"):
+        tap_fmp_cron = json.loads(os.getenv("TAP_FMP_CRON"))
+        scheduler.add_job(tap_fmp, trigger="cron", **tap_fmp_cron, jitter=120)
+        logging.info(f"Added tap-fmp job with cron: {tap_fmp_cron}")
 
     scheduler.start()
-
-    if DEBUG:
-        tap = MeltanoTap(project_dir="tap-polygon", num_workers=10, tap_name="tap-polygon", target_name="jsonl")
-        tap.run_tap()
-
     serve(app, host=HOST, port=PORT, threads=2)  # waitress wsgi production server

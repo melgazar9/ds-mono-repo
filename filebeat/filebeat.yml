@@ -36,6 +36,8 @@ filebeat.inputs:
                   container.name: "tap-yahooquery-"
               - contains:
                   container.name: "tap-polygon-"
+              - contains:
+                  container.name: "tap-fmp-"
     - rename:
         fields:
           - from: "log"
