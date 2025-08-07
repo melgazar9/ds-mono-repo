@@ -64,7 +64,7 @@ plugins:
       - symbol_changes.*
       - etf_symbols.*
       - actively_trading.*
-      # - earnings_transcripts.*
+      # - earnings_transcripts.*  # limited to Premium, build or enterprise plans
       - available_exchanges.*
       - available_sectors.*
       - available_industries.*
@@ -73,32 +73,31 @@ plugins:
 
       ### Analyst Streams ###
 
-      - analyst_estimates_annual.*
-      #      - analyst_estimates_quarterly.*
+      - analyst_estimates.*
       - rating_snapshot.*
       - historical_ratings.*
-      - price_target_summary.*
-      - price_target_consensus.*
+      - price_target_summary.*  # Premium: Symbol Limited to US, UK, and Canada Exchanges
+      - price_target_consensus.*  # Premium: Symbol Limited to US, UK, and Canada Exchanges
       - price_target_news.*
       - price_target_latest_news.*
-      - stock_grades.*
-      - historical_stock_grades.*
-      - stock_grades_consensus.*
+      - stock_grades.*  #  Premium: Symbol Limited to US, UK, and Canada Exchanges
+      - historical_stock_grades.*  #  Premium: Symbol Limited to US, UK, and Canada Exchanges
+      - stock_grades_consensus.*  #  Premium: Symbol Limited to US, UK, and Canada Exchanges
       - stock_grades_news.*
-      #      - stock_grades_latest_news.*
+      - stock_grades_latest_news.*  #  Limited to Premium and above
 
 
       ### Calendar Streams ###
 
       - dividends_company.*
       - dividends_calendar.*
-      - earnings_report.*
+      - earnings_report.*  # Starter/Build up to 1 year, Premium up to 5 years.
       - earnings_calendar.*
       - ipos_calendar.*
       - ipos_disclosure.*
       - ipos_prospectus.*
-      - stock_split_details.*
-      - stock_splits_calendar.*
+      - stock_split_details.*  # Premium: Symbol Limited to US, UK, and Canada Exchanges
+      - stock_splits_calendar.*  # Starter/Build up to 1 year, Premium up to 5 years.
 
       ### Company Streams ###
 
@@ -106,19 +105,34 @@ plugins:
       - company_profile_by_cik.*
       - company_notes.*
       - stock_peer_comparison.*
-      #      - delisted_companies.*
+      - delisted_companies.*  # Premium and up
       - company_employee_count.*
       - company_historical_employee_count.*
-      - company_market_cap.*
-#      - company_batch_market_cap.*
-      - historical_market_cap.*
+      - company_market_cap.*  # Starter: US Exchanges only, Premium: Symbol Limited to US, UK, and Canada Exchanges
+#      - company_batch_market_cap.*  # not useful unless passing small number of symbols
+      - historical_market_cap.*  # Build: up to 5 years
       - company_share_and_liquidity_float.*
       - all_shares_float.*
       - latest_mergers_and_acquisitions.*
-      #      - search_mergers_and_acquisitions.*
+#      - search_mergers_and_acquisitions.*  # searched by name, premium and up
       - company_executives.*
       - executive_compensation.*
-      #      - executive_compensation_benchmark.*
+      - executive_compensation_benchmark.*  # Premium and up
+
+      ### Chart Streams ###
+
+      # Starter Symbols are Limited to US Exchanges, Premium/Build Limited to US, UK, and Canada Exchanges
+
+#      - chart_light.*
+#      - chart_full.*
+      - unadjusted_price.*
+#      - dividend_adjusted_prices.*
+#      - prices_1min.*  # Only available for Premium plans and up
+#      - prices_5min.*
+#      - prices_15min.*
+#      - prices_30min.*
+#      - prices_1hr.*
+#      - prices_4h.*
 
       ### DCF Streams ###
 
@@ -139,9 +153,9 @@ plugins:
       - balance_sheet.*
       - cash_flow.*
       - latest_financial_statements.*
-      #      - income_statement_ttm.*
-      #      - balance_sheet_ttm.*
-      #      - cash_flow_ttm.*
+#      - income_statement_ttm.*  # Ultimate and above
+#      - balance_sheet_ttm.*  # Ultimate and above
+#      - cash_flow_ttm.*  # Ultimate and above
       - key_metrics.*
       - financial_ratios.*
       - key_metrics_ttm.*
@@ -164,30 +178,30 @@ plugins:
 
       ### Form 13F Streams ###
 
-      #      - institutional_ownership_filings.*
-      #      - filings_extract.*
-      #      - holder_performance_summary.*
-      #      - holder_industry_breakdown.*
-      #      - positions_summary.*
-      #      - industry_performance_summary.*
+#      - institutional_ownership_filings.*
+#      - filings_extract.*
+#      - holder_performance_summary.*
+#      - holder_industry_breakdown.*
+#      - positions_summary.*
+#      - industry_performance_summary.*
 
       ### Index Streams ###
 
       - index_list.*
-      - index_quote.*
-      - index_short_quote.*
-      #      - all_index_quotes.*
-      - historical_index_light_chart.*
+#      - index_quote.*
+#      - index_short_quote.*
+#      - all_index_quotes.*
+#      - historical_index_light_chart.*
       - historical_index_full_chart.*
-      #      - index_1min.*
-      - index_5min.*
+      - index_1min.*
+#      - index_5min.*
       - index_1hr.*
-      #      - sp500_constituent.*
-      #      - nasdaq_constituent.*
-      #      - dow_jones_constituent.*
-      #      - historical_sp500_constituent.*
-      #      - historical_nasdaq_constituent.*
-      #      - historical_dow_jones_constituent.*
+      - sp500_constituent.*
+      - nasdaq_constituent.*
+      - dow_jones_constituent.*
+      - historical_sp500_constituent.*
+      - historical_nasdaq_constituent.*
+      - historical_dow_jones_constituent.*
 
       ### Insider Trades Streams ###
 
@@ -215,13 +229,12 @@ plugins:
       ### Commodity Streams ###
 
       - commodities_list.*
-      - commodities_quote.*
-      - commodities_quote_short.*
-      #      - all_commodities_quotes.*
-      - commodities_light_chart.*
+#      - commodities_quote.*
+#      - commodities_quote_short.*
+#      - all_commodities_quotes.*
+#      - commodities_light_chart.*
       - commodities_full_chart.*
-      #      - commodities_1min.*
-      - commodities_5min.*
+      - commodities_1min.*
       - commodities_1hr.*
 
       ### Fundraiser Streams ###
@@ -234,36 +247,35 @@ plugins:
       ### Crypto Streams ###
 
       - crypto_list.*
-      - full_crypto_quote.*
-      - crypto_quote_short.*
-      #      - all_crypto_quotes.*
-      - historical_crypto_light_chart.*
+#      - full_crypto_quote.*
+#      - crypto_quote_short.*
+#      - all_crypto_quotes.*
+#      - historical_crypto_light_chart.*
       - historical_crypto_full_chart.*
-      #      - crypto_1min.*
-      - crypto_5min.*
-      - crypto_1hr.*
+#      - crypto_1min.*
+#      - crypto_5min.*
+#      - crypto_1hr.*
 
       ### Forex Streams ###
 
       - forex_pairs.*
-      - forex_quote.*
-      - forex_quote_short.*
-      #      - batch_forex_quotes.*
-      - forex_light_chart.*
+#      - forex_quote.*
+#      - forex_quote_short.*
+#      - batch_forex_quotes.*
+#      - forex_light_chart.*
       - forex_full_chart.*
-      #      - forex_1min.*
-      - forex_5min.*
+      - forex_1min.*
       - forex_1hr.*
 
       ### News Streams ###
 
       - fmp_articles.*
       - general_news.*
-      #      - press_releases.*
+#      - press_releases.*
       - stock_news.*
       - crypto_news.*
       - forex_news.*
-      #      - search_press_releases.*
+#      - search_press_releases.*
       - search_stock_news.*
       - search_crypto_news.*
       - search_forex_news.*
@@ -304,8 +316,40 @@ plugins:
       - industry_classification_search.*
       - all_industry_classification.*
 
+
+      ### COT Streams ###
+
+      - cot_report.*
+      - cot_analysis_by_date.*
+      - cot_report_list.*
+
+      ### Economic Streams ###
+
+      - treasury_rates.*
+      - economic_indicators.*
+      - economic_calendar.*
+      - market_risk_premium.*
+
+      ### ESG Data Streams (Premium) ###
+
+      - esg_scores.*
+      - esg_benchmark.*
+      - esg_investment_search.*
+
+      ### ETF and Mutual Fund Streams ###
+
+      - etf_and_fund_holdings.*
+        - etf_and_mutual_fund_holdings.*
+        - etf_and_fund_country_allocation.*
+        #      - etf_asset_exposure.*
+        - etf_sector_weighting.*
+      #      - mutual_fund_and_etf_disclosure.*
+      #      - mutual_fund_disclosures.*
+      #      - mutual_fund_and_etf_disclosure_name_search.*
+      #      - fund_and_etf_disclosures_by_date.*
+
     config:
-      start_date: '2010-01-01T00:00:00Z'
+      start_date: '1995-01-01T00:00:00Z'
       api_key: ${FMP_API_KEY}
       base_url: https://financialmodelingprep.com
       min_backoff_seconds: 3
@@ -316,6 +360,10 @@ plugins:
 
       ciks:
         select_ciks:
+          - "*"
+
+      exchanges:
+        select_exchanges:
           - "*"
 
       ### Search Streams ###
@@ -338,19 +386,13 @@ plugins:
 
       ### Analyst Streams ###
 
-      analyst_estimates_annual:
+      analyst_estimates:
         query_params:
-          limit: 10
-          period: annual
-
-      analyst_estimates_quarterly:
-        query_params:
-          limit: 100
-          period: quarterly
+          limit: 1000
 
       ratings_snapshot:
         query_params:
-          limit: 10  # max may change depending on plan
+          limit: 1000
 
       historical_ratings:
         query_params:
@@ -358,12 +400,10 @@ plugins:
 
       price_target_news:
         query_params:
-          limit: 100
+          limit: 1000
 
       stock_grades_news:
         query_params:
-          from: "2025-03-01"
-          to: "2025-03-15"
           limit: 100
 
       historical_stock_grades:
@@ -382,7 +422,7 @@ plugins:
 
       dividends_calendar:
         query_params:
-          from: "2025-03-01"
+          from: "2020-09-01"  # Premium up to 5 years
 
       dividends_company:
         query_params:
@@ -394,13 +434,19 @@ plugins:
 
       earnings_calendar:
         query_params:
-          from: 2025-07-01
-          to: 2025-08-30
+          from: "2020-09-01"  # Premium up to 5 years
 
       ipos_calendar:
         query_params:
-          from: "2025-07-01"
-          to: "2025-07-10"
+          from: "1980-01-01"
+
+      ipos_disclosure:
+        query_params:
+          from: "1980-01-01"
+
+      ipos_prospectus:
+        query_params:
+          from: "1980-01-01"
 
       stock_split_details:
         query_params:
@@ -408,16 +454,14 @@ plugins:
 
       stock_splits_calendar:
         query_params:
-          from: 2025-07-01
-          to: 2025-07-10
-          limit: 100
+          from: "2021-09-01"
 
 
       ### Company Streams ###
 
       historical_market_cap:
         query_params:
-          from: "2025-03-01"
+          from: "1980-01-01"
           limit: 5000
         other_params:
           time_slice_days: 90
@@ -442,6 +486,10 @@ plugins:
       company_historical_employee_count:
         query_params:
           limit: 10000
+
+      executive_compensation_benchmark:
+        other_params:
+          years: "*"
 
       ### Statement Streams ###
 
@@ -476,11 +524,9 @@ plugins:
       financial_ratios:
         query_params:
           limit: 1000
-          period: [ "annual" ]
 
       key_metrics:
         query_params:
-          period: annual
           limit: 1000
 
       enterprise_values:
@@ -489,12 +535,10 @@ plugins:
 
       revenue_product_segmentation:
         query_params:
-          period: annual
           limit: 1000
 
       revenue_geographic_segmentation:
         query_params:
-          period: annual
           limit: 1000
 
       insider_trades_by_reporting_name_search:
@@ -543,83 +587,51 @@ plugins:
 
       market_sector_performance_snapshot:
         other_params:
-          date_range: [ "2025-05-01", "2025-05-10" ]
+          date_range: [ "1990-01-01", "today" ]
 
       industry_performance_snapshot:
         other_params:
-          date_range: [ "2025-05-01", "2025-05-10" ]
+          date_range: [ "1990-01-01", "today" ]
 
       sector_pe_snapshot:
         other_params:
-          date_range: [ "2025-05-01", "2025-05-10" ]
+          date_range: [ "1990-01-01", "today" ]
 
       industry_pe_snapshot:
         other_params:
-          date_range: [ "2025-05-01", "2025-05-10" ]
+          date_range: [ "1990-01-01", "today" ]
 
       historical_sector_performance:
         query_params:
-          from: "2025-01-01"
-          to: "2025-05-01"
+          from: "1980-01-01"
 
       historical_industry_performance:
         query_params:
-          from: "2025-01-01"
-          to: "2025-05-01"
+          from: "1980-01-01"
 
       historical_sector_pe:
         query_params:
-          from: "2025-01-01"
-          to: "2025-05-01"
+          from: "1980-01-01"
 
       historical_industry_pe:
         query_params:
-          from: "2025-01-01"
-          to: "2025-05-01"
+          from: "1980-01-01"
 
       ### Commodity Streams ###
 
-      commodities_quotes:
-        query_params:
-          symbol: GCUSD
-          from: "2025-01-02"
-          to: "2025-01-10"
-
-      commodities_quote_short:
-        query_params:
-          symbol: GCUSD
-          from: "2025-01-02"
-          to: "2025-01-10"
-
-      commodities_light_chart:
-        query_params:
-          symbol: GCUSD
-          from: "2025-01-02"
-          to: "2025-01-10"
-
       commodities_full_chart:
         query_params:
-          symbol: GCUSD
-          from: "2025-01-02"
-          to: "2025-01-10"
+          from: "2000-01-01"
+          limit: 10000
 
       commodities_1min:
         query_params:
-          symbol: GCUSD
-          from: "2025-01-02"
-          to: "2025-01-10"
-
-      commodities_5min:
-        query_params:
-          symbol: GCUSD
-          from: "2025-01-02"
-          to: "2025-01-10"
+          from: "2000-01-01"
+          limit: 10000
 
       commodities_1hr:
-        query_params:
-          symbol: GCUSD
-          from: "2025-01-02"
-          to: "2025-01-10"
+        from: "2000-01-01"
+        limit: 10000
 
       ### Fundraiser Streams ###
 
@@ -635,160 +647,70 @@ plugins:
 
       ### Crypto Streams ###
 
-      crypto_1min:
-        query_params:
-          symbol: BTCUSD
-          from: "2025-01-02"
-          to: "2025-01-10"
-          limit: 100
-
-      crypto_5min:
-        query_params:
-          symbol: BTCUSD
-          from: "2025-01-02"
-          to: "2025-01-10"
-          limit: 100
-
-      crypto_1hr:
-        query_params:
-          symbol: BTCUSD
-          from: "2025-01-02"
-          to: "2025-01-10"
-          limit: 100
-
-      crypto_quotes:
-        query_params:
-          symbol: BTCUSD
-          from: "2025-01-02"
-          to: "2025-01-10"
-          limit: 100
-
-      crypto_quotes_short:
-        query_params:
-          symbol: BTCUSD
-          from: "2025-01-02"
-          to: "2025-01-10"
-          limit: 100
-
-      historical_crypto_light_chart:
-        query_params:
-          symbol: BTCUSD
-          from: "2025-01-02"
-          to: "2025-01-10"
-          limit: 100
-
-      historical_crypto_full_chart:
-        query_params:
-          symbol: BTCUSD
-          from: "2025-01-02"
-          to: "2025-01-10"
-          limit: 100
-
       ### Forex Streams ###
-
-      forex_1min:
-        query_params:
-          symbol: EURUSD
-          from: "2025-01-02"
-          to: "2025-01-10"
-          limit: 100
-
-      forex_5min:
-        query_params:
-          symbol: EURUSD
-          from: "2025-01-02"
-          to: "2025-01-10"
-          limit: 100
-
-      forex_1hr:
-        query_params:
-          symbol: EURUSD
-          from: "2025-01-02"
-          to: "2025-01-10"
-          limit: 100
-
-      forex_quotes:
-        query_params:
-          symbol: EURUSD
-          from: "2025-01-02"
-          to: "2025-01-10"
-
-      forex_quotes_short:
-        query_params:
-          symbol: EURUSD
-          from: "2025-01-02"
-          to: "2025-01-10"
-
-      forex_light_chart:
-        query_params:
-          symbol: EURUSD
-          from: "2025-01-02"
-          to: "2025-01-10"
-          limit: 100
 
       forex_full_chart:
         query_params:
-          symbol: EURUSD
-          from: "2025-01-02"
-          to: "2025-01-10"
-          limit: 100
+          from: "2015-01-01"
+          limit: 10000
+
+      forex_1min:
+        query_params:
+          from: "2015-01-01"
+          limit: 10000
+
+      forex_1hr:
+        query_params:
+          from: "2015-01-01"
+          limit: 10000
 
       ### News Streams ###
 
       fmp_articles:
         query_params:
-          from: "2025-01-02"
-          to: "2025-01-03"
+          limit: 1000
 
       general_news:
         query_params:
-          from: "2025-01-02"
-          to: "2025-01-03"
+          from: "2015-01-01"
           limit: 250
 
       press_releases:
         query_params:
-          from: "2025-01-02"
-          to: "2025-01-03"
+          from: "2015-01-01"
           limit: 250
 
       stock_news:
         query_params:
-          from: "2025-01-02"
-          to: "2025-01-03"
+          from: "2015-01-01"
           limit: 250
 
       crypto_news:
         query_params:
-          from: "2025-01-02"
-          to: "2025-01-03"
+          from: "2015-01-01"
           limit: 250
 
       forex_news:
         query_params:
-          from: "2025-01-02"
-          to: "2025-01-03"
+          from: "2015-01-01"
           limit: 250
 
       search_stock_news:
         query_params:
           symbols: [ "AAPL", "META" ]
-          from: "2025-01-02"
-          to: "2025-01-03"
+          from: "2015-01-01"
           limit: 250
 
       search_crypto_news:
         query_params:
           symbols: [ "BTCUSD", "ETHUSD" ]
-          from: "2025-01-02"
-          to: "2025-01-06"
+          from: "2015-01-01"
           limit: 250
 
       search_forex_news:
         query_params:
           symbols: "EURUSD"
-          from: "2025-01-02"
-          to: "2025-01-06"
+          from: "2015-01-01"
           limit: 250
 
       ### Technical Indicator Streams ###
@@ -796,74 +718,65 @@ plugins:
       simple_moving_average:
         query_params:
           periodLength: 10
-          from: "2025-01-02"
-          to: "2025-01-06"
+          from: "2015-01-01"
         other_params:
           timeframes: [ "5min", "1hour" ]
 
       exponential_moving_average:
         query_params:
           periodLength: 10
-          from: "2025-01-02"
-          to: "2025-01-06"
+          from: "2015-01-01"
         other_params:
-          timeframes: [ "5min", "1hour" ]
+          timeframes: [ "5min" ]
 
       weighted_moving_average:
         query_params:
           periodLength: 10
-          from: "2025-01-02"
-          to: "2025-01-06"
+          from: "2015-01-01"
         other_params:
-          timeframes: [ "5min", "1hour" ]
+          timeframes: [ "5min" ]
 
       double_exponential_moving_average:
         query_params:
           periodLength: 10
-          from: "2025-01-02"
-          to: "2025-01-06"
+          from: "2015-01-01"
         other_params:
-          timeframes: [ "5min", "1hour" ]
+          timeframes: [ "5min" ]
 
       triple_exponential_moving_average:
         query_params:
           periodLength: 10
-          from: "2025-01-02"
-          to: "2025-01-06"
+          from: "2015-01-01"
         other_params:
-          timeframes: [ "5min", "1hour" ]
+          timeframes: [ "5min" ]
 
       relative_strength_index:
         query_params:
           periodLength: 10
-          from: "2025-01-02"
-          to: "2025-01-03"
+          from: "2015-01-01"
         other_params:
-          timeframes: [ "5min", "1hour" ]
+          timeframes: [ "5min" ]
 
       standard_deviation:
         query_params:
           periodLength: 10
-          from: "2025-01-02"
-          to: "2025-01-06"
+          from: "2015-01-01"
         other_params:
-          timeframes: [ "5min", "1hour" ]
+          timeframes: [ "5min" ]
 
       williams:
         query_params:
           periodLength: 10
-          from: "2025-01-02"
-          to: "2025-01-06"
+          from: "2015-01-01"
         other_params:
-          timeframes: [ "5min", "1hour" ]
+          timeframes: [ "5min" ]
 
       average_directional_index:
         query_params:
           periodLength: 10
-          from: "2025-01-02"
-          to: "2025-01-06"
+          from: "2015-01-01"
         other_params:
-          timeframes: [ "5min", "1hour" ]
+          timeframes: [ "5min" ]
 
       ### Senate Streams ###
 
@@ -879,38 +792,86 @@ plugins:
 
       latest_8k_filings:
         query_params:
-          from: "2025-01-02"
-          to: "2025-01-10"
+          from: "2015-01-01"
           limit: 1000
         other_params:
           max_records_per_request: 1000
 
       sec_filings_by_form_type:
         query_params:
-          from: "2025-01-02"
-          to: "2025-01-10"
+          from: "2015-01-01"
           limit: 1000
-        other_params:
-          form_types: [ "10-K", "10-Q", "8-K" ]
 
       sec_filings_by_symbol:
         query_params:
-          from: "2025-01-02"
-          to: "2025-01-10"
+          from: "2015-01-01"
           limit: 1000
 
       sec_filings_by_cik:
         query_params:
-          cik: "0000320193"  # Apple
-          from: "2025-01-02"
-          to: "2025-01-10"
+          from: "2015-01-01"
           limit: 1000
 
       latest_sec_filings:
         query_params:
-          from: "2025-01-02"
-          to: "2025-01-10"
+          from: "2015-01-01"
           limit: 1000
+
+      ### COT Streams ###
+
+      cot_report:
+        query_params:
+          from: "1980-01-01"
+
+      cot_analysis_by_date:
+        query_params:
+          from: "1980-01-01"
+
+      ### Economic Streams ###
+
+      economic_indicators:
+        query_params:
+          from: "1980-01-01"
+
+      economic_calendar:
+        query_params:
+          from: "1980-01-01"
+
+      treasury_rates:
+        query_params:
+          from: "1990-01-01"
+
+      ### ESG Data Streams (Premium) ###
+
+      esg_scores:
+        query_params:
+          limit: 5000
+
+      esg_benchmark:
+        query_params:
+          limit: 5000
+
+      esg_investment_search:
+        query_params:
+          limit: 1000
+
+      ### ETF and Mutual Fund Streams ###
+
+      ### Index Streams ###
+
+      historical_index_full_chart:
+        query_params:
+          from: "1990-01-01"
+
+      index_1min:
+        query_params:
+          from: "2015-01-01"
+
+      index_1hr:
+        query_params:
+          from: "2015-01-01"
+
+
 
   loaders:
   - name: target-jsonl
