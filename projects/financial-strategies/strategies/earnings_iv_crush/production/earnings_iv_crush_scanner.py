@@ -95,632 +95,165 @@ DEVELOPMENT_MODE = config["market_data"]["development_mode"]
 # 4. OPRA (US Options Exchanges) (NP,L1) - $1.50/month (waived with $20+ commissions)
 
 
-def get_option_historical_data(ib_client, contract):
-    """
-    Get option pricing data deterministically based on configuration
-    - DELAYED data (dev or production): Use historical BID_ASK bars
-    - REAL_TIME data in production: FAIL HARD if no live data (no historical fallback)
-    """
-    # For REAL_TIME in production: NO historical fallback allowed
-    if MARKET_DATA_TYPE == "REAL_TIME" and not DEVELOPMENT_MODE:
-        raise ValueError("Real-time production mode does not use historical data fallback")
+class MarketDataExtractor:
+    def __init__(self, ticker: str):
+        self.ticker = ticker
+        self.stock_contract = ib.Stock(self.ticker, "SMART", "USD")
+        ib_client.qualifyContracts(self.stock_contract)
 
-    # For DELAYED data or REAL_TIME in development: Use historical BID_ASK data
-    try:
-        bars = ib_client.reqHistoricalData(
-            contract=contract,
-            endDateTime="",  # Most recent
-            durationStr="1 D",
-            barSizeSetting="30 mins",
-            whatToShow="BID_ASK",
-            useRTH=True,  # Regular trading hours only
-            formatDate=1,
-            keepUpToDate=False,
-        )
+        self.chain = None
+        self.option_qualified_contracts = None
+        self.valid_expirations = None
 
-        if bars and len(bars) > 0:
-            last_bar = bars[-1]  # Most recent bar
-            if DEVELOPMENT_MODE:
-                logging.info(
-                    f"Historical BID_ASK data: Date={last_bar.date}, Bid={getattr(last_bar, 'low', 'N/A')},"
-                    f"Ask={getattr(last_bar, 'high', 'N/A')}, Mid={getattr(last_bar, 'close', 'N/A')}"
-                )
+    def get_historical_bars(self):
+        # Note: For this strategy we don't need real-time bars. Historical 1-minute bars are ok. For lower latency
+        # strategies, we need to subscribe to real-time bars (say 1 second), then call
+        # ib_client.reqRealTimeBars(contract, 1, "MIDPOINT", False)
 
-            # For BID_ASK: high=ask, low=bid, close=mid
-            return {
-                "bid_price": getattr(last_bar, "low", None),
-                "ask_price": getattr(last_bar, "high", None),
-                "mid_price": getattr(last_bar, "close", None),
-                "source": "historical_bid_ask_30mins",
-            }
-        else:
-            logging.error("No historical bars returned")
-            return None
-
-    except Exception as e:
-        logging.error(f"Failed to get historical data: {str(e)[:100]}")
-        return None
-
-
-def get_option_data_with_iv(ticker_obj, strike, ib_client=None, contract=None):
-    """
-    Extract option pricing data and implied volatility from IB ticker object
-    If bid/ask are -1 (after hours), try historical data then previous data.
-
-    Returns dict with bid, ask, lastPrice, impliedVolatility or None if no valid data
-    """
-    # Debug output in development mode - show ALL available fields
-    if DEVELOPMENT_MODE:
-        print(f"Debug ticker data for strike {strike}:")
-        print(f"All ticker attributes: {[attr for attr in dir(ticker_obj) if not attr.startswith('_')]}")
-        for attr in ["bid", "ask", "last", "close", "prevClose", "lastSize", "bidSize", "askSize", "volume", "halted"]:
-            print(f"{attr}: {getattr(ticker_obj, attr, 'N/A')}")
-        if hasattr(ticker_obj, "marketDataType"):
-            print(f"marketDataType: {ticker_obj.marketDataType}")
-
-    # Check if we have valid bid/ask prices (handle nan values properly)
-    has_prices = (
-        hasattr(ticker_obj, "bid")
-        and ticker_obj.bid is not None
-        and not np.isnan(ticker_obj.bid)
-        and ticker_obj.bid > 0
-        and hasattr(ticker_obj, "ask")
-        and ticker_obj.ask is not None
-        and not np.isnan(ticker_obj.ask)
-        and ticker_obj.ask > 0
-    )
-
-    if not has_prices:
-        raise ValueError(f"Could not get valid option prices for strike {strike}! Production safety check failed.")
-
-    if not has_prices and DEVELOPMENT_MODE and ib_client and contract:
-        invalid_msg = (
-            f"Live data invalid (bid={getattr(ticker_obj, 'bid', 'N/A')}, "
-            f"ask={getattr(ticker_obj, 'ask', 'N/A')}), trying historical data..."
-        )
-
-        print(invalid_msg)
-
-        hist_data = get_option_historical_data(ib_client, contract)
-
-        if hist_data:
-            if "bid_price" in hist_data and "ask_price" in hist_data and hist_data["bid_price"] and hist_data["ask_price"]:
-                # We have actual bid/ask data
-                bid_price = hist_data["bid_price"]
-                ask_price = hist_data["ask_price"]
-                print(f"Using {hist_data['source']}: bid={bid_price:.2f}, ask={ask_price:.2f}")
-            elif "close_price" in hist_data and hist_data["close_price"]:
-                # DEVELOPMENT ONLY: Use closing price with estimated spread
-                # WARNING: This estimation is unsafe for production trading
-                close_price = hist_data["close_price"]
-                spread_est = close_price * 0.015  # 1.5% spread estimate
-                bid_price = close_price - spread_est / 2
-                ask_price = close_price + spread_est / 2
-                print(
-                    f"DEV MODE: Using {hist_data['source']}: {close_price}, estimated bid/ask:"
-                    f"{bid_price:.2f}/{ask_price:.2f}"
-                )
-                logging.warning("This is an estimate and would fail in production!")
-            else:
-                print("  Historical data found but no usable prices")
-                return None
-        else:
-            # Fall back to previous data from ticker
-            print("  No historical data, checking previous prices...")
-            prev_bid = getattr(ticker_obj, "prevBid", None)
-            prev_ask = getattr(ticker_obj, "prevAsk", None)
-            prev_last = getattr(ticker_obj, "prevLast", None)
-
-            print(f"Previous data: prevBid={prev_bid}, prevAsk={prev_ask}, prevLast={prev_last}")
-
-            if prev_bid and prev_ask and not np.isnan(prev_bid) and not np.isnan(prev_ask) and prev_bid > 0 and prev_ask > 0:
-                bid_price = prev_bid
-                ask_price = prev_ask
-                print(f"Using previous bid/ask: {bid_price:.2f}/{ask_price:.2f}")
-            elif prev_last and not np.isnan(prev_last) and prev_last > 0:
-                # DEVELOPMENT ONLY: Estimate spread from last price
-                # WARNING: This estimation is unsafe for production trading
-                spread_estimate = prev_last * 0.02
-                bid_price = prev_last - spread_estimate / 2
-                ask_price = prev_last + spread_estimate / 2
-                print(f"DEV MODE: Using previous last: {prev_last}, estimated bid/ask: {bid_price:.2f}/{ask_price:.2f}")
-                logging.warning("This is an estimate and would fail in production!")
-            else:
-                print("  No valid price data available")
-                return None
-
-    elif not has_prices:
-        return None
-    else:
-        # Use live prices
-        bid_price = ticker_obj.bid
-        ask_price = ticker_obj.ask
-
-    # Calculate midpoint IV from bid/ask Greeks (most accurate)
-    bid_iv = None
-    ask_iv = None
-
-    # Debug Greeks data in development mode
-    if DEVELOPMENT_MODE:
-        print("Greeks debug:")
-        print(f"bidGreeks: {getattr(ticker_obj, 'bidGreeks', 'N/A')}")
-        print(f"askGreeks: {getattr(ticker_obj, 'askGreeks', 'N/A')}")
-        print(f"modelGreeks: {getattr(ticker_obj, 'modelGreeks', 'N/A')}")
-        print(f"lastGreeks: {getattr(ticker_obj, 'lastGreeks', 'N/A')}")
-        print(f"impliedVolatility: {getattr(ticker_obj, 'impliedVolatility', 'N/A')}")
-
-    if hasattr(ticker_obj, "bidGreeks") and ticker_obj.bidGreeks and hasattr(ticker_obj.bidGreeks, "impliedVol"):
-        bid_iv = ticker_obj.bidGreeks.impliedVol
-    if hasattr(ticker_obj, "askGreeks") and ticker_obj.askGreeks and hasattr(ticker_obj.askGreeks, "impliedVol"):
-        ask_iv = ticker_obj.askGreeks.impliedVol
-
-    # Use midpoint if both available, otherwise fall back to available one
-    if bid_iv is not None and ask_iv is not None:
-        iv = (bid_iv + ask_iv) / 2
-    elif bid_iv is not None:
-        iv = bid_iv
-    elif ask_iv is not None:
-        iv = ask_iv
-    elif hasattr(ticker_obj, "modelGreeks") and ticker_obj.modelGreeks and hasattr(ticker_obj.modelGreeks, "impliedVol"):
-        iv = ticker_obj.modelGreeks.impliedVol
-    elif hasattr(ticker_obj, "lastGreeks") and ticker_obj.lastGreeks and hasattr(ticker_obj.lastGreeks, "impliedVol"):
-        iv = ticker_obj.lastGreeks.impliedVol
-    elif (
-        hasattr(ticker_obj, "impliedVolatility") and ticker_obj.impliedVolatility and not np.isnan(ticker_obj.impliedVolatility)
-    ):
-        iv = ticker_obj.impliedVolatility
-        if DEVELOPMENT_MODE:
-            print(f"Using direct impliedVolatility: {iv}")
-    else:
-        # No IV available from any IB source (common during after-hours)
-        if DEVELOPMENT_MODE:
-            print("  No implied volatility available from IB (normal for after-hours)")
-        iv = None
-
-    # Production safety: IV is critical for options trading
-    if not DEVELOPMENT_MODE and (iv is None or np.isnan(iv)):
-        raise ValueError(f"Could not get implied volatility for strike {strike}! Production safety check failed.")
-
-    return {
-        "strike": strike,
-        "bid": bid_price,
-        "ask": ask_price,
-        "lastPrice": ticker_obj.last if hasattr(ticker_obj, "last") and not np.isnan(ticker_obj.last) else None,
-        "impliedVolatility": iv if iv and not np.isnan(iv) else None,
-    }
-
-
-def get_ib_historical_data(ib_client, ticker, duration="1 Y", bar_size="1 day"):
-    """Get historical data from Interactive Brokers"""
-    try:
-        contract = ib.Stock(ticker, "SMART", "USD")
-        ib_client.qualifyContracts(contract)
-
-        bars = ib_client.reqHistoricalData(
-            contract,
+        self.bars = ib_client.reqHistoricalData(
+            self.stock_contract,
             endDateTime="",
-            durationStr=duration,
-            barSizeSetting=bar_size,
+            durationStr="1 D",
+            barSizeSetting="1 min",
             whatToShow="TRADES",
-            useRTH=True,
+            useRTH=False,  # Include extended hours for more recent data
             formatDate=1,
         )
+        return self
 
-        if not bars:
-            return None
+    def get_underlying_last_price(self):
+        if not self.bars:
+            self.get_historical_bars()
 
-        df = ib.util.df(bars)
-        df.index = pd.to_datetime(df["date"])
-        df["dollar_volume"] = df["volume"] * df["close"]
+        if self.bars:
+            current_price = self.bars[-1].close
+            logging.info(f"Using recent price for {self.ticker}: ${current_price:.2f}")
+        else:
+            raise ValueError(f"Could not get current price for ticker {self.ticker}")
+        return current_price
 
-        return df
-
-    except Exception as e:
-        print(f"Error getting historical data for {ticker}: {e}")
-        return None
-
-
-def get_ib_options_chains_batch(ib_client, ticker):
-    """Get options chains from IB using batch processing (faster)"""
-    try:
-        contract = ib.Stock(ticker, "SMART", "USD")
-        ib_client.qualifyContracts(contract)
-
-        # Get current stock price using historical data (faster than live)
-        current_price = None
-        try:
-            recent_bars = ib_client.reqHistoricalData(
-                contract,
-                endDateTime="",
-                durationStr="1 D",
-                barSizeSetting="1 min",
-                whatToShow="TRADES",
-                useRTH=False,
-                formatDate=1,
+    def get_option_chain(self, exchange="SMART"):
+        if not self.chain:
+            chains = ib_client.reqSecDefOptParams(
+                self.stock_contract.symbol, "", self.stock_contract.secType, self.stock_contract.conId
             )
-            if recent_bars:
-                current_price = recent_bars[-1].close
-                logging.info(f"Current price for {ticker}: ${current_price:.2f}")
-        except Exception as e:
-            print(f"Price data failed for {ticker}: {e}")
-            return None, None
+            self.chain = next(c for c in chains if c.tradingClass == self.ticker and c.exchange == exchange)
+        return self
 
-        if not current_price:
-            return None, "Unable to get current price"
+    def get_valid_expirations(self, max_days_out=75):
+        today = datetime.today().date()
+        max_date = today + timedelta(days=max_days_out)
+        self.valid_expirations = []
+        for expiration in sorted(self.chain.expirations):
+            exp_date_obj = datetime.strptime(expiration, "%Y%m%d").date()
+            if today <= exp_date_obj <= max_date:
+                self.valid_expirations.append(expiration)
+        logging.info(f"Processing {len(self.valid_expirations)} expirations within 75 days for {self.ticker}")
+        return self
 
-        # Get option chains
-        chains = ib_client.reqSecDefOptParams(contract.symbol, "", contract.secType, contract.conId)
-        if not chains:
-            return None, None
+    def get_option_qualified_contracts(self, strike_range=(0.95, 1.05)):
+        self.get_option_chain()
+        self.strikes = [
+            strike
+            for strike in self.chain.strikes
+            if self.get_underlying_last_price() * strike_range[0] < strike < self.get_underlying_last_price() * strike_range[1]
+        ]
 
-        options_data = {}
+        if not self.valid_expirations:
+            self.get_valid_expirations()
 
-        for chain in chains:
-            if chain.exchange == "SMART":
-                # Filter to only relevant expirations (within 75 days)
-                today = datetime.today().date()
-                max_date = today + timedelta(days=75)
+        expirations = sorted(self.valid_expirations[:3])
 
-                valid_expirations = []
-                for expiration in sorted(chain.expirations):
-                    exp_date_obj = datetime.strptime(expiration, "%Y%m%d").date()
-                    if today <= exp_date_obj <= max_date:
-                        valid_expirations.append(expiration)
+        rights = ["P", "C"]
 
-                print(f"Processing {len(valid_expirations)} expirations within 75 days for {ticker}")
-
-                # For each expiration, get only ATM strikes (much faster)
-                for expiration in valid_expirations:
-                    exp_date = datetime.strptime(expiration, "%Y%m%d").strftime("%Y-%m-%d")
-
-                    try:
-                        # Get contract details to find available strikes
-                        call_contract_base = ib.Option(ticker, expiration, 0, "C", "SMART")
-                        call_details = ib_client.reqContractDetails(call_contract_base)
-                        available_strikes = sorted([detail.contract.strike for detail in call_details])
-
-                        # if not available_strikes:
-                        #     continue
-
-                        # Find ATM strike (closest to current price)
-                        atm_strike = min(available_strikes, key=lambda x: abs(x - current_price))
-                        print(f"{exp_date}: Using ATM strike ${atm_strike} (current price: ${current_price:.2f})")
-
-                        # Get only ATM call and put data
-                        call_contract = ib.Option(ticker, expiration, atm_strike, "C", "SMART")
-                        put_contract = ib.Option(ticker, expiration, atm_strike, "P", "SMART")
-
-                        # Qualify contracts
-                        ib_client.qualifyContracts(call_contract, put_contract)
-
-                        # Request options market data with retry logic
-                        max_retries = 2
-                        call_data = None
-                        put_data = None
-
-                        for attempt in range(max_retries):
-                            logging.info(
-                                f"Requesting market data for {call_contract.localSymbol} and {put_contract.localSymbol}"
-                                f"(attempt {attempt + 1}/{max_retries})"
-                            )
-
-                            # Try reqTickers instead of reqMktData
-                            tickers = ib_client.reqTickers(call_contract, put_contract)
-                            if len(tickers) >= 2:
-                                call_ticker = tickers[0]
-                                put_ticker = tickers[1]
-                            else:
-                                logging.error(f"Failed to get tickers, got {len(tickers)} instead of 2")
-                                continue
-
-                            call_data = get_option_data_with_iv(call_ticker, atm_strike, ib_client, call_contract)
-                            put_data = get_option_data_with_iv(put_ticker, atm_strike, ib_client, put_contract)
-
-                            if call_data and put_data:
-                                logging.info(f"Successfully got option data on attempt {attempt + 1}")
-                                break
-                            else:
-                                logging.warning(
-                                    f"No valid data on attempt {attempt + 1},"
-                                    f"{'retrying...' if attempt < max_retries - 1 else 'giving up'}"
-                                )
-                                # Cancel failed requests before retrying
-                                try:
-                                    ib_client.cancelMktData(call_contract)
-                                    ib_client.cancelMktData(put_contract)
-                                    # ib_client.cancelMktData(underlying_contract)
-                                    ib_client.sleep(0.5)  # Brief pause before retry
-                                except Exception:
-                                    pass
-
-                        if call_data and put_data:
-                            options_data[exp_date] = {
-                                "calls": pd.DataFrame([call_data]),
-                                "puts": pd.DataFrame([put_data]),
-                                "atm_strike": atm_strike,
-                            }
-                            print(
-                                f"ATM Call IV: {call_data['impliedVolatility']:.3f}"
-                                if call_data["impliedVolatility"] is not None
-                                else "ATM Call IV: N/A"
-                            )
-                            print(
-                                f"ATM Put IV: {put_data['impliedVolatility']:.3f}"
-                                if put_data["impliedVolatility"] is not None
-                                else "ATM Put IV: N/A"
-                            )
-                        else:
-                            print(f"No valid option data for {exp_date}")
-
-                        # try:
-                        #     ib_client.cancelMktData(contract)
-                        #     time.sleep(0.1)
-                        #     ib_client.cancelMktData(call_contract)
-                        #     time.sleep(0.1)
-                        #     ib_client.cancelMktData(put_contract)
-                        #     time.sleep(0.2)  # Give IB time to process cancellations
-                        # except Exception as cleanup_error:
-                        #     print(f"Cleanup error: {cleanup_error}")
-                        #     pass
-
-                    except Exception as e:
-                        print(f"Error processing {exp_date}: {e}")
-                        continue
-
-                break
-
-        return options_data, contract
-
-    except Exception as e:
-        print(f"Error getting batch options chains for {ticker}: {e}")
-        return None, None
-
-
-def get_ib_options_chains(ib_client, ticker):
-    """Get options chains from Interactive Brokers"""
-    try:
-        contract = ib.Stock(ticker, "SMART", "USD")
-        ib_client.qualifyContracts(contract)
-
-        # Get current stock price using historical data (reliable fallback)
-        current_price = None
+        contracts = [
+            ib.Option(self.ticker, expiration, strike, right, "SMART")
+            for right in rights
+            for expiration in expirations
+            for strike in self.strikes
+        ]
 
         try:
-            # Try recent 1-minute bar first (most current)
-            recent_bars = ib_client.reqHistoricalData(
-                contract,
-                endDateTime="",
-                durationStr="1 D",
-                barSizeSetting="1 min",
-                whatToShow="TRADES",
-                useRTH=False,  # Include extended hours for more recent data
-                formatDate=1,
+            self.option_qualified_contracts = ib_client.qualifyContracts(*contracts)
+            if not self.option_qualified_contracts:
+                logging.error(f"No qualified option contracts found for {self.ticker}")
+                return []
+            logging.info(
+                f"Qualified {len(self.option_qualified_contracts)} out of {len(contracts)} option contracts for {self.ticker}"
             )
-
-            if recent_bars:
-                current_price = recent_bars[-1].close  # Most recent close
-                print(f"Using recent price for {ticker}: ${current_price:.2f}")
-            else:
-                # Fallback to daily bar
-                daily_bars = ib_client.reqHistoricalData(
-                    contract,
-                    endDateTime="",
-                    durationStr="2 D",
-                    barSizeSetting="1 day",
-                    whatToShow="TRADES",
-                    useRTH=True,
-                    formatDate=1,
-                )
-                if daily_bars:
-                    current_price = daily_bars[-1].close
-                    print(f"Using daily close for {ticker}: ${current_price:.2f}")
-                else:
-                    print(f"No price data available for {ticker}")
-
+            return self
         except Exception as e:
-            print(f"Price data unavailable for {ticker}: {e}")
+            logging.error(f"Error qualifying option contracts for {self.ticker}: {e}")
+            return []
 
-        # Final check - if still no price, return error
-        if not current_price or np.isnan(current_price):
-            return None, f"Error: Unable to retrieve live price data for {ticker}. Check IB connection and data permissions."
+    def get_option_greeks(self, option_type, strike, exp):
+        """Helper function to get Greeks for puts or calls"""
+        current_price = self.get_underlying_last_price()
 
-        logging.info(f"Current price for {ticker}: ${current_price:.2f}")
+        option = ib.Option(self.ticker, exp, strike, option_type, "SMART")
+        qualified_option = ib_client.qualifyContracts(option)[0]
 
-        # Get option chains
-        chains = ib_client.reqSecDefOptParams(contract.symbol, "", contract.secType, contract.conId)
+        # Try TRADES first, then MIDPOINT
+        option_bars = ib_client.reqHistoricalData(qualified_option, "", "1 D", "1 min", "TRADES", True)
+        if not option_bars:
+            option_bars = ib_client.reqHistoricalData(qualified_option, "", "1 D", "1 min", "MIDPOINT", True)
 
-        if not chains:
-            return None, None
+        if not option_bars:
+            raise ValueError(f"No price data for {self.ticker} {strike} {option_type}")
 
-        options_data = {}
+        try:
+            option_price = option_bars[-1].close
+            iv_result = ib_client.calculateImpliedVolatility(qualified_option, option_price, current_price)
+            iv = iv_result.impliedVol
+            greeks = ib_client.calculateOptionPrice(qualified_option, iv, current_price)
+            return greeks
+        except Exception as e:
+            raise ValueError(f"Unable to calculate Greeks for {self.ticker} {strike} {option_type}: {e}")
 
-        for chain in chains:
-            if chain.exchange == "SMART":
-                all_expirations = sorted(chain.expirations)
+    def get_option_data(self):
+        if not self.option_qualified_contracts:
+            self.get_option_qualified_contracts()
+        for exp in self.valid_expirations:
+            for strike in self.strikes:
+                try:
+                    put_greeks = self.get_option_greeks("P", strike, exp)
+                except ValueError as e:
+                    logging.warning(f"No put options data found for ticker {self.ticker} and strike {strike}. Skipping...")
+                    logging.error(e)
 
-                # Filter expirations to only include dates within 75 days
-                today = datetime.today().date()
-                max_date = today + timedelta(days=75)
+                try:
+                    call_greeks = self.get_option_greeks("C", strike, exp)
+                except ValueError as e:
+                    logging.warning(f"No put options data found for ticker {self.ticker} and strike {strike}. Skipping...")
+                    logging.error(e)
 
-                valid_expirations = []
-                for expiration in all_expirations:
-                    exp_date_obj = datetime.strptime(expiration, "%Y%m%d").date()
-                    if today <= exp_date_obj <= max_date:
-                        valid_expirations.append(expiration)
-
-                print(f"Found {len(all_expirations)} total expirations, using {len(valid_expirations)} within 75 days")
-                print(f"Getting all available option contracts for {ticker} within 75 days...")
-
-                all_option_data = {}
-
-                for expiration in valid_expirations:
-                    exp_date = datetime.strptime(expiration, "%Y%m%d").strftime("%Y-%m-%d")
-                    days_out = (datetime.strptime(expiration, "%Y%m%d").date() - today).days
-                    print(f"Processing expiration {exp_date} ({days_out} days out)")
-
-                    call_contract_base = ib.Option(ticker, expiration, 0, right="C", exchange="SMART", currency="USD")
-                    put_contract_base = ib.Option(ticker, expiration, 0, "P", "SMART")
-
-                    try:
-                        call_details = ib_client.reqContractDetails(call_contract_base)
-                        call_strikes = [detail.contract.strike for detail in call_details]
-                    except Exception:
-                        call_strikes = []
-
-                    try:
-                        put_details = ib_client.reqContractDetails(put_contract_base)
-                        put_strikes = [detail.contract.strike for detail in put_details]
-                    except Exception:
-                        put_strikes = []
-
-                    # Only keep strikes that exist for both calls and puts
-                    common_strikes = sorted(set(call_strikes) & set(put_strikes))
-                    all_option_data[exp_date] = {"expiration": expiration, "available_strikes": common_strikes}
-
-                    print(f"Expiration {exp_date}: {len(common_strikes)} available strikes")
-
-                # Now filter to only the strikes we actually want to price (+/- 50% of current price)
-                min_strike = current_price * 0.5  # 50% below
-                max_strike = current_price * 1.5  # 50% above
-
-                print(f"Filtering to strikes between ${min_strike:.2f} and ${max_strike:.2f} (±50% of current price)")
-
-                # Now iterate only over filtered strikes to get market data
-                for exp_date, exp_data in all_option_data.items():
-                    expiration = exp_data["expiration"]
-                    available_strikes = exp_data["available_strikes"]
-
-                    # Filter to our target range
-                    target_strikes = [s for s in available_strikes if min_strike <= s <= max_strike]
-                    target_strikes = sorted(target_strikes)
-
-                    if not target_strikes:
-                        print(f"No strikes in target range for {exp_date}, skipping")
-                        continue
-
-                    strikes_str = [f"${s}" for s in target_strikes]
-                    print(f"Getting option market data for {len(target_strikes)} strikes in {exp_date}: {strikes_str}")
-
-                    calls_list = []
-                    puts_list = []
-
-                    for strike in target_strikes:
-                        call_contract = ib.Option(ticker, expiration, strike, "C", "SMART")
-                        put_contract = ib.Option(ticker, expiration, strike, "P", "SMART")
-
-                        try:
-                            # Try to qualify contracts first - skip if they don't exist
-                            try:
-                                ib_client.qualifyContracts(call_contract, put_contract)
-                            except Exception as contract_error:
-                                if "security definition" in str(contract_error).lower():
-                                    continue  # Skip this strike, contract doesn't exist
-                                raise
-
-                            # Get live options market data
-                            call_data = None
-                            put_data = None
-
-                            try:
-                                # Request snapshot data for options with underlying active for IV calculation
-                                print(f"Requesting snapshot for {ticker} {strike} call/put...")
-
-                                # Set market data type based on config
-                                if MARKET_DATA_TYPE == "DELAYED":
-                                    ib_client.reqMarketDataType(4)
-                                else:
-                                    ib_client.reqMarketDataType(1)
-
-                                # Request option snapshots
-                                call_ticker = ib_client.reqMktData(call_contract, "", True, False)  # snapshot=True
-                                put_ticker = ib_client.reqMktData(put_contract, "", True, False)  # snapshot=True
-                                # Wait for snapshots
-                                ib_client.sleep(1.0)
-
-                                # Extract option data using helper function (DRY)
-                                call_data = get_option_data_with_iv(call_ticker, strike, ib_client, call_contract)
-                                put_data = get_option_data_with_iv(put_ticker, strike, ib_client, put_contract)
-
-                                # Print results
-                                if call_data:
-                                    call_iv_str = (
-                                        f"{call_data['impliedVolatility']:.3f}" if call_data["impliedVolatility"] else "N/A"
-                                    )
-                                    call_msg = (
-                                        f"Call {strike}: bid=${call_data['bid']:.2f}, "
-                                        f"ask=${call_data['ask']:.2f}, IV={call_iv_str}"
-                                    )
-                                    print(call_msg)
-                                if put_data:
-                                    put_iv_str = (
-                                        f"{put_data['impliedVolatility']:.3f}" if put_data["impliedVolatility"] else "N/A"
-                                    )
-                                    put_msg = (
-                                        f"Put {strike}: bid=${put_data['bid']:.2f}, "
-                                        f"ask=${put_data['ask']:.2f}, IV={put_iv_str}"
-                                    )
-                                    print(put_msg)
-
-                                # Cancel market data subscriptions to avoid accumulating subscriptions
-                                try:
-                                    ib_client.cancelMktData(contract)  # underlying
-                                    ib_client.cancelMktData(call_contract)  # call
-                                    ib_client.cancelMktData(put_contract)  # put
-                                except Exception:
-                                    pass
-
-                            except Exception as e:
-                                print(f"Real-time market data failed for {ticker} {strike}: {e}")
-                                # Clean up all subscriptions on error
-                                try:
-                                    ib_client.cancelMktData(contract)
-                                    ib_client.cancelMktData(call_contract)
-                                    ib_client.cancelMktData(put_contract)
-                                except Exception:
-                                    pass
-
-                            # Add valid data to lists
-                            if call_data:
-                                calls_list.append(call_data)
-                            if put_data:
-                                puts_list.append(put_data)
-
-                            # No need to cancel snapshot requests
-
-                        except Exception as e:
-                            print(f"Error getting option data for {ticker} {expiration} {strike}: {e}")
-                            continue
-
-                    if calls_list and puts_list:
-                        options_data[exp_date] = {"calls": pd.DataFrame(calls_list), "puts": pd.DataFrame(puts_list)}
-
-                break
-
-        return options_data, contract
-
-    except Exception as e:
-        print(f"Error getting options chains for {ticker}: {e}")
-        return None, None
+                if put_greeks or call_greeks:
+                    put_info = (
+                        f"Δ={put_greeks.delta:.3f}, Γ={put_greeks.gamma:.4f}, Θ={put_greeks.theta:.3f}, "
+                        f"ν = {put_greeks.vega: .3f}, IV = {put_greeks.impliedVol: .3f}"
+                        if put_greeks
+                        else "N / A"
+                    )
+                    call_info = (
+                        f"Δ={call_greeks.delta:.3f}, Γ={call_greeks.gamma:.4f}, Θ={call_greeks.theta:.3f}, "
+                        f"ν = {call_greeks.vega: .3f}, IV = {call_greeks.impliedVol: .3f}"
+                        if call_greeks
+                        else "N / A"
+                    )
+                    logging.info(f"Strike {strike}: Put[{put_info}], Call[{call_info}]")
+        return self
 
 
-def calc_prev_earnings_stats(df_history, ticker, plot_loc=PLOT_LOC):
-    """
-    Calculate previous earnings statistics using Yahoo Finance earnings dates
-    but with IB price data
-    """
+def get_current_price(df_price_history_3mo):
+    return df_price_history_3mo["Close"].iloc[-1]
 
+
+def calc_prev_earnings_stats(df_history, ticker_obj, ticker, plot_loc=PLOT_LOC):
     df_history = df_history.copy()
-    if "date" not in df_history.columns and df_history.index.name == "date":
+    if "Date" not in df_history.columns and df_history.index.name == "Date":
         df_history = df_history.reset_index()
-    elif df_history.index.dtype == "datetime64[ns]":
-        df_history = df_history.reset_index()
-        df_history = df_history.rename(columns={"index": "date"})
-
-    df_history["date"] = pd.to_datetime(df_history["date"]).dt.date
-    df_history = df_history.sort_values("date")
-
-    # Use Yahoo Finance for earnings dates only
-    ticker_obj = yf.Ticker(ticker)
+    df_history["Date"] = df_history["Date"].dt.date
+    df_history = df_history.sort_values("Date")
 
     n_tries = 3
     i = 0
@@ -735,7 +268,7 @@ def calc_prev_earnings_stats(df_history, ticker, plot_loc=PLOT_LOC):
 
     df_earnings_dates = df_earnings_dates.reset_index()
     df_earnings_dates = df_earnings_dates[df_earnings_dates["Event Type"] == "Earnings"].copy()
-    df_earnings_dates["date"] = df_earnings_dates["Earnings Date"].dt.date
+    df_earnings_dates["Date"] = df_earnings_dates["Earnings Date"].dt.date
 
     def classify_release(dt):
         hour = dt.hour
@@ -745,13 +278,13 @@ def calc_prev_earnings_stats(df_history, ticker, plot_loc=PLOT_LOC):
             return "post-market"
 
     df_earnings_dates["release_timing"] = df_earnings_dates["Earnings Date"].apply(classify_release)
-    df_earnings = df_earnings_dates.merge(df_history, on="date", how="left", suffixes=("", "_earnings"))
-    df_earnings["next_date"] = df_earnings["date"] + pd.Timedelta(days=1)
-    df_next = df_history.rename(columns=lambda c: f"{c}_next" if c != "date" else "next_date")
+    df_earnings = df_earnings_dates.merge(df_history, on="Date", how="left", suffixes=("", "_earnings"))
+    df_earnings["next_date"] = df_earnings["Date"] + pd.Timedelta(days=1)
+    df_next = df_history.rename(columns=lambda c: f"{c}_next" if c != "Date" else "next_date")
     df_flat = df_earnings.merge(df_next, on="next_date", how="left")
-    df_flat["prev_close"] = df_flat["close"].shift(1)
-    df_flat["pre_market_move"] = (df_flat["open"] - df_flat["prev_close"]) / df_flat["prev_close"]
-    df_flat["post_market_move"] = (df_flat["open_next"] - df_flat["close"]) / df_flat["close"]
+    df_flat["prev_close"] = df_flat["Close"].shift(1)
+    df_flat["pre_market_move"] = (df_flat["Open"] - df_flat["prev_close"]) / df_flat["prev_close"]
+    df_flat["post_market_move"] = (df_flat["Open_next"] - df_flat["Close"]) / df_flat["Close"]
 
     df_flat["earnings_move"] = df_flat.apply(
         lambda row: (
@@ -765,18 +298,19 @@ def calc_prev_earnings_stats(df_history, ticker, plot_loc=PLOT_LOC):
     if plot_loc and df_flat.shape[0]:
         df_flat["text"] = (df_flat["earnings_move"] * 100).round(2).astype(str) + "%"
         p = px.bar(
-            x=df_flat["date"],
+            x=df_flat["Date"],
             y=df_flat["earnings_move"].round(3),
             color=df_flat.index.astype(str),
             text=df_flat["text"],
             title="Earnings % Move",
         )
         p.update_traces(textangle=0)
+        # p.show()
 
-        full_path = os.path.join(plot_loc, f"{ticker}_{df_flat['date'].iloc[0].strftime('%Y-%m-%d')}.html")
+        full_path = os.path.join(plot_loc, f"{ticker}_{df_flat['Date'].iloc[0].strftime('%Y-%m-%d')}.html")
         os.makedirs(plot_loc, exist_ok=True)
         p.write_html(full_path)
-        print(f"Saved plot for ticker {ticker} here: {full_path}")
+        logging.info(f"Saved plot for ticker {ticker} here: {full_path}")
 
     avg_abs_pct_move = round(abs(df_flat["earnings_move"]).mean(), 3)
     prev_earnings_std = round(abs(df_flat["earnings_move"]).std(ddof=1), 3)
@@ -789,6 +323,7 @@ def calc_prev_earnings_stats(df_history, ticker, plot_loc=PLOT_LOC):
 
     if prev_earnings_std < 0.001:
         prev_earnings_std = 0.001  # avoid division by 0 or overly tight thresholds
+
     return (
         avg_abs_pct_move,
         median_abs_pct_move,
@@ -821,13 +356,13 @@ def filter_dates(dates):
 
 
 def yang_zhang(price_data, window=30, trading_periods=252, return_last_only=True):
-    log_ho = (price_data["high"] / price_data["open"]).apply(np.log)
-    log_lo = (price_data["low"] / price_data["open"]).apply(np.log)
-    log_co = (price_data["close"] / price_data["open"]).apply(np.log)
+    log_ho = (price_data["High"] / price_data["Open"]).apply(np.log)
+    log_lo = (price_data["Low"] / price_data["Open"]).apply(np.log)
+    log_co = (price_data["Close"] / price_data["Open"]).apply(np.log)
 
-    log_oc = (price_data["open"] / price_data["close"].shift(1)).apply(np.log)
+    log_oc = (price_data["Open"] / price_data["Close"].shift(1)).apply(np.log)
     log_oc_sq = log_oc**2
-    log_cc = (price_data["close"] / price_data["close"].shift(1)).apply(np.log)
+    log_cc = (price_data["Close"] / price_data["Close"].shift(1)).apply(np.log)
     log_cc_sq = log_cc**2
 
     rs = log_ho * (log_ho - log_co) + log_lo * (log_lo - log_co)
@@ -860,7 +395,7 @@ def build_term_structure(days, ivs):
     ivs = ivs[sorted(unique_idx)]
 
     if len(days) < 2:
-        warnings.warn("Not enough unique days to interpolate for ticker.")
+        warnings.warn(f"Not enough unique days to interpolate for ticker {ticker}.")
         return
 
     spline = interp1d(days, ivs, kind="linear", fill_value="extrapolate")
@@ -874,10 +409,6 @@ def build_term_structure(days, ivs):
             return float(spline(dte))
 
     return term_spline
-
-
-def get_current_price(df_price_history_3mo):
-    return df_price_history_3mo["close"].iloc[-1]
 
 
 def calc_kelly_bet(
@@ -927,22 +458,19 @@ def calc_kelly_bet(
     return round(bet_amount, 2)
 
 
-def get_all_usa_tickers(earnings_date=datetime.today().strftime("%Y-%m-%d")):
+def get_all_usa_tickers(use_yf_db=True, earnings_date=datetime.today().strftime("%Y-%m-%d")):
     ### FMP ###
 
     try:
         fmp_apikey = os.getenv("FMP_API_KEY")
-        fmp_url = (
-            f"https://financialmodelingprep.com/api/v3/earning_calendar?"
-            f"from={earnings_date}&to={earnings_date}&apikey={fmp_apikey}"
-        )
+        fmp_url = f"https://financialmodelingprep.com/api/v3/earning_calendar?from={earnings_date}&to={earnings_date}&apikey={fmp_apikey}"  # noqa: E501
         fmp_response = requests.get(fmp_url)
         df_fmp = pd.DataFrame(fmp_response.json())
         df_fmp_usa = df_fmp[df_fmp["symbol"].str.fullmatch(r"[A-Z]{1,4}") & ~df_fmp["symbol"].str.contains(r"[.-]")]
 
         fmp_usa_symbols = sorted(df_fmp_usa["symbol"].unique().tolist())
     except Exception:
-        print("No FMP API Key found. Only using NASDAQ")
+        logging.warning("No FMP API Key found. Only using NASDAQ")
         fmp_usa_symbols = []
 
     ### NASDAQ ###
@@ -953,8 +481,11 @@ def get_all_usa_tickers(earnings_date=datetime.today().strftime("%Y-%m-%d")):
     nasdaq_calendar = nasdaq_response.json().get("data").get("rows")
     df_nasdaq = pd.DataFrame(nasdaq_calendar)
     df_nasdaq = df_nasdaq[df_nasdaq["symbol"].str.fullmatch(r"[A-Z]{1,4}") & ~df_nasdaq["symbol"].str.contains(r"[.-]")]
+
     nasdaq_tickers = sorted(df_nasdaq["symbol"].unique().tolist())
+
     all_usa_earnings_tickers_today = sorted(list(set(fmp_usa_symbols + nasdaq_tickers)))
+
     return all_usa_earnings_tickers_today
 
 
@@ -1286,7 +817,6 @@ def _update_result_summary(
 
 def compute_recommendation(
     ticker,
-    ib_client,
     min_avg_30d_dollar_volume=MIN_AVG_30D_DOLLAR_VOLUME,
     min_avg_30d_share_volume=MIN_AVG_30D_SHARE_VOLUME,
     min_iv30_rv30=MIN_IV30_RV30,
@@ -1297,28 +827,51 @@ def compute_recommendation(
     if not ticker:
         return "No stock symbol provided."
 
-    # Get historical data from IB
-    df_history = get_ib_historical_data(ib_client, ticker)
-    if df_history is None or df_history.empty:
-        return f"Error: Unable to retrieve historical data for {ticker}"
-
-    # Get options chains from IB using batch processing (faster)
-    options_chains, underlying_contract = get_ib_options_chains_batch(ib_client, ticker)
-    if not options_chains:
-        if isinstance(underlying_contract, str):  # Error message
-            return underlying_contract
+    try:
+        stock = yf.Ticker(ticker)
+        n_tries = 3
+        i = 0
+        while i < n_tries:
+            exp_dates = list(stock.options)
+            if exp_dates:
+                break
+            i += 1
+        if len(exp_dates) == 0:
+            raise KeyError(f"No options data found for ticker {ticker}")
+    except KeyError:
         return f"Error: No options found for stock symbol '{ticker}'."
 
     try:
-        # Filter dates to get relevant expirations
-        exp_dates = list(options_chains.keys())
         exp_dates = filter_dates(exp_dates)
     except Exception:
         return "Error: Not enough option data."
 
-    # Get 3-month price history for volume calculations
+    options_chains = {}
+    for exp_date in exp_dates:
+        n_tries = 3
+        i = 0
+        while i < n_tries:
+            chain = stock.option_chain(exp_date)
+            options_chains[exp_date] = chain
+            if chain is not None and len(chain):
+                break
+            i += 1
+
+    n_tries = 3
+    i = 0
+    while i < n_tries:
+        df_history = stock.history(
+            start=(datetime.today() - timedelta(days=EARNINGS_LOOKBACK_DAYS_FOR_AGG)).strftime("%Y-%m-%d")
+        )
+        if df_history is not None and not df_history.empty:
+            break
+        i += 1
+
+    # df_price_history_3mo = stock.history(period="3mo")
+
     df_price_history_3mo = df_history[df_history.index >= (pd.Timestamp.now(df_history.index.tz) - relativedelta(months=3))]
     df_price_history_3mo = df_price_history_3mo.sort_index()
+    df_price_history_3mo["dollar_volume"] = df_price_history_3mo["Volume"] * df_price_history_3mo["Close"]
 
     try:
         underlying_price = get_current_price(df_price_history_3mo)
@@ -1331,18 +884,10 @@ def compute_recommendation(
     atm_call_iv = {}
     atm_put_iv = {}
     straddle = None
-    straddle_spread_pct = 1.0
-    call_mid = None
-    put_mid = None
-    call_bid = call_ask = put_bid = put_ask = None
-
     i = 0
-    for exp_date in exp_dates:
-        if exp_date not in options_chains:
-            continue
-
-        calls = options_chains[exp_date]["calls"]
-        puts = options_chains[exp_date]["puts"]
+    for exp_date, chain in options_chains.items():
+        calls = chain.calls
+        puts = chain.puts
 
         if calls is None or puts is None or calls.empty or puts.empty:
             continue
@@ -1388,20 +933,18 @@ def compute_recommendation(
                 straddle_spread_pct = 1.0  # Set high spread to fail all tier checks
                 try:
                     if call_idx + 1 < len(calls) and put_idx + 1 < len(puts):
-                        warn_msg = (
-                            f"For ticker {ticker} straddle is either 0 or None from available "
-                            "bid/ask spread... using nearest term strikes."
+                        warnings.warn(
+                            f"For ticker {ticker} straddle is either 0 or None from available bid/ask "
+                            f"spread... using nearest term strikes."
                         )
-                        warnings.warn(warn_msg)
                         straddle = calls.iloc[call_idx + 1]["lastPrice"] + puts.iloc[put_idx + 1]["lastPrice"]
                     if not straddle:
-                        warn_msg = (
-                            f"For ticker {ticker} straddle is either 0 or None from available "
-                            "bid/ask spread... using lastPrice."
+                        warnings.warn(
+                            f"For ticker {ticker} straddle is either 0 or None from available bid/ask "
+                            f"spread... using lastPrice."
                         )
-                        warnings.warn(warn_msg)
                         straddle = calls.iloc[call_idx]["lastPrice"] + puts.iloc[call_idx]["lastPrice"]
-                except (IndexError, KeyError):
+                except IndexError:
                     warnings.warn(f"For ticker {ticker}, call_idx {call_idx} is out of bounds in calls/puts.")
                     return None
         i += 1
@@ -1453,7 +996,7 @@ def compute_recommendation(
     iv30_rv30_call = call_term_spline(30) / rv30 if call_term_spline else iv30_rv30
     iv30_rv30_put = put_term_spline(30) / rv30 if put_term_spline else iv30_rv30
 
-    rolling_share_volume = df_price_history_3mo["volume"].rolling(30).mean().dropna()
+    rolling_share_volume = df_price_history_3mo["Volume"].rolling(30).mean().dropna()
     rolling_dollar_volume = df_price_history_3mo["dollar_volume"].rolling(30).mean().dropna()
 
     if rolling_share_volume.empty:
@@ -1478,7 +1021,7 @@ def compute_recommendation(
         prev_earnings_std,
         earnings_release_time,
         prev_earnings_values,
-    ) = calc_prev_earnings_stats(df_history.reset_index(), ticker, plot_loc=plot_loc)
+    ) = calc_prev_earnings_stats(df_history.reset_index(), stock, ticker, plot_loc=plot_loc)
 
     if prev_earnings_values is None or not len(prev_earnings_values):
         prev_earnings_values = []
@@ -1538,7 +1081,7 @@ def compute_recommendation(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run calculations for given tickers using Interactive Brokers data")
+    parser = argparse.ArgumentParser(description="Run calculations for given tickers")
 
     parser.add_argument(
         "--earnings-date",
@@ -1556,92 +1099,49 @@ if __name__ == "__main__":
         help="Verbose output for displaying all results. Default is True.",
     )
 
-    parser.add_argument("--ib-host", type=str, default=IB_HOST, help=f"Interactive Brokers host (default: {IB_HOST})")
-
-    parser.add_argument("--ib-port", type=int, default=IB_PORT, help=f"Interactive Brokers port (default: {IB_PORT})")
-
-    parser.add_argument(
-        "--ib-client-id", type=int, default=IB_CLIENT_ID, help=f"Interactive Brokers client ID (default: {IB_CLIENT_ID})"
-    )
-
     args = parser.parse_args()
     earnings_date = args.earnings_date
     tickers = args.tickers
     verbose = args.verbose
-    ib_host = args.ib_host
-    ib_port = args.ib_port
-    ib_client_id = args.ib_client_id
 
     if tickers == ["_all"]:
         tickers = get_all_usa_tickers(earnings_date=earnings_date)
 
-    def main_sync():
-        # Connect to Interactive Brokers
-        print(f"Connecting to Interactive Brokers at {ib_host}:{ib_port} with client ID {ib_client_id}")
-        ib_client = ib.IB()
+    logging.info(f"Scanning {len(tickers)} tickers: \n{tickers}\n")
+    logging.info(f"Connecting to Interactive Brokers at {IB_HOST}:{IB_PORT} with client ID {IB_CLIENT_ID}")
 
-        try:
-            # Use synchronous connection to avoid event loop issues
-            # Set readonly=True to avoid requesting orders/positions data
-            ib_client.connect(ib_host, ib_port, clientId=ib_client_id, readonly=True)
+    ib_client = ib.IB()
 
-            # Set market data type based on configuration
-            if MARKET_DATA_TYPE == "DELAYED":
-                print("Requesting DELAYED data (type 3)...")
-                ib_client.reqMarketDataType(3)  # 3 = Delayed data
-                ib_client.sleep(1.0)  # Give more time for the type to be set
-                print("DELAYED data request sent (15-minute delay)")
-            elif MARKET_DATA_TYPE == "REAL_TIME":
-                print("Requesting REAL-TIME data (type 1)...")
-                ib_client.reqMarketDataType(1)  # 1 = Live/real-time data
-                ib_client.sleep(1.0)
-                print("REAL-TIME data request sent")
+    try:
+        ib_client.connect(IB_HOST, IB_PORT, clientId=IB_CLIENT_ID, readonly=True)
+        ib_client.reqMarketDataType(4)
+
+        mde = MarketDataExtractor(ticker="DIS")
+        mde.get_historical_bars()
+        mde.get_option_data()
+    except Exception as e:
+        import traceback
+
+        logging.error(f"Error connecting to Interactive Brokers: {e}")
+        logging.error("Full traceback:")
+        traceback.print_exc()
+        logging.error("Make sure TWS or IB Gateway is running and accepting API connections")
+    finally:
+        if ib_client.isConnected():
+            ib_client.disconnect()
+            logging.info("Disconnected from Interactive Brokers")
+
+    for ticker in tickers:
+        result = compute_recommendation(ticker)
+        is_edge = isinstance(result, dict) and "Recommended" in result.get("improved_suggestion")
+        if is_edge:
+            logging.info(" *** EDGE FOUND ***\n")
+
+        if verbose or is_edge:
+            logging.info(f"ticker: {ticker}")
+            if isinstance(result, dict):
+                for k, v in result.items():
+                    logging.info(f"  {k}: {v}")
             else:
-                print("Using default market data type")
-
-            print("Connected to Interactive Brokers successfully!")
-
-            # Warm up market data subscriptions to avoid first-run failures
-            print("Warming up market data subscriptions...")
-            try:
-                # Request a simple stock ticker to establish subscription
-                warm_up_contract = ib.Stock("SPY", "SMART", "USD")
-                ib_client.qualifyContracts(warm_up_contract)
-                ib_client.sleep(2.0)  # Give time for subscription to establish
-                ib_client.cancelMktData(warm_up_contract)
-                print("Market data subscriptions warmed up")
-            except Exception as e:
-                print(f"Warning: Could not warm up market data subscriptions: {e}")
-
-            print(f"Scanning {len(tickers)} tickers: \n{tickers}\n")
-
-            for ticker in tickers:
-                # Now using synchronous functions
-                result = compute_recommendation(ticker, ib_client)
-                is_edge = isinstance(result, dict) and "Recommended" in result.get("improved_suggestion")
-                if is_edge:
-                    print(" *** EDGE FOUND ***\n")
-
-                if verbose or is_edge:
-                    print(f"ticker: {ticker}")
-                    if isinstance(result, dict):
-                        for k, v in result.items():
-                            print(f"{k}: {v}")
-                    else:
-                        print(f"{result}")
-                    print("---------------")
-
-        except Exception as e:
-            import traceback
-
-            print(f"Error connecting to Interactive Brokers: {e}")
-            print("Full traceback:")
-            traceback.print_exc()
-            print("Make sure TWS or IB Gateway is running and accepting API connections")
-        finally:
-            if ib_client.isConnected():
-                ib_client.disconnect()
-                print("Disconnected from Interactive Brokers")
-
-    # Run the main function
-    main_sync()
+                logging.info(f"  {result}")
+            logging.info("---------------")
