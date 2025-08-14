@@ -1,0 +1,58 @@
+# Earnings IV Crush Scanner Configuration
+
+# Interactive Brokers Connection Settings
+ib:
+  host: "127.0.0.1"
+  port: 4001  # Live trading: 7496, Gateway paper trading: 4002
+  client_id: 1
+
+# Market Data Configuration
+market_data:
+  type: "REAL_TIME"  # DELAYED or REAL_TIME
+  development_mode: false  # Allow processing with after-hours data
+
+
+# Base Screening Criteria
+screening:
+  min_avg_30d_dollar_volume: 10_000_000
+  min_avg_30d_share_volume: 1_500_500
+  min_iv30_rv30: 1.35
+  max_ts_slope_0_45: -0.0050
+  min_share_price: 15
+  earnings_lookback_days: 1095  # 365 * 3
+
+# Kelly Criterion Parameters
+kelly:
+  win_rate: 0.666  # 66.6% win rate
+  odds_decimal: 1.5055  # 0.265% expectancy per trade
+  fractional: 0.10  # 10% fractional kelly
+  bankroll: 10000  # Default bankroll size
+  max_bet: 500
+
+# Tier 1 Criteria (Highest Probability)
+tier_1:
+  min_avg_30d_dollar_volume: 200_000_000
+  min_iv30_rv30: 2.0
+  max_ts_slope_0_45: -0.015
+  min_share_price: 60
+  max_spread_pct: 0.003  # % of underlying price
+
+# Tier 2 Criteria
+tier_2:
+  min_avg_30d_dollar_volume: 100_000_000
+  min_iv30_rv30: 1.75
+  max_ts_slope_0_45: -0.01
+  min_share_price: 35
+  max_spread_pct: 0.006  # % of underlying price
+
+# Tier 3 Criteria
+tier_3:
+  min_avg_30d_dollar_volume: 50_000_000
+  min_iv30_rv30: 1.5
+  max_ts_slope_0_45: -0.005
+  min_share_price: 25
+  max_spread_pct: 0.0125  # % of underlying price
+
+# Other Settings
+settings:
+  plot_location: null  # Set to path for plot output, null to disable
