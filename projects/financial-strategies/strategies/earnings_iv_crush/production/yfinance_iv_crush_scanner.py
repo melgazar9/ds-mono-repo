@@ -24,7 +24,7 @@ warnings.filterwarnings("ignore", message="Not enough unique days to interpolate
 ### ------ Globals ------ ###
 
 MIN_AVG_30D_DOLLAR_VOLUME = 10_000_000
-MIN_AVG_30D_SHARE_VOLUME = 1_500_500
+MIN_AVG_30D_SHARE_VOLUME = 1_500_000
 MIN_IV30_RV30 = 1.35
 MAX_TS_SLOPE_0_45 = -0.0050
 MIN_SHARE_PRICE = 15
@@ -192,10 +192,7 @@ def get_all_usa_tickers(use_yf_db=True, earnings_date=datetime.today().strftime(
 
     try:
         fmp_apikey = os.getenv("FMP_API_KEY")
-        fmp_url = (
-            f"https://financialmodelingprep.com/api/v3/earning_calendar?"
-            f"from={earnings_date}&to={earnings_date}&apikey={fmp_apikey}"
-        )
+        fmp_url = f"https://financialmodelingprep.com/api/v3/earning_calendar?from={earnings_date}&to={earnings_date}&apikey={fmp_apikey}"  # noqa: E501
         fmp_response = requests.get(fmp_url)
         df_fmp = pd.DataFrame(fmp_response.json())
         df_fmp_usa = df_fmp[df_fmp["symbol"].str.fullmatch(r"[A-Z]{1,4}") & ~df_fmp["symbol"].str.contains(r"[.-]")]
@@ -263,7 +260,7 @@ def calc_prev_earnings_stats(df_history, ticker_obj, ticker, plot_loc=PLOT_LOC):
         lambda row: (
             row["pre_market_move"]
             if row["release_timing"] == "pre-market"
-            else row["post_market_move"] if row["release_timing"] == "post-market" else None
+            else (row["post_market_move"] if row["release_timing"] == "post-market" else None)
         ),
         axis=1,
     )
@@ -341,7 +338,10 @@ def _calculate_side_metrics(
     # Bonus return if expected move >= avg historical earnings move
     bonus_return = 0
     if expected_move_side >= prev_earnings_avg_abs_pct_move:
-        bonus_return = min(0.075, (expected_move_side - prev_earnings_avg_abs_pct_move) / prev_earnings_avg_abs_pct_move)
+        bonus_return = min(
+            0.075,
+            (expected_move_side - prev_earnings_avg_abs_pct_move) / prev_earnings_avg_abs_pct_move,
+        )
 
     return round(combined_return + bonus_return, 4)
 
@@ -570,7 +570,10 @@ def _update_result_summary(
     # Bonus return if straddle expected move >= avg historical earnings move (last 3 years)
     bonus_return = 0
     if expected_move_straddle >= prev_earnings_avg_abs_pct_move:
-        bonus_return = min(0.075, (expected_move_straddle - prev_earnings_avg_abs_pct_move) / prev_earnings_avg_abs_pct_move)
+        bonus_return = min(
+            0.075,
+            (expected_move_straddle - prev_earnings_avg_abs_pct_move) / prev_earnings_avg_abs_pct_move,
+        )
 
     final_expected_return = round(combined_expected_return + bonus_return, 4)
 
@@ -703,6 +706,8 @@ def compute_recommendation(
     atm_call_iv = {}
     atm_put_iv = {}
     straddle = None
+    straddle_call_strike = None
+    straddle_put_strike = None
     i = 0
     for exp_date, chain in options_chains.items():
         calls = chain.calls
@@ -725,6 +730,9 @@ def compute_recommendation(
         atm_put_iv[exp_date] = put_iv
 
         if i == 0:
+            # Store the strike prices for the nearest expiration
+            straddle_call_strike = calls.loc[call_idx, "strike"]
+            straddle_put_strike = puts.loc[put_idx, "strike"]
             call_bid = calls.loc[call_idx, "bid"]
             call_ask = calls.loc[call_idx, "ask"]
             put_bid = puts.loc[put_idx, "bid"]
@@ -752,18 +760,16 @@ def compute_recommendation(
                 straddle_spread_pct = 1.0  # Set high spread to fail all tier checks
                 try:
                     if call_idx + 1 < len(calls) and put_idx + 1 < len(puts):
-                        warn_msg = (
-                            f"For ticker {ticker} straddle is either 0 or None from available "
-                            "bid/ask spread... using nearest term strikes."
+                        warnings.warn(
+                            f"For ticker {ticker} straddle is either 0 or None from "
+                            f"available bid/ask spread... using nearest term strikes."
                         )
-                        warnings.warn(warn_msg)
                         straddle = calls.iloc[call_idx + 1]["lastPrice"] + puts.iloc[put_idx + 1]["lastPrice"]
                     if not straddle:
-                        warn_msg = (
-                            f"For ticker {ticker} straddle is either 0 or None from available "
-                            "bid/ask spread... using lastPrice."
+                        warnings.warn(
+                            f"For ticker {ticker} straddle is either 0 or None from "
+                            f"available bid/ask spread... using lastPrice."
                         )
-                        warnings.warn(warn_msg)
                         straddle = calls.iloc[call_idx]["lastPrice"] + puts.iloc[call_idx]["lastPrice"]
                 except IndexError:
                     warnings.warn(f"For ticker {ticker}, call_idx {call_idx} is out of bounds in calls/puts.")
@@ -865,19 +871,43 @@ def compute_recommendation(
         "spread_tier": (
             1
             if straddle_spread_pct <= TIER_1_MAX_SPREAD_PCT
-            else 2 if straddle_spread_pct <= TIER_2_MAX_SPREAD_PCT else 3 if straddle_spread_pct <= TIER_3_MAX_SPREAD_PCT else 4
+            else (
+                2 if straddle_spread_pct <= TIER_2_MAX_SPREAD_PCT else 3 if straddle_spread_pct <= TIER_3_MAX_SPREAD_PCT else 4
+            )
         ),
-        "call_spread": (call_bid, call_ask),
-        "put_spread": (put_bid, put_ask),
+        "call_spread": (call_bid, call_ask, f"strike: {straddle_call_strike}"),
+        "put_spread": (put_bid, put_ask, f"strike: {straddle_put_strike}"),
+        "spread_tiers": {
+            "call": (
+                1
+                if (call_ask - call_bid) / underlying_price <= TIER_1_MAX_SPREAD_PCT
+                else (
+                    2
+                    if (call_ask - call_bid) / underlying_price <= TIER_2_MAX_SPREAD_PCT
+                    else (3 if (call_ask - call_bid) / underlying_price <= TIER_3_MAX_SPREAD_PCT else 4)
+                )
+            ),
+            "put": (
+                1
+                if (put_ask - put_bid) / underlying_price <= TIER_1_MAX_SPREAD_PCT
+                else (
+                    2
+                    if (put_ask - put_bid) / underlying_price <= TIER_2_MAX_SPREAD_PCT
+                    else (3 if (put_ask - put_bid) / underlying_price <= TIER_3_MAX_SPREAD_PCT else 4)
+                )
+            ),
+        },
         "expected_pct_move_straddle": (expected_move_straddle * 100).round(3).astype(str) + "%",
-        "expected_pct_move_call": (expected_move_call * 100).round(3).astype(str) + "%" if expected_move_call else "N/A",
-        "expected_pct_move_put": (expected_move_put * 100).round(3).astype(str) + "%" if expected_move_put else "N/A",
+        "expected_pct_move_call": ((expected_move_call * 100).round(3).astype(str) + "%" if expected_move_call else "N/A"),
+        "expected_pct_move_put": ((expected_move_put * 100).round(3).astype(str) + "%" if expected_move_put else "N/A"),
         "straddle_pct_move_ge_hist_pct_move_pass": expected_move_straddle >= prev_earnings_avg_abs_pct_move,
-        "prev_earnings_avg_abs_pct_move": str(round(prev_earnings_avg_abs_pct_move * 100, 3)) + "%",
-        "prev_earnings_median_abs_pct_move": str(round(prev_earnings_median_abs_pct_move * 100, 3)) + "%",
-        "prev_earnings_min_abs_pct_move": str(round(prev_earnings_min_abs_pct_move * 100, 3)) + "%",
-        "prev_earnings_max_abs_pct_move": str(round(prev_earnings_max_abs_pct_move * 100, 3)) + "%",
-        "prev_earnings_values": [str(round(i * 100, 3)) + "%" for i in prev_earnings_values],
+        "prev_earnings_stats": {
+            "avg_abs_pct_move": str(round(prev_earnings_avg_abs_pct_move * 100, 3)) + "%",
+            "median_abs_pct_move": str(round(prev_earnings_median_abs_pct_move * 100, 3)) + "%",
+            "min_abs_pct_move": str(round(prev_earnings_min_abs_pct_move * 100, 3)) + "%",
+            "max_abs_pct_move": str(round(prev_earnings_max_abs_pct_move * 100, 3)) + "%",
+            "values": [str(round(i * 100, 3)) + "%" for i in prev_earnings_values],
+        },
         "earnings_release_time": earnings_release_time,
     }
 
@@ -911,7 +941,12 @@ if __name__ == "__main__":
         help="Earnings date in YYYY-MM-DD format (default: today)",
     )
 
-    parser.add_argument("--tickers", nargs="+", required=True, help="List of ticker symbols (e.g., NVDA AAPL TSLA)")
+    parser.add_argument(
+        "--tickers",
+        nargs="+",
+        required=True,
+        help="List of ticker symbols (e.g., NVDA AAPL TSLA)",
+    )
 
     parser.add_argument(
         "--verbose",

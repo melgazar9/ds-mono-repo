@@ -19,7 +19,6 @@ warnings.filterwarnings("ignore", message="Not enough unique days to interpolate
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
-# Load configuration
 def load_config():
     config_path = os.path.join(os.path.dirname(__file__), "config.yml")
     with open(config_path, "r") as file:
@@ -884,6 +883,8 @@ def compute_recommendation(
     atm_call_iv = {}
     atm_put_iv = {}
     straddle = None
+    straddle_call_strike = None
+    straddle_put_strike = None
     i = 0
     for exp_date, chain in options_chains.items():
         calls = chain.calls
@@ -906,6 +907,9 @@ def compute_recommendation(
         atm_put_iv[exp_date] = put_iv
 
         if i == 0:
+            # Store the strike prices for the nearest expiration
+            straddle_call_strike = calls.loc[call_idx, "strike"]
+            straddle_put_strike = puts.loc[put_idx, "strike"]
             call_bid = calls.loc[call_idx, "bid"]
             call_ask = calls.loc[call_idx, "ask"]
             put_bid = puts.loc[put_idx, "bid"]
@@ -934,14 +938,14 @@ def compute_recommendation(
                 try:
                     if call_idx + 1 < len(calls) and put_idx + 1 < len(puts):
                         warnings.warn(
-                            f"For ticker {ticker} straddle is either 0 or None from available bid/ask "
-                            f"spread... using nearest term strikes."
+                            f"For ticker {ticker} straddle is either 0 or None from "
+                            f"available bid/ask spread... using nearest term strikes."
                         )
                         straddle = calls.iloc[call_idx + 1]["lastPrice"] + puts.iloc[put_idx + 1]["lastPrice"]
                     if not straddle:
                         warnings.warn(
-                            f"For ticker {ticker} straddle is either 0 or None from available bid/ask "
-                            f"spread... using lastPrice."
+                            f"For ticker {ticker} straddle is either 0 or None from "
+                            f"available bid/ask spread... using lastPrice."
                         )
                         straddle = calls.iloc[call_idx]["lastPrice"] + puts.iloc[call_idx]["lastPrice"]
                 except IndexError:
@@ -1044,19 +1048,43 @@ def compute_recommendation(
         "spread_tier": (
             1
             if straddle_spread_pct <= TIER_1_MAX_SPREAD_PCT
-            else 2 if straddle_spread_pct <= TIER_2_MAX_SPREAD_PCT else 3 if straddle_spread_pct <= TIER_3_MAX_SPREAD_PCT else 4
+            else (
+                2 if straddle_spread_pct <= TIER_2_MAX_SPREAD_PCT else 3 if straddle_spread_pct <= TIER_3_MAX_SPREAD_PCT else 4
+            )
         ),
-        "call_spread": (call_bid, call_ask),
-        "put_spread": (put_bid, put_ask),
+        "call_spread": (call_bid, call_ask, f"strike: {straddle_call_strike}"),
+        "put_spread": (put_bid, put_ask, f"strike: {straddle_put_strike}"),
+        "spread_tiers": {
+            "call": (
+                1
+                if (call_ask - call_bid) / underlying_price <= TIER_1_MAX_SPREAD_PCT
+                else (
+                    2
+                    if (call_ask - call_bid) / underlying_price <= TIER_2_MAX_SPREAD_PCT
+                    else (3 if (call_ask - call_bid) / underlying_price <= TIER_3_MAX_SPREAD_PCT else 4)
+                )
+            ),
+            "put": (
+                1
+                if (put_ask - put_bid) / underlying_price <= TIER_1_MAX_SPREAD_PCT
+                else (
+                    2
+                    if (put_ask - put_bid) / underlying_price <= TIER_2_MAX_SPREAD_PCT
+                    else (3 if (put_ask - put_bid) / underlying_price <= TIER_3_MAX_SPREAD_PCT else 4)
+                )
+            ),
+        },
         "expected_pct_move_straddle": (expected_move_straddle * 100).round(3).astype(str) + "%",
-        "expected_pct_move_call": (expected_move_call * 100).round(3).astype(str) + "%" if expected_move_call else "N/A",
-        "expected_pct_move_put": (expected_move_put * 100).round(3).astype(str) + "%" if expected_move_put else "N/A",
+        "expected_pct_move_call": ((expected_move_call * 100).round(3).astype(str) + "%" if expected_move_call else "N/A"),
+        "expected_pct_move_put": ((expected_move_put * 100).round(3).astype(str) + "%" if expected_move_put else "N/A"),
         "straddle_pct_move_ge_hist_pct_move_pass": expected_move_straddle >= prev_earnings_avg_abs_pct_move,
-        "prev_earnings_avg_abs_pct_move": str(round(prev_earnings_avg_abs_pct_move * 100, 3)) + "%",
-        "prev_earnings_median_abs_pct_move": str(round(prev_earnings_median_abs_pct_move * 100, 3)) + "%",
-        "prev_earnings_min_abs_pct_move": str(round(prev_earnings_min_abs_pct_move * 100, 3)) + "%",
-        "prev_earnings_max_abs_pct_move": str(round(prev_earnings_max_abs_pct_move * 100, 3)) + "%",
-        "prev_earnings_values": [str(round(i * 100, 3)) + "%" for i in prev_earnings_values],
+        "prev_earnings_stats": {
+            "avg_abs_pct_move": str(round(prev_earnings_avg_abs_pct_move * 100, 3)) + "%",
+            "median_abs_pct_move": str(round(prev_earnings_median_abs_pct_move * 100, 3)) + "%",
+            "min_abs_pct_move": str(round(prev_earnings_min_abs_pct_move * 100, 3)) + "%",
+            "max_abs_pct_move": str(round(prev_earnings_max_abs_pct_move * 100, 3)) + "%",
+            "values": [str(round(i * 100, 3)) + "%" for i in prev_earnings_values],
+        },
         "earnings_release_time": earnings_release_time,
     }
 
@@ -1135,7 +1163,7 @@ if __name__ == "__main__":
         result = compute_recommendation(ticker)
         is_edge = isinstance(result, dict) and "Recommended" in result.get("improved_suggestion")
         if is_edge:
-            logging.info(" *** EDGE FOUND ***\n")
+            logging.info("*** EDGE FOUND ***\n")
 
         if verbose or is_edge:
             logging.info(f"ticker: {ticker}")

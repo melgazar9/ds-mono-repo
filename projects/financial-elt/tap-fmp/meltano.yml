@@ -64,7 +64,7 @@ plugins:
       - symbol_changes.*
       - etf_symbols.*
       - actively_trading.*
-      # - earnings_transcripts.*  # limited to Premium, build or enterprise plans
+      - earnings_transcripts.*  # limited to Ultimate, build or enterprise plans
       - available_exchanges.*
       - available_sectors.*
       - available_industries.*
@@ -153,9 +153,9 @@ plugins:
       - balance_sheet.*
       - cash_flow.*
       - latest_financial_statements.*
-#      - income_statement_ttm.*  # Ultimate and above
-#      - balance_sheet_ttm.*  # Ultimate and above
-#      - cash_flow_ttm.*  # Ultimate and above
+      - income_statement_ttm.*  # Ultimate and above
+      - balance_sheet_ttm.*  # Ultimate and above
+      - cash_flow_ttm.*  # Ultimate and above
       - key_metrics.*
       - financial_ratios.*
       - key_metrics_ttm.*
@@ -178,12 +178,13 @@ plugins:
 
       ### Form 13F Streams ###
 
-#      - institutional_ownership_filings.*
-#      - filings_extract.*
-#      - holder_performance_summary.*
-#      - holder_industry_breakdown.*
-#      - positions_summary.*
-#      - industry_performance_summary.*
+      - institutional_ownership_filings.*
+      - filings_extract.*
+      - holder_performance_summary.*
+      - holder_industry_breakdown.*
+      - positions_summary.*
+      - industry_performance_summary.*
+      - form_13f_filings_extracts_with_analytics.*
 
       ### Index Streams ###
 
@@ -271,7 +272,7 @@ plugins:
 
       - fmp_articles.*
       - general_news.*
-#      - press_releases.*
+      - press_releases.*
       - stock_news.*
       - crypto_news.*
       - forex_news.*
@@ -341,12 +342,12 @@ plugins:
       - etf_and_fund_holdings.*
       - etf_and_mutual_fund_holdings.*
       - etf_and_fund_country_allocation.*
-      #      - etf_asset_exposure.*
+      - etf_asset_exposure.*
       - etf_sector_weighting.*
-      #      - mutual_fund_and_etf_disclosure.*
-      #      - mutual_fund_disclosures.*
-      #      - mutual_fund_and_etf_disclosure_name_search.*
-      #      - fund_and_etf_disclosures_by_date.*
+      - mutual_fund_and_etf_disclosure.*
+      - mutual_fund_disclosures.*
+      - mutual_fund_and_etf_disclosure_name_search.*
+      - fund_and_etf_disclosures_by_date.*
 
     config:
       start_date: '1995-01-01T00:00:00Z'
@@ -383,6 +384,16 @@ plugins:
         query_params:
           invalid: false
           limit: 10000
+
+      ### Earnings Transcript Streams ###
+
+      latest_earning_transcripts:
+        query_params:
+          limit: 1000
+
+      earnings_transcripts:
+        query_params:
+          limit: 1000
 
       ### Analyst Streams ###
 
@@ -856,6 +867,21 @@ plugins:
           limit: 1000
 
       ### ETF and Mutual Fund Streams ###
+
+      ### Form 13F Streams ###
+
+      institutional_ownership_filings:
+        query_params:
+          limit: 1000
+
+      filings_extract:
+        query_params:
+          limit: 1000
+
+      form_13f_filings_extracts_with_analytics:
+        query_params:
+          limit: 100
+
 
       ### Index Streams ###
 
