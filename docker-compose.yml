@@ -6,7 +6,6 @@ volumes:
   elasticsearch_data:
   kibana_data:
   filebeat_data:
-  logs:
 
 services:
   elasticsearch:
@@ -57,7 +56,7 @@ services:
       - filebeat_data:/usr/share/filebeat/data
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - logs:/app/logs:ro
+      - ./logs:/app/logs:ro
       - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
       - ./filebeat/filebeat-5d-policy.json:/usr/share/filebeat/filebeat-5d-policy.json:ro
     environment:
@@ -80,7 +79,7 @@ services:
     environment:
       - FINANCIAL_ELT_TAPS_TO_RUN=tap-yfinance
     volumes:
-      - logs:/app/logs
+      - ./logs:/app/logs
       - ./projects/financial-elt/tap-yfinance/output:/app/tap-yfinance/output
       - ./projects/financial-elt/tap-yfinance/state:/app/tap-yfinance/state
     logging:
@@ -110,7 +109,7 @@ services:
     environment:
       - FINANCIAL_ELT_TAPS_TO_RUN=tap-yahooquery
     volumes:
-      - logs:/app/logs
+      - ./logs:/app/logs
       - ./projects/financial-elt/tap-yahooquery/output:/app/tap-yahooquery/output
       - ./projects/financial-elt/tap-yahooquery/state:/app/tap-yahooquery/state
     logging:
@@ -140,7 +139,7 @@ services:
     environment:
       - FINANCIAL_ELT_TAPS_TO_RUN=tap-polygon
     volumes:
-      - logs:/app/logs
+      - ./logs:/app/logs
       - ./projects/financial-elt/tap-polygon/output:/app/tap-polygon/output
       - ./projects/financial-elt/tap-polygon/state:/app/tap-polygon/state
     logging:
@@ -170,7 +169,7 @@ services:
     environment:
       - FINANCIAL_ELT_TAPS_TO_RUN=tap-fmp
     volumes:
-      - logs:/app/logs
+      - ./logs:/app/logs
       - ./projects/financial-elt/tap-fmp/output:/app/tap-fmp/output
       - ./projects/financial-elt/tap-fmp/state:/app/tap-fmp/state
     logging:
