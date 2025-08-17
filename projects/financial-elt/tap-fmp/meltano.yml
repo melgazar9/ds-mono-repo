@@ -333,9 +333,9 @@ plugins:
 
       ### ESG Data Streams (Premium) ###
 
-      - esg_scores.*
+      - esg_disclosures.*
+      - esg_ratings.*
       - esg_benchmark.*
-      - esg_investment_search.*
 
       ### ETF and Mutual Fund Streams ###
 
@@ -348,6 +348,42 @@ plugins:
       - mutual_fund_disclosures.*
       - mutual_fund_and_etf_disclosure_name_search.*
       - fund_and_etf_disclosures_by_date.*
+
+      ### Quote Streams ###
+
+#      - stock_quote.*
+#      - stock_quote_short.*
+#      - aftermarket_trade.*
+#      - aftermarket_quote.*
+#      - stock_price_change.*
+#      - stock_batch.*
+#      - stock_batch_quote.*
+#      - stock_batch_quote_short.*
+#      - batch_aftermarket_trade.*
+#      - batch_aftermarket_quote.*
+#      - mutual_fund_price_quotes.*
+#      - etf_price_quotes.*
+
+      ### Bulk Streams ###
+
+      - company_profile_bulk.*
+      - stock_rating_bulk.*
+      - dcf_valuations_bulk.*
+      - financial_scores_bulk.*
+      - price_target_summary_bulk.*
+      - etf_holder_bulk.*
+      - upgrades_downgrades_consensus_bulk.*
+      - key_metrics_ttm_bulk.*
+      - ratios_ttm_bulk.*
+      - stock_peers_bulk.*
+      - earnings_surprises_bulk.*
+      - income_statement_bulk.*
+      - income_statement_growth_bulk.*
+      - balance_sheet_statement_bulk.*
+      - balance_sheet_statement_growth_bulk.*
+      - cash_flow_statement_bulk.*
+      - cash_flow_statement_growth_bulk.*
+      - eod_bulk.*
 
     config:
       start_date: '1995-01-01T00:00:00Z'
@@ -852,19 +888,7 @@ plugins:
         query_params:
           from: "1990-01-01"
 
-      ### ESG Data Streams (Premium) ###
-
-      esg_scores:
-        query_params:
-          limit: 5000
-
-      esg_benchmark:
-        query_params:
-          limit: 5000
-
-      esg_investment_search:
-        query_params:
-          limit: 1000
+      ### ESG Data Streams ###
 
       ### ETF and Mutual Fund Streams ###
 
@@ -897,6 +921,7 @@ plugins:
         query_params:
           from: "2015-01-01"
 
+      ### Bulk Streams ###
 
 
   loaders:
