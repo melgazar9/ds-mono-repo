@@ -55,4 +55,5 @@ tier_3:
 
 # Other Settings
 settings:
+  debug: true
   plot_location: null  # Set to path for plot output, null to disable
