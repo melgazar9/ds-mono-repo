@@ -168,11 +168,21 @@ class MarketDataExtractor:
     def get_valid_expirations(self, max_days_out=75):
         today = datetime.today().date()
         max_date = today + timedelta(days=max_days_out)
+        min_calendar_date = today + timedelta(days=45)
+
         self.valid_expirations = []
+        has_45_day_expiration = False
+
         for expiration in sorted(self.chain.expirations):
             exp_date_obj = datetime.strptime(expiration, "%Y%m%d").date()
-            if today <= exp_date_obj <= max_date:
+            if today < exp_date_obj <= max_date:
                 self.valid_expirations.append(expiration)
+                if exp_date_obj >= min_calendar_date:
+                    has_45_day_expiration = True
+
+        if not has_45_day_expiration:
+            raise ValueError("No expiration date 45 days or more in the future found. Calendar spread strategy not viable.")
+
         logging.info(f"Processing {len(self.valid_expirations)} expirations within 75 days for {self.ticker}")
         self.valid_expirations = sorted(self.valid_expirations)
         return self
@@ -622,10 +632,7 @@ class EarningsIVScanner(MarketDataExtractor):
         if not ticker:
             return "No stock symbol provided."
 
-        self.get_option_exp_dates()
-        if not self.chain:
-            option_results = self.get_all_option_data()
-
+        option_results = self.get_all_option_data()
         options_chains = self._parse_option_chain(option_results)
 
         if self.bars_3mo is None or self.bars_3mo.empty:
@@ -1469,9 +1476,8 @@ if __name__ == "__main__":
         # mde = MarketDataExtractor(ticker="DIS")
         # mde.get_historical_bars()
         # mde.get_option_data()
-        iv_scanner = EarningsIVScanner(ticker="DIS")
-
         for ticker in tickers:
+            iv_scanner = EarningsIVScanner(ticker=ticker)
             result = iv_scanner.compute_recommendation(ticker)
             is_edge = isinstance(result, dict) and "Recommended" in result.get("improved_suggestion")
             if is_edge:
