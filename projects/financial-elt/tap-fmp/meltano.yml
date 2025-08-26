@@ -49,12 +49,35 @@ plugins:
         label: Start Date
         description: Initial date to start extracting data from
 
+      - name: exchange_variants_source
+        kind: object
+        label: Exchange Variants Source Configuration
+        description: Configuration for how to source exchange variants data
+        default:
+          use_csv: true
+          csv_path: "distinct_exchange_variants.csv"
+          use_database: false
+          database_connection: null
+          cache_ttl_hours: 72
+
+      - name: database_config
+        kind: object
+        label: Database Configuration  
+        description: Database connection settings for exchange variants
+        default:
+          host: null
+          port: null
+          database: null
+          username: null
+          password: null
+          schema: "public"
+          table: "exchange_variants"
+
     select:
       ### Search Streams ###
 
       - stock_screener.*
       - exchange_variants.*
-
 
       ### Directory Streams ###
 
@@ -62,14 +85,13 @@ plugins:
       - financial_statement_symbols.*
       - cik_list.*
       - symbol_changes.*
-      - etf_symbols.*
+      - etf_list.*
       - actively_trading.*
       - earnings_transcripts.*  # limited to Ultimate, build or enterprise plans
       - available_exchanges.*
       - available_sectors.*
       - available_industries.*
       - available_countries.*
-
 
       ### Analyst Streams ###
 
@@ -85,7 +107,6 @@ plugins:
       - stock_grades_consensus.*  #  Premium: Symbol Limited to US, UK, and Canada Exchanges
       - stock_grades_news.*
       - stock_grades_latest_news.*  #  Limited to Premium and above
-
 
       ### Calendar Streams ###
 
@@ -109,30 +130,19 @@ plugins:
       - company_employee_count.*
       - company_historical_employee_count.*
       - company_market_cap.*  # Starter: US Exchanges only, Premium: Symbol Limited to US, UK, and Canada Exchanges
-#      - company_batch_market_cap.*  # not useful unless passing small number of symbols
-      - historical_market_cap.*  # Build: up to 5 years
+      - company_batch_market_cap.*
+      - historical_market_cap.*
       - company_share_and_liquidity_float.*
       - all_shares_float.*
       - latest_mergers_and_acquisitions.*
-#      - search_mergers_and_acquisitions.*  # searched by name, premium and up
       - company_executives.*
       - executive_compensation.*
-      - executive_compensation_benchmark.*  # Premium and up
+      - executive_compensation_benchmark.*
 
       ### Chart Streams ###
 
-      # Starter Symbols are Limited to US Exchanges, Premium/Build Limited to US, UK, and Canada Exchanges
-
-#      - chart_light.*
-#      - chart_full.*
-      - unadjusted_price.*
-#      - dividend_adjusted_prices.*
-#      - prices_1min.*  # Only available for Premium plans and up
-#      - prices_5min.*
-#      - prices_15min.*
-#      - prices_30min.*
-#      - prices_1hr.*
-#      - prices_4h.*
+      - securities_prices_5min.*
+#      - securities_prices_1h.*
 
       ### DCF Streams ###
 
@@ -196,7 +206,7 @@ plugins:
       - historical_index_full_chart.*
       - index_1min.*
 #      - index_5min.*
-      - index_1hr.*
+      - index_1h.*
       - sp500_constituent.*
       - nasdaq_constituent.*
       - dow_jones_constituent.*
@@ -236,7 +246,7 @@ plugins:
 #      - commodities_light_chart.*
       - commodities_full_chart.*
       - commodities_1min.*
-      - commodities_1hr.*
+      - commodities_1h.*
 
       ### Fundraiser Streams ###
 
@@ -266,7 +276,8 @@ plugins:
 #      - forex_light_chart.*
       - forex_full_chart.*
       - forex_1min.*
-      - forex_1hr.*
+#      - forex_5min.*
+      - forex_1h.*
 
       ### News Streams ###
 
@@ -276,7 +287,7 @@ plugins:
       - stock_news.*
       - crypto_news.*
       - forex_news.*
-#      - search_press_releases.*
+      - press_releases.*
       - search_stock_news.*
       - search_crypto_news.*
       - search_forex_news.*
@@ -316,7 +327,6 @@ plugins:
       - industry_classification_list.*
       - industry_classification_search.*
       - all_industry_classification.*
-
 
       ### COT Streams ###
 
@@ -386,13 +396,41 @@ plugins:
       - eod_bulk.*
 
     config:
-      start_date: '1995-01-01T00:00:00Z'
+      start_date: '1990-01-01T00:00:00Z'
       api_key: ${FMP_API_KEY}
       base_url: https://financialmodelingprep.com
-      min_backoff_seconds: 3
+      min_throttle_seconds: 0.005
 
-      symbols:
+      # Filter to US only
+      filter_countries: ["US"]
+      filter_currencies: ["USD"]
+
+      exchange_variants_source:
+        use_csv: true
+        csv_path: "distinct_exchange_variants.csv"
+        use_database: false
+        database_connection: null
+        cache_ttl_hours: 72
+
+      database_config:
+        host: ${POSTGRES_HOST}
+        port: ${POSTGRES_PORT}
+        database: ${POSTGRES_DATABASE}
+        username: ${POSTGRES_USERNAME}
+        password: ${POSTGRES_PASSWORD}
+        schema: "public"
+        table: "exchange_variants"
+
+      company_symbols:
         select_symbols:
+          - "*"
+
+      index_symbols:
+        select_index_symbols:
+          - "*"
+
+      etf_symbols:
+        select_etf_symbols:
           - "*"
 
       ciks:
@@ -403,12 +441,36 @@ plugins:
         select_exchanges:
           - "*"
 
+      sectors:
+        select_sectors:
+          - "*"
+
+      industries:
+        select_industries:
+          - "*"
+
+      commodities:
+        select_commodities:
+          - "*"
+
+      crypto_symbols:
+        select_crypto_symbols:
+          - "*"
+
+      forex_pairs:
+        select_forex_pairs:
+          - "*"
+
+      cot_symbols:
+        select_cot_symbols:
+          - "*"
+
       ### Search Streams ###
 
       stock_screener:
         query_params:
           volumeMoreThan: 1000000
-          limit: 1000
+          limit: 10000
 
       ### Directory Streams ###
 
@@ -437,7 +499,7 @@ plugins:
         query_params:
           limit: 1000
 
-      ratings_snapshot:
+      rating_snapshot:
         query_params:
           limit: 1000
 
@@ -469,7 +531,7 @@ plugins:
 
       dividends_calendar:
         query_params:
-          from: "2020-09-01"  # Premium up to 5 years
+          from: "1990-01-01"
 
       dividends_company:
         query_params:
@@ -481,7 +543,7 @@ plugins:
 
       earnings_calendar:
         query_params:
-          from: "2020-09-01"  # Premium up to 5 years
+          from: "1990-01-01"
 
       ipos_calendar:
         query_params:
@@ -501,8 +563,7 @@ plugins:
 
       stock_splits_calendar:
         query_params:
-          from: "2021-09-01"
-
+          from: "1990-01-01"
 
       ### Company Streams ###
 
@@ -588,9 +649,9 @@ plugins:
         query_params:
           limit: 1000
 
-      insider_trades_by_reporting_name_search:
-        query_params:
-          name: "Zuckerberg Mark"
+#      insider_trades_by_reporting_name_search:
+#        query_params:
+#          name: "Zuckerberg Mark"
 
       balance_sheet_growth:
         query_params:
@@ -634,19 +695,19 @@ plugins:
 
       market_sector_performance_snapshot:
         other_params:
-          date_range: [ "1990-01-01", "today" ]
+          date_range: ["1990-01-01", "today"]
 
       industry_performance_snapshot:
         other_params:
-          date_range: [ "1990-01-01", "today" ]
+          date_range: ["1990-01-01", "today"]
 
       sector_pe_snapshot:
         other_params:
-          date_range: [ "1990-01-01", "today" ]
+          date_range: ["1990-01-01", "today"]
 
       industry_pe_snapshot:
         other_params:
-          date_range: [ "1990-01-01", "today" ]
+          date_range: ["1990-01-01", "today"]
 
       historical_sector_performance:
         query_params:
@@ -668,47 +729,41 @@ plugins:
 
       commodities_full_chart:
         query_params:
-          from: "2000-01-01"
+          from: "1990-01-01"
           limit: 10000
 
-      commodities_1min:
+      commodities_1h:
         query_params:
-          from: "2000-01-01"
+          from: "1990-01-01"
           limit: 10000
-
-      commodities_1hr:
-        from: "2000-01-01"
-        limit: 10000
-
-      ### Fundraiser Streams ###
-
-      latest_crowdfunding_campaigns:
-        query_params:
-          limit: 100
-
-      equity_offering_updates:
-        query_params:
-          limit: 100
-        other_params:
-          use_cached_ciks: true
 
       ### Crypto Streams ###
+
+      historical_crypto_full_chart:
+        query_params:
+          from: "2009-01-01"  # Bitcoin started in 2009
+          limit: 10000
+
+      crypto_5min:
+        query_params:
+          from: "2015-01-01"  # More realistic for minute-level crypto data
+          limit: 10000
 
       ### Forex Streams ###
 
       forex_full_chart:
         query_params:
-          from: "2015-01-01"
+          from: "1990-01-01"
           limit: 10000
 
-      forex_1min:
+      forex_5min:
         query_params:
-          from: "2015-01-01"
+          from: "2000-01-01"
           limit: 10000
 
-      forex_1hr:
+      forex_1h:
         query_params:
-          from: "2015-01-01"
+          from: "1990-01-01"
           limit: 10000
 
       ### News Streams ###
@@ -719,7 +774,7 @@ plugins:
 
       general_news:
         query_params:
-          from: "2015-01-01"
+          from: "2007-01-01"
           limit: 250
 
       press_releases:
@@ -744,19 +799,16 @@ plugins:
 
       search_stock_news:
         query_params:
-          symbols: [ "AAPL", "META" ]
           from: "2015-01-01"
           limit: 250
 
       search_crypto_news:
         query_params:
-          symbols: [ "BTCUSD", "ETHUSD" ]
           from: "2015-01-01"
           limit: 250
 
       search_forex_news:
         query_params:
-          symbols: "EURUSD"
           from: "2015-01-01"
           limit: 250
 
@@ -767,63 +819,63 @@ plugins:
           periodLength: 10
           from: "2015-01-01"
         other_params:
-          timeframes: [ "5min", "1hour" ]
+          timeframes: ["5min", "1hour"]
 
       exponential_moving_average:
         query_params:
           periodLength: 10
           from: "2015-01-01"
         other_params:
-          timeframes: [ "5min" ]
+          timeframes: ["5min", "1hour"]
 
       weighted_moving_average:
         query_params:
           periodLength: 10
           from: "2015-01-01"
         other_params:
-          timeframes: [ "5min" ]
+          timeframes: ["5min", "1hour"]
 
       double_exponential_moving_average:
         query_params:
           periodLength: 10
           from: "2015-01-01"
         other_params:
-          timeframes: [ "5min" ]
+          timeframes: ["5min", "1hour"]
 
       triple_exponential_moving_average:
         query_params:
           periodLength: 10
           from: "2015-01-01"
         other_params:
-          timeframes: [ "5min" ]
+          timeframes: ["5min", "1hour"]
 
       relative_strength_index:
         query_params:
           periodLength: 10
           from: "2015-01-01"
         other_params:
-          timeframes: [ "5min" ]
+          timeframes: ["5min", "1hour"]
 
       standard_deviation:
         query_params:
           periodLength: 10
           from: "2015-01-01"
         other_params:
-          timeframes: [ "5min" ]
+          timeframes: ["5min", "1hour"]
 
       williams:
         query_params:
           periodLength: 10
           from: "2015-01-01"
         other_params:
-          timeframes: [ "5min" ]
+          timeframes: ["5min", "1hour"]
 
       average_directional_index:
         query_params:
           periodLength: 10
           from: "2015-01-01"
         other_params:
-          timeframes: [ "5min" ]
+          timeframes: ["5min", "1hour"]
 
       ### Senate Streams ###
 
@@ -851,17 +903,17 @@ plugins:
 
       sec_filings_by_symbol:
         query_params:
-          from: "2015-01-01"
+          from: "1990-01-01"
           limit: 1000
 
       sec_filings_by_cik:
         query_params:
-          from: "2015-01-01"
-          limit: 1000
+          from: "1990-01-01"
+          limit: 10000
 
       latest_sec_filings:
         query_params:
-          from: "2015-01-01"
+          from: "1990-01-01"
           limit: 1000
 
       ### COT Streams ###
@@ -906,23 +958,99 @@ plugins:
         query_params:
           limit: 100
 
-
       ### Index Streams ###
 
       historical_index_full_chart:
         query_params:
           from: "1990-01-01"
 
-      index_1min:
+      index_5min:
         query_params:
-          from: "2015-01-01"
+          from: "1990-01-01"
 
-      index_1hr:
+      index_1h:
         query_params:
-          from: "2015-01-01"
+          from: "1990-01-01"
 
       ### Bulk Streams ###
 
+      company_profile_bulk:
+        other_params:
+          parts: "*"
+
+      stock_rating_bulk:
+        other_params:
+          parts: "*"
+
+      dcf_valuations_bulk:
+        other_params:
+          parts: "*"
+
+      financial_scores_bulk:
+        other_params:
+          parts: "*"
+
+      price_target_summary_bulk:
+        other_params:
+          parts: "*"
+
+      etf_holder_bulk:
+        other_params:
+          parts: "*"
+
+      upgrades_downgrades_consensus_bulk:
+        other_params:
+          parts: "*"
+
+      key_metrics_ttm_bulk:
+        other_params:
+          parts: "*"
+
+      ratios_ttm_bulk:
+        other_params:
+          parts: "*"
+
+      stock_peers_bulk:
+        other_params:
+          parts: "*"
+
+      earnings_surprises_bulk:
+        other_params:
+          years: "*"
+
+      income_statement_bulk:
+        other_params:
+          years: "*"
+          periods: "*"
+
+      income_statement_growth_bulk:
+        other_params:
+          years: "*"
+          periods: "*"
+
+      balance_sheet_statement_bulk:
+        other_params:
+          years: "*"
+          periods: "*"
+
+      balance_sheet_statement_growth_bulk:
+        other_params:
+          years: "*"
+          periods: "*"
+
+      cash_flow_statement_bulk:
+        other_params:
+          years: "*"
+          periods: "*"
+
+      cash_flow_statement_growth_bulk:
+        other_params:
+          years: "*"
+          periods: "*"
+
+      eod_bulk:
+        other_params:
+          date_gte: "1990-01-01"
 
   loaders:
   - name: target-jsonl
