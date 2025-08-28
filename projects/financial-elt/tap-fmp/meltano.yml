@@ -78,14 +78,14 @@ plugins:
       - as_reported_cashflow_statement.*
       - as_reported_financial_statement.*
       - as_reported_income_statement.*
-#      - average_directional_index.*
+      - average_directional_index.*
       - balance_sheet_growth.*
       - balance_sheet.*
       - cash_flow_growth.*
       - cash_flow.*
       - company_profile_by_cik.*
       - crowdfunding_by_cik.*
-#      - double_exponential_moving_average.*
+      - double_exponential_moving_average.*
       - earnings_transcripts.*
       - enterprise_values.*
       - equity_offering_by_cik.*
@@ -109,7 +109,7 @@ plugins:
       - key_metrics.*
       - mutual_fund_disclosures.*
       - positions_summary.*
-#      - relative_strength_index.*
+      - relative_strength_index.*
       - revenue_geographic_segmentation.*
       - revenue_product_segmentation.*
       - press_releases.*
@@ -119,45 +119,44 @@ plugins:
       - sec_filings_by_cik.*
       - sec_filings_by_symbol.*
       - sec_filings_company_search_by_cik.*
-#      - simple_moving_average.*
-#      - standard_deviation.*
-#      - triple_exponential_moving_average.*
-#      - weighted_moving_average.*
+      - simple_moving_average.*
+      - standard_deviation.*
+      - triple_exponential_moving_average.*
+      - weighted_moving_average.*
       - williams.*
       - eod_bulk.*
-      - etf_and_mutual_fund_info.*.*
-      - etf_and_fund_holdings.*.*
-      - etf_and_fund_country_allocation.*.*
-      - etf_asset_exposure.*.*
+      - etf_and_fund_info.*
+      - etf_and_fund_holdings.*
+      - etf_and_fund_country_allocation.*
+      - etf_asset_exposure.*
 #      - mutual_fund_and_etf_disclosure_name_search.*
       - sec_company_full_profile.*
       - etf_list.*
       - securities_prices_1h.*
-#      - index_quote.*
-#      - index_short_quote.*
+      - index_quote.*
+      - index_short_quote.*
       - index_5min.*
-#      - commodities_quote.*
-#      - commodities_quote_short.*
-#      - all_commodities_quotes.*
-#      - commodities_light_chart.*
-#      - full_crypto_quote.*
-#      - crypto_quote_short.*
-#      - all_crypto_quotes.*
-#      - historical_crypto_light_chart.*
+      - commodities_quote.*
+      - commodities_quote_short.*
+      - all_commodities_quotes.*
+      - commodities_light_chart.*
+      - full_crypto_quote.*
+      - crypto_quote_short.*
+      - all_crypto_quotes.*
+      - historical_crypto_light_chart.*
       - crypto_1min.*
       - crypto_1h.*
-#      - forex_quote.*
-#      - forex_quote_short.*
-#      - batch_forex_quotes.*
-#      - forex_light_chart.*
-#      - stock_quote.*
-#      - stock_quote_short.*
+      - forex_quote.*
+      - forex_quote_short.*
+      - batch_forex_quotes.*
+      - forex_light_chart.*
+#      - securities_quote.*
+#      - securities_quote_short.*
       - aftermarket_trade.*
-#      - aftermarket_quote.*
-      - stock_price_change.*
-      - stock_batch.*
-#      - stock_batch_quote.*
-#      - stock_batch_quote_short.*
+      - aftermarket_quote.*
+      - securities_price_change.*
+#      - securities_batch_quote.*
+#      - securities_batch_quote_short.*
       - batch_aftermarket_trade.*
 #      - batch_aftermarket_quote.*
 #      - mutual_fund_price_quotes.*
