@@ -1,5 +1,5 @@
 from flask import Flask, make_response
-from utils import *
+from .utils import *
 
 DEBUG = False
 ENVIRONMENT = os.getenv("ENVIRONMENT")

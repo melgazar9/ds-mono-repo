@@ -14,8 +14,8 @@ RUN apt-get update && \
     rm -rf /var/lib/{apt,dpkg,cache,log}/ && \
     pip install --no-cache-dir -U pip pipx && \
     pipx ensurepath && \
-    pipx install poetry==2.1.3 && \
-    poetry install
+    pip install --no-cache-dir uv && \
+    uv sync
 
 RUN ulimit -c unlimited
 
@@ -46,4 +46,4 @@ ENTRYPOINT ["/app/entrypoint.sh"]
 
 EXPOSE 5000
 
-CMD ["bash", "-c", "poetry run python host.py"]
+CMD ["bash", "-c", "uv run python host.py"]
