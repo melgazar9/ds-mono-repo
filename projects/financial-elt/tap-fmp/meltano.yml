@@ -74,326 +74,94 @@ plugins:
           table: "exchange_variants"
 
     select:
-      ### Search Streams ###
-
-      - stock_screener.*
-      - exchange_variants.*
-
-      ### Directory Streams ###
-
-      - company_symbols.*
-      - financial_statement_symbols.*
-      - cik_list.*
-      - symbol_changes.*
-      - etf_list.*
-      - actively_trading.*
-      - earnings_transcripts.*  # limited to Ultimate, build or enterprise plans
-      - available_exchanges.*
-      - available_sectors.*
-      - available_industries.*
-      - available_countries.*
-
-      ### Analyst Streams ###
-
-      - analyst_estimates.*
-      - rating_snapshot.*
-      - historical_ratings.*
-      - price_target_summary.*  # Premium: Symbol Limited to US, UK, and Canada Exchanges
-      - price_target_consensus.*  # Premium: Symbol Limited to US, UK, and Canada Exchanges
-      - price_target_news.*
-      - price_target_latest_news.*
-      - stock_grades.*  #  Premium: Symbol Limited to US, UK, and Canada Exchanges
-      - historical_stock_grades.*  #  Premium: Symbol Limited to US, UK, and Canada Exchanges
-      - stock_grades_consensus.*  #  Premium: Symbol Limited to US, UK, and Canada Exchanges
-      - stock_grades_news.*
-      - stock_grades_latest_news.*  #  Limited to Premium and above
-
-      ### Calendar Streams ###
-
-      - dividends_company.*
-      - dividends_calendar.*
-      - earnings_report.*  # Starter/Build up to 1 year, Premium up to 5 years.
-      - earnings_calendar.*
-      - ipos_calendar.*
-      - ipos_disclosure.*
-      - ipos_prospectus.*
-      - stock_split_details.*  # Premium: Symbol Limited to US, UK, and Canada Exchanges
-      - stock_splits_calendar.*  # Starter/Build up to 1 year, Premium up to 5 years.
-
-      ### Company Streams ###
-
-      - company_profile_by_symbol.*
-      - company_profile_by_cik.*
-      - company_notes.*
-      - stock_peer_comparison.*
-      - delisted_companies.*  # Premium and up
-      - company_employee_count.*
-      - company_historical_employee_count.*
-      - company_market_cap.*  # Starter: US Exchanges only, Premium: Symbol Limited to US, UK, and Canada Exchanges
-      - company_batch_market_cap.*
-      - historical_market_cap.*
-      - company_share_and_liquidity_float.*
-      - all_shares_float.*
-      - latest_mergers_and_acquisitions.*
-      - company_executives.*
-      - executive_compensation.*
-      - executive_compensation_benchmark.*
-
-      ### Chart Streams ###
-
-      - securities_prices_5min.*
-#      - securities_prices_1h.*
-
-      ### DCF Streams ###
-
-      - dcf_valuation.*
-      - levered_dcf.*
-      - custom_dcf.*
-      - custom_dcf_levered.*
-
-      ### Market Hours Streams ###
-
-      - exchange_market_hours.*
-      - holidays_by_exchanges.*
-      - all_exchange_market_hours.*
-
-      ### Statement Streams ###
-
-      - income_statement.*
-      - balance_sheet.*
-      - cash_flow.*
-      - latest_financial_statements.*
-      - income_statement_ttm.*  # Ultimate and above
-      - balance_sheet_ttm.*  # Ultimate and above
-      - cash_flow_ttm.*  # Ultimate and above
-      - key_metrics.*
-      - financial_ratios.*
-      - key_metrics_ttm.*
-      - financial_ratios_ttm.*
-      - financial_scores.*
-      - owner_earnings.*
-      - enterprise_values.*
-      - income_statement_growth.*
-      - balance_sheet_growth.*
-      - cash_flow_growth.*
-      - financial_statement_growth.*
-      - financial_report_dates.*
-      - financial_reports_form_10k_json.*
-      - revenue_product_segmentation.*
-      - revenue_geographic_segmentation.*
-      - as_reported_income_statement.*
       - as_reported_balance_statement.*
       - as_reported_cashflow_statement.*
       - as_reported_financial_statement.*
-
-      ### Form 13F Streams ###
-
-      - institutional_ownership_filings.*
+      - as_reported_income_statement.*
+#      - average_directional_index.*
+      - balance_sheet_growth.*
+      - balance_sheet.*
+      - cash_flow_growth.*
+      - cash_flow.*
+      - company_profile_by_cik.*
+      - crowdfunding_by_cik.*
+#      - double_exponential_moving_average.*
+      - earnings_transcripts.*
+      - enterprise_values.*
+      - equity_offering_by_cik.*
+      - equity_offering_updates.*
+      - exponential_moving_average.*
       - filings_extract.*
-      - holder_performance_summary.*
-      - holder_industry_breakdown.*
-      - positions_summary.*
-      - industry_performance_summary.*
+      - financial_ratios.*
+      - financial_reports_form_10k_json.*
+      - forex_1min.*
       - form_13f_filings_extracts_with_analytics.*
-
-      ### Index Streams ###
-
-      - index_list.*
+      - historical_index_full_chart.*
+      - historical_market_cap.*
+      - historical_ratings.*
+      - holder_industry_breakdown.*
+      - holder_performance_summary.*
+      - income_statement_growth.*
+      - income_statement.*
+      - index_1h.*
+      - index_1min.*
+      - insider_trades_search.*
+      - key_metrics.*
+      - mutual_fund_disclosures.*
+      - positions_summary.*
+#      - relative_strength_index.*
+      - revenue_geographic_segmentation.*
+      - revenue_product_segmentation.*
+      - press_releases.*
+      - crypto_news.*
+      - forex_news.*
+      - stock_news.*
+      - sec_filings_by_cik.*
+      - sec_filings_by_symbol.*
+      - sec_filings_company_search_by_cik.*
+#      - simple_moving_average.*
+#      - standard_deviation.*
+#      - triple_exponential_moving_average.*
+#      - weighted_moving_average.*
+      - williams.*
+      - eod_bulk.*
+      - etf_and_mutual_fund_info.*.*
+      - etf_and_fund_holdings.*.*
+      - etf_and_fund_country_allocation.*.*
+      - etf_asset_exposure.*.*
+#      - mutual_fund_and_etf_disclosure_name_search.*
+      - sec_company_full_profile.*
+      - etf_list.*
+      - securities_prices_1h.*
 #      - index_quote.*
 #      - index_short_quote.*
-#      - all_index_quotes.*
-#      - historical_index_light_chart.*
-      - historical_index_full_chart.*
-      - index_1min.*
-#      - index_5min.*
-      - index_1h.*
-      - sp500_constituent.*
-      - nasdaq_constituent.*
-      - dow_jones_constituent.*
-      - historical_sp500_constituent.*
-      - historical_nasdaq_constituent.*
-      - historical_dow_jones_constituent.*
-
-      ### Insider Trades Streams ###
-
-      - latest_insider_trading.*
-      - insider_trades_search.*
-      - insider_trades_by_reporting_name_search.*
-      - all_insider_transaction_types.*
-      - insider_trade_statistics.*
-      - acquisition_ownership.*
-
-      ### Market Performance Streams ###
-
-      - market_sector_performance_snapshot.*
-      - industry_performance_snapshot.*
-      - historical_sector_performance.*
-      - historical_industry_performance.*
-      - sector_pe_snapshot.*
-      - industry_pe_snapshot.*
-      - historical_sector_pe.*
-      - historical_industry_pe.*
-      - biggest_stock_gainers.*
-      - biggest_stock_losers.*
-      - top_traded_stocks.*
-
-      ### Commodity Streams ###
-
-      - commodities_list.*
+      - index_5min.*
 #      - commodities_quote.*
 #      - commodities_quote_short.*
 #      - all_commodities_quotes.*
 #      - commodities_light_chart.*
-      - commodities_full_chart.*
-      - commodities_1min.*
-      - commodities_1h.*
-
-      ### Fundraiser Streams ###
-
-      - latest_crowdfunding_campaigns.*
-      - crowdfunding_by_cik.*
-      - equity_offering_updates.*
-      - equity_offering_by_cik.*
-
-      ### Crypto Streams ###
-
-      - crypto_list.*
 #      - full_crypto_quote.*
 #      - crypto_quote_short.*
 #      - all_crypto_quotes.*
 #      - historical_crypto_light_chart.*
-      - historical_crypto_full_chart.*
-#      - crypto_1min.*
-#      - crypto_5min.*
-#      - crypto_1hr.*
-
-      ### Forex Streams ###
-
-      - forex_pairs.*
+      - crypto_1min.*
+      - crypto_1h.*
 #      - forex_quote.*
 #      - forex_quote_short.*
 #      - batch_forex_quotes.*
 #      - forex_light_chart.*
-      - forex_full_chart.*
-      - forex_1min.*
-#      - forex_5min.*
-      - forex_1h.*
-
-      ### News Streams ###
-
-      - fmp_articles.*
-      - general_news.*
-      - press_releases.*
-      - stock_news.*
-      - crypto_news.*
-      - forex_news.*
-      - press_releases.*
-      - search_stock_news.*
-      - search_crypto_news.*
-      - search_forex_news.*
-
-      ### Technical Indicator Streams ###
-
-      - simple_moving_average.*
-      - exponential_moving_average.*
-      - weighted_moving_average.*
-      - double_exponential_moving_average.*
-      - triple_exponential_moving_average.*
-      - relative_strength_index.*
-      - standard_deviation.*
-      - williams.*
-      - average_directional_index.*
-
-      ### Senate Streams ###
-
-      - latest_senate_disclosures.*
-      - latest_house_disclosures.*
-      - senate_trading_activity.*
-      - senate_trades_by_name.*
-      - house_trades.*
-      - house_trades_by_name.*
-
-      ### SEC Filings Streams ###
-
-      - latest_8k_filings.*
-      - latest_sec_filings.*
-      - sec_filings_by_form_type.*
-      - sec_filings_by_symbol.*
-      - sec_filings_by_cik.*
-      - sec_filings_by_name.*
-      - sec_filings_company_search_by_symbol.*
-      - sec_filings_company_search_by_cik.*
-      - sec_company_full_profile.*
-      - industry_classification_list.*
-      - industry_classification_search.*
-      - all_industry_classification.*
-
-      ### COT Streams ###
-
-      - cot_report.*
-      - cot_analysis_by_date.*
-      - cot_report_list.*
-
-      ### Economic Streams ###
-
-      - treasury_rates.*
-      - economic_indicators.*
-      - economic_calendar.*
-      - market_risk_premium.*
-
-      ### ESG Data Streams (Premium) ###
-
-      - esg_disclosures.*
-      - esg_ratings.*
-      - esg_benchmark.*
-
-      ### ETF and Mutual Fund Streams ###
-
-      - etf_and_fund_holdings.*
-      - etf_and_mutual_fund_holdings.*
-      - etf_and_fund_country_allocation.*
-      - etf_asset_exposure.*
-      - etf_sector_weighting.*
-      - mutual_fund_and_etf_disclosure.*
-      - mutual_fund_disclosures.*
-      - mutual_fund_and_etf_disclosure_name_search.*
-      - fund_and_etf_disclosures_by_date.*
-
-      ### Quote Streams ###
-
 #      - stock_quote.*
 #      - stock_quote_short.*
-#      - aftermarket_trade.*
+      - aftermarket_trade.*
 #      - aftermarket_quote.*
-#      - stock_price_change.*
-#      - stock_batch.*
+      - stock_price_change.*
+      - stock_batch.*
 #      - stock_batch_quote.*
 #      - stock_batch_quote_short.*
-#      - batch_aftermarket_trade.*
+      - batch_aftermarket_trade.*
 #      - batch_aftermarket_quote.*
 #      - mutual_fund_price_quotes.*
 #      - etf_price_quotes.*
-
-      ### Bulk Streams ###
-
-      - company_profile_bulk.*
-      - stock_rating_bulk.*
-      - dcf_valuations_bulk.*
-      - financial_scores_bulk.*
-      - price_target_summary_bulk.*
-      - etf_holder_bulk.*
-      - upgrades_downgrades_consensus_bulk.*
-      - key_metrics_ttm_bulk.*
-      - ratios_ttm_bulk.*
-      - stock_peers_bulk.*
-      - earnings_surprises_bulk.*
-      - income_statement_bulk.*
-      - income_statement_growth_bulk.*
-      - balance_sheet_statement_bulk.*
-      - balance_sheet_statement_growth_bulk.*
-      - cash_flow_statement_bulk.*
-      - cash_flow_statement_growth_bulk.*
-      - eod_bulk.*
 
     config:
       start_date: '1990-01-01T00:00:00Z'
@@ -793,21 +561,6 @@ plugins:
           limit: 250
 
       forex_news:
-        query_params:
-          from: "2015-01-01"
-          limit: 250
-
-      search_stock_news:
-        query_params:
-          from: "2015-01-01"
-          limit: 250
-
-      search_crypto_news:
-        query_params:
-          from: "2015-01-01"
-          limit: 250
-
-      search_forex_news:
         query_params:
           from: "2015-01-01"
           limit: 250
