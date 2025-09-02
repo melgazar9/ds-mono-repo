@@ -1,18 +1,25 @@
-[tool.poetry]
+[project]
 name = "earnings-iv-crush"
 version = "0.0.1"
 description = "Earnings IV Crush Strategy"
-authors = ["Matt Elgazar <melgazar9@gmail.com>"]
+authors = [{name = "Matt Elgazar", email = "melgazar9@gmail.com"}]
 readme = "README.md"
 license = "Apache-2.0"
-package-mode = false
+requires-python = ">=3.11"
+dependencies = [
+    "ib-async>=2.0.1",
+    "pandas>=2.3.1",
+    "scipy>=1.16.0",
+    "yfinance>=0.2.65",
+    "ds_core @ file:///Users/melgazar9/code/github/personal/ds-mono-repo/ds-core/",
+    "plotly>=6.2.0",
+    "ibapi>=9.81.1.post1",
+    "pytz>=2024.1",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.11,<4.0"
-ib-async = "^2.0.1"
-pandas = "^2.3.1"
-scipy = "^1.16.0"
-yfinance = "^0.2.65"
-ds_core = { path = "../../../../../ds-core/", develop = true }
-plotly = "^6.2.0"
-ibapi = "^9.81.1.post1"
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = []

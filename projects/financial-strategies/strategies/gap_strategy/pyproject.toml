@@ -1,23 +1,25 @@
-[tool.poetry]
+[project]
 name = "gap-strategy"
 version = "0.1.0"
 description = ""
-authors = ["melgazar9 <melgazar9@gmail.com>"]
+authors = [{name = "melgazar9", email = "melgazar9@gmail.com"}]
 readme = "README.md"
-package-mode = false
-
-[tool.poetry.dependencies]
-python = "^3.13"
-pandas = ">=2.3.0,<3.0.0"
-numpy = ">=2.3.0,<3.0.0"
-bt_engine = { path = "../../../financial-strategies/backtest-engine", develop = true }
-ds_core = { path = "../../../../ds-core/", develop = true }
-psycopg2 = "^2.9.10"
-polars = "^1.30.0"
-matplotlib = "^3.10.3"
-plotly = "^6.1.2"
-backoff = "^2.2.1"
+requires-python = ">=3.13"
+dependencies = [
+    "pandas>=2.3.0,<3.0.0",
+    "numpy>=2.3.0,<3.0.0",
+    "bt_engine @ file:///Users/melgazar9/code/github/personal/ds-mono-repo/projects/financial-strategies/backtest-engine",
+    "ds_core @ file:///Users/melgazar9/code/github/personal/ds-mono-repo/ds-core/",
+    "psycopg2>=2.9.10",
+    "polars>=1.30.0",
+    "matplotlib>=3.10.3",
+    "plotly>=6.1.2",
+    "backoff>=2.2.1"
+]
 
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = []
