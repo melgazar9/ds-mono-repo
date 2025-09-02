@@ -54,9 +54,9 @@ plugins:
         label: Exchange Variants Source Configuration
         description: Configuration for how to source exchange variants data
         default:
-          use_csv: true
+          use_csv: false
           csv_path: "distinct_exchange_variants.csv"
-          use_database: false
+          use_database: true
           database_connection: null
           cache_ttl_hours: 72
 
@@ -65,12 +65,12 @@ plugins:
         label: Database Configuration  
         description: Database connection settings for exchange variants
         default:
-          host: null
-          port: null
-          database: null
-          username: null
-          password: null
-          schema: "public"
+          host: ${POSTGRES_HOST}
+          port: ${POSTGRES_PORT}
+          database: financial_elt
+          username: ${POSTGRES_USER}
+          password: ${POSTGRES_PASSWORD}
+          schema: "tap_fmp_production"
           table: "exchange_variants"
 
     select:
@@ -89,6 +89,8 @@ plugins:
       - etf_list.*
       - actively_trading.*
       - earnings_transcripts.*  # limited to Premium, build or enterprise plans
+      - available_transcript_symbols.*
+      - transcripts_dates_by_symbol.*
       - available_exchanges.*
       - available_sectors.*
       - available_industries.*
@@ -133,12 +135,12 @@ plugins:
       - company_employee_count.*
       - company_historical_employee_count.*
       - company_market_cap.*  # Starter: US Exchanges only, Premium: Symbol Limited to US, UK, and Canada Exchanges
-#      - company_batch_market_cap.*
+      - company_batch_market_cap.*
       - historical_market_cap.*  # Build: up to 5 years
       - company_share_and_liquidity_float.*
       - all_shares_float.*
       - latest_mergers_and_acquisitions.*
-      - search_mergers_and_acquisitions.*  # searched by name, premium and up
+#      - search_mergers_and_acquisitions.*  # searched by name, premium and up
       - company_executives.*
       - executive_compensation.*
       - executive_compensation_benchmark.*  # Premium and up
@@ -219,7 +221,7 @@ plugins:
 #      - historical_index_light_chart.*
       - historical_index_full_chart.*
       - index_1min.*
-      - index_5min.*
+#      - index_5min.*
       - index_1h.*
       - sp500_constituent.*
       - nasdaq_constituent.*
@@ -279,8 +281,8 @@ plugins:
 #      - historical_crypto_light_chart.*
       - historical_crypto_full_chart.*
 #      - crypto_1min.*
-      - crypto_5min.*
-#      - crypto_1h.*
+#      - crypto_5min.*
+      - crypto_1h.*
 
       ### Forex Streams ###
 
@@ -331,7 +333,7 @@ plugins:
       - sec_filings_by_form_type.*
       - sec_filings_by_symbol.*
       - sec_filings_by_cik.*
-#      - sec_filings_by_name.*
+      - sec_filings_by_name.*
       - sec_filings_company_search_by_symbol.*
       - sec_filings_company_search_by_cik.*
       - sec_company_full_profile.*
@@ -417,19 +419,19 @@ plugins:
       filter_currencies: ["USD"]
 
       exchange_variants_source:
-        use_csv: true
+        use_csv: false
         csv_path: "distinct_exchange_variants.csv"
-        use_database: false
+        use_database: true
         database_connection: null
         cache_ttl_hours: 72
 
       database_config:
         host: ${POSTGRES_HOST}
         port: ${POSTGRES_PORT}
-        database: ${POSTGRES_DATABASE}
-        username: ${POSTGRES_USERNAME}
+        database: financial_elt
+        username: ${POSTGRES_USER}
         password: ${POSTGRES_PASSWORD}
-        schema: "public"
+        schema: "tap_fmp_production"
         table: "exchange_variants"
 
       company_symbols:
