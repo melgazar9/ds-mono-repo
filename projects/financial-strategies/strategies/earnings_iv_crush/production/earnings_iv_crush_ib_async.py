@@ -10,7 +10,6 @@ import requests
 from dateutil.relativedelta import relativedelta
 import yfinance as yf
 import yaml
-
 import logging
 
 warnings.filterwarnings("ignore", message="Not enough unique days to interpolate for ticker")
@@ -139,7 +138,7 @@ class MarketDataExtractor:
             self.bars_3y["date"] = pd.to_datetime(self.bars_3y["date"])
 
     def get_historical_bars_3mo(self):
-        if not self.bars_3y:
+        if self.bars_3y is None or not self.bars_3y.shape:
             self.get_historical_bars_3y()
 
         cutoff_date = pd.Timestamp.now() - relativedelta(months=3)
@@ -308,6 +307,7 @@ class MarketDataExtractor:
 
         # Calculate Greeks
         try:
+            ib_client.sleep(1)
             iv_result = ib_client.calculateImpliedVolatility(qualified_option, option_price, current_price)
             if iv_result and hasattr(iv_result, "impliedVol") and iv_result.impliedVol > 0:
                 iv = iv_result.impliedVol
@@ -482,6 +482,7 @@ class MarketDataExtractor:
 
                 # Calculate Greeks (still individual calls, but with cached HV)
                 try:
+                    ib_client.sleep(1)
                     iv_result = ib_client.calculateImpliedVolatility(contract, option_price, current_price)
                     if iv_result and hasattr(iv_result, "impliedVol") and iv_result.impliedVol > 0:
                         iv = iv_result.impliedVol
@@ -626,7 +627,6 @@ class EarningsIVScanner(MarketDataExtractor):
         min_avg_30d_share_volume=MIN_AVG_30D_SHARE_VOLUME,
         min_iv30_rv30=MIN_IV30_RV30,
         max_ts_slope_0_45=MAX_TS_SLOPE_0_45,
-        plot_loc=PLOT_LOC,
     ):
         ticker = ticker.strip().upper()
         if not ticker:
@@ -638,8 +638,7 @@ class EarningsIVScanner(MarketDataExtractor):
         if self.bars_3mo is None or self.bars_3mo.empty:
             self.get_historical_bars_3mo()
 
-        df_price_history_3mo = self.bars_3mo[self.bars_3mo["date"] >= (pd.Timestamp.now() - relativedelta(months=3))]
-        df_price_history_3mo = df_price_history_3mo.sort_values(by="date")
+        df_price_history_3mo = self.bars_3mo.sort_values(by="date").copy()
         df_price_history_3mo["dollar_volume"] = df_price_history_3mo["volume"] * df_price_history_3mo["close"]
 
         try:
@@ -650,8 +649,8 @@ class EarningsIVScanner(MarketDataExtractor):
             return f"Error: Unable to retrieve underlying stock price. {e}"
 
         atm_iv = {}
-        atm_call_iv = {}
-        atm_put_iv = {}
+        atm_call_ivs = {}
+        atm_put_ivs = {}
         straddle = None
         straddle_call_strike = None
         straddle_put_strike = None
@@ -665,16 +664,16 @@ class EarningsIVScanner(MarketDataExtractor):
 
             call_diffs = (calls["strike"] - underlying_price).abs()
             call_idx = call_diffs.idxmin()
-            call_iv = calls.loc[call_idx, "impliedVolatility"]
+            call_atm_iv = calls.loc[call_idx, "impliedVolatility"]
 
             put_diffs = (puts["strike"] - underlying_price).abs()
             put_idx = put_diffs.idxmin()
-            put_iv = puts.loc[put_idx, "impliedVolatility"]
+            put_atm_iv = puts.loc[put_idx, "impliedVolatility"]
 
-            atm_iv_value = (call_iv + put_iv) / 2.0
+            atm_iv_value = (call_atm_iv + put_atm_iv) / 2.0
             atm_iv[exp_date] = atm_iv_value
-            atm_call_iv[exp_date] = call_iv
-            atm_put_iv[exp_date] = put_iv
+            atm_call_ivs[exp_date] = call_atm_iv
+            atm_put_ivs[exp_date] = put_atm_iv
 
             if i == 0:
                 # Store the strike prices for the nearest expiration
@@ -735,28 +734,28 @@ class EarningsIVScanner(MarketDataExtractor):
             dtes.append(days_to_expiry)
             ivs.append(iv)
 
-        term_spline = build_term_structure(dtes, ivs)
-        if not term_spline:
-            return
-
         # Build separate term structures for calls and puts
         call_dtes = []
         call_ivs = []
         put_dtes = []
         put_ivs = []
-        for exp_date in atm_call_iv.keys():
+        for exp_date in atm_call_ivs.keys():
             exp_date_obj = datetime.strptime(exp_date, "%Y-%m-%d").date()
             days_to_expiry = (exp_date_obj - today).days
             call_dtes.append(days_to_expiry)
-            call_ivs.append(atm_call_iv[exp_date])
+            call_ivs.append(atm_call_ivs[exp_date])
             put_dtes.append(days_to_expiry)
-            put_ivs.append(atm_put_iv[exp_date])
+            put_ivs.append(atm_put_ivs[exp_date])
+
+        overall_term_spline = build_term_structure(dtes, ivs)
+        if not overall_term_spline:
+            return
 
         call_term_spline = build_term_structure(call_dtes, call_ivs)
         put_term_spline = build_term_structure(put_dtes, put_ivs)
 
         # Calculate term structure slopes
-        ts_slope_0_45 = (term_spline(45) - term_spline(dtes[0])) / (45 - dtes[0])
+        ts_slope_0_45 = (overall_term_spline(45) - overall_term_spline(dtes[0])) / (45 - dtes[0])
         ts_slope_0_45_call = (
             (call_term_spline(45) - call_term_spline(call_dtes[0])) / (45 - call_dtes[0]) if call_term_spline else ts_slope_0_45
         )
@@ -766,7 +765,7 @@ class EarningsIVScanner(MarketDataExtractor):
 
         # Calculate IV/RV ratios
         rv30 = yang_zhang(df_price_history_3mo)
-        iv30_rv30 = term_spline(30) / rv30
+        iv30_rv30 = overall_term_spline(30) / rv30
         iv30_rv30_call = call_term_spline(30) / rv30 if call_term_spline else iv30_rv30
         iv30_rv30_put = put_term_spline(30) / rv30 if put_term_spline else iv30_rv30
 
