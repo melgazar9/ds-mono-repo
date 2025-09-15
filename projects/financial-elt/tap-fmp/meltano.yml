@@ -90,6 +90,16 @@ plugins:
       - actively_trading.*
       - earnings_transcripts.*  # limited to Premium, build or enterprise plans
       - available_transcript_symbols.*
+      - crowdfunding_campaign_search.*
+      - crypto_news_latest.*
+      - equity_offering_search.*
+      - forex_news_latest.*
+      - latest_earning_transcripts.*
+      - press_releases_latest.*
+      - stock_news_latest.*
+      - transcripts_dates_by_symbol.*
+
+      - available_transcript_symbols.*
       - transcripts_dates_by_symbol.*
       - available_exchanges.*
       - available_sectors.*
@@ -170,7 +180,7 @@ plugins:
       ### Market Hours Streams ###
 
       - exchange_market_hours.*
-      - holidays_by_exchanges.*
+      - holidays_by_exchange.*
       - all_exchange_market_hours.*
 
       ### Statement Streams ###
@@ -204,13 +214,14 @@ plugins:
 
       ### Form 13F Streams ###
 
-      - institutional_ownership_filings.*
-      - filings_extract.*
+      - institutional_ownership_latest_filings.*
+      - institutional_ownership_extract.*
       - holder_performance_summary.*
       - holder_industry_breakdown.*
       - positions_summary.*
       - industry_performance_summary.*
       - form_13f_filings_extracts_with_analytics.*
+      - form_13f_filing_dates.*
 
       ### Index Streams ###
 
@@ -333,7 +344,7 @@ plugins:
       - sec_filings_by_form_type.*
       - sec_filings_by_symbol.*
       - sec_filings_by_cik.*
-      - sec_filings_by_name.*
+#      - sec_filings_by_name.*
       - sec_filings_company_search_by_symbol.*
       - sec_filings_company_search_by_cik.*
       - sec_company_full_profile.*
@@ -944,11 +955,11 @@ plugins:
 
       ### Form 13F Streams ###
 
-      institutional_ownership_filings:
+      institutional_ownership_latest_filings:
         query_params:
           limit: 1000
 
-      filings_extract:
+      institutional_ownership_extract:
         query_params:
           limit: 1000
 
