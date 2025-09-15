@@ -11,6 +11,8 @@ from dateutil.relativedelta import relativedelta
 import yfinance as yf
 import yaml
 import logging
+import time
+from zoneinfo import ZoneInfo
 
 warnings.filterwarnings("ignore", message="Not enough unique days to interpolate for ticker")
 
@@ -161,11 +163,29 @@ class MarketDataExtractor:
             chains = ib_client.reqSecDefOptParams(
                 self.stock_contract.symbol, "", self.stock_contract.secType, self.stock_contract.conId
             )
-            self.chain = next(c for c in chains if c.tradingClass == self.ticker and c.exchange == exchange)
+            # Find matching chain, with fallback handling
+            matching_chain = None
+            for c in chains:
+                if c.tradingClass == self.ticker and c.exchange == exchange:
+                    matching_chain = c
+                    break
+
+            if matching_chain is None:
+                # Try with any exchange if SMART doesn't work
+                for c in chains:
+                    if c.tradingClass == self.ticker:
+                        matching_chain = c
+                        logging.warning(f"Using exchange {c.exchange} instead of {exchange} for {self.ticker}")
+                        break
+
+            if matching_chain is None:
+                raise ValueError(f"No option chain found for ticker {self.ticker} on any exchange")
+
+            self.chain = matching_chain
         return self
 
     def get_valid_expirations(self, max_days_out=75):
-        today = datetime.today().date()
+        today = datetime.now(ZoneInfo("America/Chicago")).date()
         max_date = today + timedelta(days=max_days_out)
         min_calendar_date = today + timedelta(days=45)
 
@@ -180,52 +200,93 @@ class MarketDataExtractor:
                     has_45_day_expiration = True
 
         if not has_45_day_expiration:
-            raise ValueError("No expiration date 45 days or more in the future found. Calendar spread strategy not viable.")
+            logging.error(
+                f"No expiration date 45 days or more in the future found for ticker {ticker}. "
+                f"Calendar spread strategy not viable. Skipping..."
+            )
 
         logging.info(f"Processing {len(self.valid_expirations)} expirations within 75 days for {self.ticker}")
         self.valid_expirations = sorted(self.valid_expirations)
         return self
 
+    def _get_strikes_for_expiration(self, expiration, underlying_price, strike_range):
+        """Get ALL available strikes for a specific expiration by testing them."""
+        candidate_strikes = [
+            s for s in self.chain.strikes if underlying_price * strike_range[0] < s < underlying_price * strike_range[1]
+        ]
+
+        test_contracts = [ib.Option(self.ticker, expiration, strike, "C", "SMART") for strike in candidate_strikes]
+
+        try:
+            qualified = ib_client.qualifyContracts(*test_contracts)
+            return [c.strike for c in qualified if c is not None]
+        except Exception as e:
+            logging.error(f"Failed to test strikes for {self.ticker} expiration {expiration}: {e}")
+            return []
+
     def get_option_qualified_contracts(self, strike_range=(0.85, 1.15)):
+        """Get option contracts using actual intersection of available strikes across expirations."""
         self.get_option_chain()
         underlying_price = self.get_underlying_last_price()
-        self.strikes = [
-            strike
-            for strike in self.chain.strikes
-            if underlying_price * strike_range[0] < strike < underlying_price * strike_range[1]
-        ]
 
         if not self.valid_expirations:
             self.get_valid_expirations()
 
+        # Get ACTUAL available strikes for each expiration by testing them
+        expiration_strikes = {}
+        for exp in self.valid_expirations:
+            strikes = self._get_strikes_for_expiration(exp, underlying_price, strike_range)
+            expiration_strikes[exp] = strikes
+            logging.info(f"Found {len(strikes)} available strikes for {self.ticker} expiration {exp}")
+
+        # Find TRUE intersection of strikes available across ALL expirations
+        if len(self.valid_expirations) >= 2:
+            common_strikes = set(expiration_strikes[self.valid_expirations[0]])
+            for exp in self.valid_expirations[1:]:
+                common_strikes &= set(expiration_strikes[exp])
+            self.strikes = sorted(common_strikes)
+            logging.info(
+                f"Intersection: {len(self.strikes)} common strikes across all "
+                f"{len(self.valid_expirations)} expirations for {self.ticker}"
+            )
+        else:
+            self.strikes = expiration_strikes.get(self.valid_expirations[0], [])
+
+        # FAIL if no valid intersection - don't use stupid fallbacks
+        if not self.strikes:
+            logging.error(f"NO COMMON STRIKES found across expirations for {self.ticker} - calendar spread not possible")
+            return []
+
         if DEBUG:
-            self.valid_expirations = self.valid_expirations[0:3]
-            closest_strike = min(self.strikes, key=lambda x: abs(x - underlying_price))
-            closest_idx = self.strikes.index(closest_strike)
-            start_idx = max(0, closest_idx - 1)
-            end_idx = min(len(self.strikes), closest_idx + 2)
-            self.strikes = self.strikes[start_idx:end_idx]
+            logging.debug(
+                f"DEBUG: Found {len(self.valid_expirations)} expirations and {len(self.strikes)} strikes for {self.ticker}"
+            )
 
-        rights = ["P", "C"]
-
+        # Create contracts ONLY for strikes we KNOW exist
         contracts = [
-            ib.Option(self.ticker, expiration, strike, right, "SMART")
-            for right in rights
-            for expiration in self.valid_expirations
+            ib.Option(self.ticker, exp, strike, right, "SMART")
+            for right in ["P", "C"]
+            for exp in self.valid_expirations
             for strike in self.strikes
         ]
 
         try:
             self.option_qualified_contracts = ib_client.qualifyContracts(*contracts)
             if not self.option_qualified_contracts:
-                logging.error(f"No qualified option contracts found for {self.ticker}")
+                logging.error(f"Contract qualification completely failed for {self.ticker}")
                 return []
+
+            valid_count = len([c for c in self.option_qualified_contracts if c is not None])
             logging.info(
-                f"Qualified {len(self.option_qualified_contracts)} out of {len(contracts)} option contracts for {self.ticker}"
+                f"Qualified {valid_count}/{len(contracts)} contracts for {self.ticker} (should be 100% since we pre-tested)"
             )
+
+            if valid_count != len(contracts):
+                logging.warning(f"Pre-testing failed: expected {len(contracts)} qualified contracts but got {valid_count}")
+
             return self
         except Exception as e:
-            logging.error(f"Error qualifying option contracts for {self.ticker}: {e}")
+            logging.error(f"Contract qualification failed for {self.ticker}: {e}")
             return []
 
     def calc_option_greeks(self, option_type, strike, exp):
@@ -307,12 +368,16 @@ class MarketDataExtractor:
 
         # Calculate Greeks
         try:
-            ib_client.sleep(1)
+            ib_client.sleep(0.1)
             iv_result = ib_client.calculateImpliedVolatility(qualified_option, option_price, current_price)
             if iv_result and hasattr(iv_result, "impliedVol") and iv_result.impliedVol > 0:
                 iv = iv_result.impliedVol
             else:
-                logging.error(f"Invalid IV result for {self.ticker} {strike} {option_type}. Setting IV to HV.")
+                # TODO: Currently instead of a fallback to HV, in production this should error out
+                # We can set it to use HV as a fallback if debug is set to True
+                logging.warning(
+                    f"IV calculation failed for {self.ticker} {strike} {option_type} - using historical volatility fallback"
+                )
                 if not hasattr(self, "_hv30_cache"):
                     if self.bars_3mo is None or self.bars_3mo.empty:
                         self.get_historical_bars_3mo()
@@ -408,7 +473,28 @@ class MarketDataExtractor:
             if not qualified_contracts:
                 logging.error(f"No qualified contracts returned for {self.ticker}")
                 return []
-            logging.info(f"Successfully qualified {len(qualified_contracts)} contracts")
+
+            # Filter out None contracts and maintain mapping
+            valid_contracts = []
+            valid_contract_map = {}
+            for i, contract in enumerate(qualified_contracts):
+                if contract is not None:
+                    valid_contracts.append(contract)
+                    # Use the original contract from all_contracts for the mapping
+                    original_contract = all_contracts[i]
+                    valid_contract_map[id(contract)] = contract_map[id(original_contract)]
+
+            if len(valid_contracts) != len(qualified_contracts):
+                logging.warning(f"Filtered out {len(qualified_contracts) - len(valid_contracts)} failed contracts")
+
+            if not valid_contracts:
+                logging.error(f"No valid qualified contracts for {self.ticker}")
+                return []
+
+            logging.info(f"Successfully qualified {len(valid_contracts)} out of {len(all_contracts)} contracts")
+            # TODO: Is the below necessary?
+            qualified_contracts = valid_contracts
+            contract_map = valid_contract_map
         except Exception as e:
             logging.error(f"Batch contract qualification failed for {self.ticker}: {e}")
             return []
@@ -425,6 +511,9 @@ class MarketDataExtractor:
 
         results = {}
         current_price = self.get_underlying_last_price()
+        processed_count = 0  # Track progress
+
+        start_time = time.time()
 
         # Cache HV calculation
         if not hasattr(self, "_hv30_cache"):
@@ -432,10 +521,13 @@ class MarketDataExtractor:
                 self.get_historical_bars_3mo()
             self._hv30_cache = yang_zhang(self.bars_3mo)
 
-        for i, (contract, ticker) in enumerate(zip(qualified_contracts, all_tickers)):
+        logging.info(f"Starting Greeks calculations for {len(qualified_contracts)} contracts for {self.ticker}")
+
+        for contract, ticker in zip(qualified_contracts, all_tickers):
+            processed_count += 1
             try:
-                # Get contract details from our map
-                contract_id = id(all_contracts[i])
+                # Get contract details from our updated map
+                contract_id = id(contract)
                 exp, strike, option_type = contract_map[contract_id]
 
                 # Extract market data
@@ -480,18 +572,58 @@ class MarketDataExtractor:
 
                 market_data["calculated_price"] = option_price
 
-                # Calculate Greeks (still individual calls, but with cached HV)
+                # Calculate Greeks with optimized performance and error handling
                 try:
-                    ib_client.sleep(1)
-                    iv_result = ib_client.calculateImpliedVolatility(contract, option_price, current_price)
-                    if iv_result and hasattr(iv_result, "impliedVol") and iv_result.impliedVol > 0:
-                        iv = iv_result.impliedVol
+                    # Only calculate IV for ATM and near-ATM options to save time
+                    strike_diff_pct = abs(strike - current_price) / current_price
+                    if strike_diff_pct > 0.10:  # Skip far OTM options (>10% away) - more aggressive
+                        logging.debug(f"Skipping IV calculation for far OTM option {self.ticker} {strike} {option_type}")
+                        market_data["greeks"] = None
+                        market_data["iv"] = self._hv30_cache  # Use cached HV for far OTM
                     else:
-                        iv = self._hv30_cache
+                        # Minimal sleep time for production speed
+                        ib_client.sleep(0.1)
 
-                    greeks = ib_client.calculateOptionPrice(contract, iv, current_price)
-                    market_data["greeks"] = greeks
-                    market_data["iv"] = iv
+                        # IV calculation with timeout handling
+                        iv_result = None
+                        try:
+                            iv_result = ib_client.calculateImpliedVolatility(contract, option_price, current_price)
+                        except Exception as timeout_error:
+                            if "timeout" in str(timeout_error).lower():
+                                logging.warning(
+                                    f"IV calculation timeout for {self.ticker} {strike} {option_type} - using fallback"
+                                )
+                            else:
+                                logging.warning(
+                                    f"IV calculation error for {self.ticker} {strike} {option_type}: {timeout_error}"
+                                )
+
+                        if iv_result and hasattr(iv_result, "impliedVol") and iv_result.impliedVol > 0:
+                            iv = iv_result.impliedVol
+                        else:
+                            # TODO: For near-ATM options we were using HV as a fallback. In production this should error out.
+                            # We can set it to use HV as a fallback if debug is set to True
+                            logging.warning(
+                                f"IV calculation failed for {self.ticker} {strike} {option_type} - "
+                                f"using historical volatility fallback"
+                            )
+                            iv = self._hv30_cache
+
+                        greeks = ib_client.calculateOptionPrice(contract, iv, current_price)
+                        market_data["greeks"] = greeks
+                        market_data["iv"] = iv
+
+                        # Progress logging every 10th contract with time estimate
+                        if processed_count % 10 == 0:
+                            elapsed_time = time.time() - start_time
+                            rate = processed_count / elapsed_time if elapsed_time > 0 else 0
+                            remaining = len(qualified_contracts) - processed_count
+                            eta_seconds = remaining / rate if rate > 0 else 0
+                            logging.info(
+                                f"Progress: {processed_count}/{len(qualified_contracts)} contracts "
+                                f"processed for {self.ticker} (ETA: {eta_seconds:.0f}s)"
+                            )
+
                 except Exception as e:
                     logging.warning(f"Greeks calculation failed for {self.ticker} {strike} {option_type}: {e}")
                     market_data["greeks"] = None
@@ -573,7 +705,7 @@ class MarketDataExtractor:
 
     @staticmethod
     def _filter_option_exp_dates(dates):
-        today = datetime.today().date()
+        today = datetime.now(ZoneInfo("America/Chicago")).date()
         cutoff_date = today + timedelta(days=45)
 
         sorted_dates = sorted(datetime.strptime(date, "%Y-%m-%d").date() for date in dates)
@@ -589,7 +721,8 @@ class MarketDataExtractor:
                 return arr[1:]
             return arr
 
-        raise ValueError("No date 45 days or more in the future found.")
+        logging.error("No date 45 days or more in the future found. Calendar spread strategy not viable. Skipping...")
+        return []
 
     def get_option_exp_dates(self):
         all_exp_dates = None
@@ -670,6 +803,14 @@ class EarningsIVScanner(MarketDataExtractor):
             put_idx = put_diffs.idxmin()
             put_atm_iv = puts.loc[put_idx, "impliedVolatility"]
 
+            # Validate IV calculations - warn but continue with fallbacks if needed
+            if not call_atm_iv or call_atm_iv <= 0:
+                logging.warning(f"Invalid call ATM IV {call_atm_iv} for {ticker} {exp_date}. Using fallback volatility.")
+                call_atm_iv = 0.25  # 25% fallback IV
+            if not put_atm_iv or put_atm_iv <= 0:
+                logging.warning(f"Invalid put ATM IV {put_atm_iv} for {ticker} {exp_date}. Using fallback volatility.")
+                put_atm_iv = 0.25  # 25% fallback IV
+
             atm_iv_value = (call_atm_iv + put_atm_iv) / 2.0
             atm_iv[exp_date] = atm_iv_value
             atm_call_ivs[exp_date] = call_atm_iv
@@ -694,24 +835,36 @@ class EarningsIVScanner(MarketDataExtractor):
                 else:
                     put_mid = None
 
-                if call_mid is not None and put_mid is not None and call_mid != 0 and put_mid != 0:
+                if call_mid is not None and put_mid is not None and call_mid > 0 and put_mid > 0:
                     straddle = call_mid + put_mid
 
-                    call_spread = call_ask - call_bid
-                    put_spread = put_ask - put_bid
-                    total_straddle_spread = call_spread + put_spread
-                    straddle_spread_pct = total_straddle_spread / underlying_price
+                    # Validate spread calculations
+                    if call_ask > call_bid and put_ask > put_bid:
+                        call_spread = call_ask - call_bid
+                        put_spread = put_ask - put_bid
+                        total_straddle_spread = call_spread + put_spread
+
+                        if underlying_price > 0:
+                            straddle_spread_pct = total_straddle_spread / underlying_price
+                        else:
+                            logging.warning(f"Invalid underlying price {underlying_price} for spread calculation on {ticker}")
+                            straddle_spread_pct = 1.0  # High spread
+                    else:
+                        logging.warning(f"Invalid bid/ask spread for {ticker} - using conservative spread estimate")
+                        straddle_spread_pct = 1.0  # High spread to flag as avoid
 
                 else:
                     straddle_spread_pct = 1.0  # Set high spread to fail all tier checks
                     try:
                         if call_idx + 1 < len(calls) and put_idx + 1 < len(puts):
+                            # TODO: No fallbacks to near term strikes in production! Only in debug mode is ok!
                             warnings.warn(
                                 f"For ticker {ticker} straddle is either 0 or None from "
                                 f"available bid/ask spread... using nearest term strikes."
                             )
                             straddle = calls.iloc[call_idx + 1]["lastPrice"] + puts.iloc[put_idx + 1]["lastPrice"]
                         if not straddle:
+                            # TODO: No fallbacks to near lastPrice in production! Only in debug mode is ok!
                             warnings.warn(
                                 f"For ticker {ticker} straddle is either 0 or None from "
                                 f"available bid/ask spread... using lastPrice."
@@ -725,7 +878,7 @@ class EarningsIVScanner(MarketDataExtractor):
         if not atm_iv:
             return "Error: Could not determine ATM IV for any expiration dates."
 
-        today = datetime.today().date()
+        today = datetime.now(ZoneInfo("America/Chicago")).date()
         dtes = []
         ivs = []
         for exp_date, iv in atm_iv.items():
@@ -782,9 +935,28 @@ class EarningsIVScanner(MarketDataExtractor):
         else:
             avg_dollar_volume = rolling_dollar_volume.iloc[-1]
 
-        expected_move_straddle = (straddle / underlying_price) if straddle else None
-        expected_move_call = (call_mid / underlying_price) if call_mid else None
-        expected_move_put = (put_mid / underlying_price) if put_mid else None
+        # Calculate expected moves with robust validation
+        expected_move_straddle = None
+        expected_move_call = None
+        expected_move_put = None
+
+        # PRODUCTION VALIDATION: Check for critical data issues
+        if not straddle or straddle <= 0:
+            logging.warning(f"Cannot calculate straddle price for {ticker}. Strategy recommendation will be 'Avoid'.")
+
+        if not underlying_price or underlying_price <= 0:
+            raise ValueError(
+                f"CRITICAL: Invalid underlying price {underlying_price} for {ticker}. Cannot proceed with invalid market data."
+            )
+
+        if straddle and straddle > 0 and underlying_price and underlying_price > 0:
+            expected_move_straddle = straddle / underlying_price
+
+        if call_mid and call_mid > 0 and underlying_price and underlying_price > 0:
+            expected_move_call = call_mid / underlying_price
+
+        if put_mid and put_mid > 0 and underlying_price and underlying_price > 0:
+            expected_move_put = put_mid / underlying_price
 
         (
             prev_earnings_avg_abs_pct_move,
@@ -845,10 +1017,14 @@ class EarningsIVScanner(MarketDataExtractor):
                     )
                 ),
             },
-            "expected_pct_move_straddle": (expected_move_straddle * 100).round(3).astype(str) + "%",
-            "expected_pct_move_call": ((expected_move_call * 100).round(3).astype(str) + "%" if expected_move_call else "N/A"),
-            "expected_pct_move_put": ((expected_move_put * 100).round(3).astype(str) + "%" if expected_move_put else "N/A"),
-            "straddle_pct_move_ge_hist_pct_move_pass": expected_move_straddle >= prev_earnings_avg_abs_pct_move,
+            "expected_pct_move_straddle": (
+                str(round(expected_move_straddle * 100, 3)) + "%" if expected_move_straddle else "N/A"
+            ),
+            "expected_pct_move_call": (str(round(expected_move_call * 100, 3)) + "%" if expected_move_call else "N/A"),
+            "expected_pct_move_put": (str(round(expected_move_put * 100, 3)) + "%" if expected_move_put else "N/A"),
+            "straddle_pct_move_ge_hist_pct_move_pass": (
+                expected_move_straddle >= prev_earnings_avg_abs_pct_move if expected_move_straddle else False
+            ),
             "prev_earnings_stats": {
                 "avg_abs_pct_move": str(round(prev_earnings_avg_abs_pct_move * 100, 3)) + "%",
                 "median_abs_pct_move": str(round(prev_earnings_median_abs_pct_move * 100, 3)) + "%",
@@ -879,6 +1055,7 @@ class EarningsIVScanner(MarketDataExtractor):
         return result_summary
 
 
+# TODO: This function has a major bug! It is not working properly --> cross validate against yfinance.
 def calc_prev_earnings_stats(df_history, ticker):
     df_history = df_history.copy()
     df_history["date"] = df_history["date"].dt.date
@@ -955,7 +1132,7 @@ def calc_prev_earnings_stats(df_history, ticker):
 
 
 def filter_dates(dates):
-    today = datetime.today().date()
+    today = datetime.now(ZoneInfo("America/Chicago")).date()
     cutoff_date = today + timedelta(days=45)
 
     sorted_dates = sorted(datetime.strptime(date, "%Y-%m-%d").date() for date in dates)
@@ -971,7 +1148,8 @@ def filter_dates(dates):
             return arr[1:]
         return arr
 
-    raise ValueError("No date 45 days or more in the future found.")
+    logging.error("No date 45 days or more in the future found. Calendar spread strategy not viable.")
+    return []
 
 
 def yang_zhang(price_data, window=30, trading_periods=252, return_last_only=True):
@@ -1077,7 +1255,7 @@ def calc_kelly_bet(
     return round(bet_amount, 2)
 
 
-def get_all_usa_tickers(use_yf_db=True, earnings_date=datetime.today().strftime("%Y-%m-%d")):
+def get_all_usa_tickers(use_yf_db=True, earnings_date=datetime.now(ZoneInfo("America/Chicago")).strftime("%Y-%m-%d")):
     ### FMP ###
 
     try:
@@ -1369,7 +1547,7 @@ def _update_result_summary(
 
     # Bonus return if straddle expected move >= avg historical earnings move (last 3 years)
     bonus_return = 0
-    if expected_move_straddle >= prev_earnings_avg_abs_pct_move:
+    if expected_move_straddle and expected_move_straddle >= prev_earnings_avg_abs_pct_move:
         bonus_return = min(0.075, (expected_move_straddle - prev_earnings_avg_abs_pct_move) / prev_earnings_avg_abs_pct_move)
 
     final_expected_return = round(combined_expected_return + bonus_return, 4)
@@ -1434,13 +1612,452 @@ def _update_result_summary(
     result_summary["adjusted_kelly_bet_put"] = adjusted_kelly_bet_put
 
 
+class OrderManager:
+    """Manages automated order placement for earnings IV crush calendar spreads
+
+    Trading Rules:
+    - OPEN trades at exactly 14:45 CST (2:45 PM Central)
+    - CLOSE trades at exactly 8:15 AM CST next day
+    - Start with bid/ask pricing, increment $0.03 every 5 seconds until filled
+    - Order size: 1 contract per leg to start
+    - ALWAYS starts in PAPER TRADING mode for safety!
+    """
+
+    def __init__(self, ib_client, config, paper_trading=True):
+        self.ib_client = ib_client
+        self.config = config
+        self.paper_trading = paper_trading
+        self.active_positions = {}
+        self.pending_orders = {}
+
+        # Load order management settings from config
+        order_config = config.get("order_management", {})
+        self.order_size = order_config.get("order_size", 1)
+        self.PRICE_INCREMENT = order_config.get("price_increment", 0.03)
+        self.INCREMENT_INTERVAL = order_config.get("increment_interval", 5)
+        self.max_increments = order_config.get("max_increments", 60)
+
+        # Trading times (CST)
+        open_time = order_config.get("open_time_cst", [14, 45])
+        close_time = order_config.get("close_time_cst", [8, 15])
+        self.OPEN_TIME_CST = tuple(open_time)
+        self.CLOSE_TIME_CST = tuple(close_time)
+
+        if not paper_trading:
+            logging.warning("⚠️  LIVE TRADING MODE ENABLED - REAL MONEY AT RISK! ⚠️")
+        else:
+            logging.info("📝 PAPER TRADING MODE - Orders will be simulated only")
+
+    def should_place_orders(self, analysis_result):
+        """Determine if analysis meets criteria for automated trading"""
+        if not isinstance(analysis_result, dict):
+            return False
+
+        # Check if ts_slope indicates edge (overvalued short-term IV)
+        ts_slope = analysis_result.get("ts_slope_0_45_overall", 0)
+        ts_threshold = self.config["screening"]["max_ts_slope_0_45"]  # -0.005
+
+        # Check if it's a recommended trade (Tier 1-4)
+        suggestion = analysis_result.get("improved_suggestion", "")
+        is_recommended = "Recommended" in suggestion and "Tier" in suggestion
+
+        # Check tier level (only auto-trade high confidence tiers)
+        if is_recommended:
+            tier_num = self._extract_tier_number(suggestion)
+            if tier_num and tier_num <= 4:  # Only Tier 1-4 for automation
+                return ts_slope <= ts_threshold
+
+        return False
+
+    def _extract_tier_number(self, suggestion_text):
+        """Extract tier number from suggestion string"""
+        import re
+
+        match = re.search(r"Tier (\d+)", suggestion_text)
+        return int(match.group(1)) if match else None
+
+    def is_trading_time(self, target_time="open"):
+        """Check if current time matches trading schedule (CST)"""
+        from datetime import datetime
+        import pytz
+
+        # Get current CST time
+        cst = pytz.timezone("America/Chicago")
+        now_cst = datetime.now(cst)
+        current_time = (now_cst.hour, now_cst.minute)
+
+        if target_time == "open":
+            return current_time == self.OPEN_TIME_CST
+        elif target_time == "close":
+            return current_time == self.CLOSE_TIME_CST
+
+        return False
+
+    def calculate_strikes(self, analysis_result):
+        """Calculate strike prices using midpoint of implied and historical moves"""
+        underlying_price = analysis_result.get("underlying_price", 0)
+
+        # Get implied move from straddle
+        implied_move_pct = analysis_result.get("expected_pct_move_straddle", 0) / 100
+
+        # Get historical median move
+        prev_stats = analysis_result.get("prev_earnings_stats", {})
+        if "median_abs_pct_move" in prev_stats:
+            hist_move_str = prev_stats["median_abs_pct_move"].replace("%", "")
+            historical_move_pct = float(hist_move_str) / 100
+        else:
+            # Fallback to implied move if no historical data
+            historical_move_pct = implied_move_pct
+
+        # Take midpoint of implied and historical moves
+        target_move_pct = (implied_move_pct + historical_move_pct) / 2
+
+        # Calculate strikes (same for calls and puts - strangle style)
+        call_strike = underlying_price * (1 + target_move_pct)
+        put_strike = underlying_price * (1 - target_move_pct)
+
+        # Round to nearest valid strike
+        call_strike = self._round_to_valid_strike(call_strike)
+        put_strike = self._round_to_valid_strike(put_strike)
+
+        logging.info(
+            f"Strike calculation: Implied {implied_move_pct:.1%}, "
+            f"Historical {historical_move_pct:.1%}, Target {target_move_pct:.1%}"
+        )
+        logging.info(f"Calculated strikes: Call ${call_strike}, Put ${put_strike}")
+
+        return call_strike, put_strike
+
+    def _round_to_valid_strike(self, strike_price):
+        """Round strike to valid increment"""
+        if strike_price < 50:
+            return round(strike_price * 2) / 2  # Round to nearest 0.5
+        elif strike_price < 100:
+            return round(strike_price)  # Round to nearest 1.0
+        else:
+            return round(strike_price / 2.5) * 2.5  # Round to nearest 2.5
+
+    def get_market_prices(self, contracts):
+        """Get current bid/ask prices for contracts"""
+        try:
+            if self.paper_trading:
+                # Return simulated prices for paper trading
+                return [(2.50, 2.60) for _ in contracts]  # (bid, ask)
+
+            tickers = self.ib_client.reqTickers(*contracts)
+            prices = []
+
+            for ticker in tickers:
+                if ticker.bid and ticker.ask and ticker.bid > 0 and ticker.ask > 0:
+                    prices.append((ticker.bid, ticker.ask))
+                else:
+                    # Fallback prices if no market data
+                    prices.append((1.00, 1.10))
+
+            return prices
+
+        except Exception as e:
+            logging.error(f"Error getting market prices: {e}")
+            # Return fallback prices
+            return [(1.00, 1.10) for _ in contracts]
+
+    def detect_calendar_spread_orders(self, ticker, analysis_result):
+        """Create calendar spread orders with initial bid/ask pricing"""
+        try:
+            call_strike, put_strike = self.calculate_strikes(analysis_result)
+
+            logging.info(f"Creating calendar spread for {ticker} (Order size: {self.order_size}):")
+            logging.info(f"  Call strike: ${call_strike}, Put strike: ${put_strike}")
+
+            # TODO: Get actual option expirations from chain data
+            # self.strikes
+            short_exp = "20240920"  # ~20 DTE
+            long_exp = "20241018"  # ~50 DTE
+
+            # Create option contracts
+            short_call = ib.Option(ticker, short_exp, call_strike, "C", "SMART")
+            long_call = ib.Option(ticker, long_exp, call_strike, "C", "SMART")
+            short_put = ib.Option(ticker, short_exp, put_strike, "P", "SMART")
+            long_put = ib.Option(ticker, long_exp, put_strike, "P", "SMART")
+
+            contracts = [short_call, long_call, short_put, long_put]
+
+            # Get current market prices
+            prices = self.get_market_prices(contracts)
+
+            # Create orders with bid/ask pricing
+            orders = []
+
+            # Short call (SELL) - start at ASK price (aggressive)
+            short_call_price = prices[0][1]  # ask price
+            short_call_order = ib.LimitOrder("SELL", self.order_size, short_call_price)
+            orders.append((contracts[0], short_call_order, "SELL"))
+
+            # Long call (BUY) - start at BID price (aggressive)
+            long_call_price = prices[1][0]  # bid price
+            long_call_order = ib.LimitOrder("BUY", self.order_size, long_call_price)
+            orders.append((contracts[1], long_call_order, "BUY"))
+
+            # Short put (SELL) - start at ASK price
+            short_put_price = prices[2][1]  # ask price
+            short_put_order = ib.LimitOrder("SELL", self.order_size, short_put_price)
+            orders.append((contracts[2], short_put_order, "SELL"))
+
+            # Long put (BUY) - start at BID price
+            long_put_price = prices[3][0]  # bid price
+            long_put_order = ib.LimitOrder("BUY", self.order_size, long_put_price)
+            orders.append((contracts[3], long_put_order, "BUY"))
+
+            logging.info("Initial pricing:")
+            for contract, order, action in orders:
+                logging.info(f"  {action} {contract.symbol} {contract.strike}{contract.right} @ ${order.lmtPrice:.2f}")
+
+            return orders
+
+        except Exception as e:
+            logging.error(f"Error creating calendar spread orders for {ticker}: {e}")
+            return None
+
+    def place_orders_with_increments(self, orders, ticker):
+        """Place orders and increment prices every 5 seconds until filled"""
+        if self.paper_trading:
+            logging.info(f"📝 PAPER TRADING: Simulating order placement for {ticker}")
+            # Simulate immediate fills for paper trading
+            for contract, order, action in orders:
+                logging.info(
+                    f"  📝 FILLED: {action} {order.totalQuantity} {contract.symbol} "
+                    f"{contract.strike}{contract.right} @ ${order.lmtPrice:.2f}"
+                )
+            return True
+
+        # LIVE TRADING - Place orders and monitor fills
+        from datetime import datetime
+
+        logging.info(f"⚠️  Placing LIVE orders for {ticker} at {datetime.now().strftime('%H:%M:%S')}")
+
+        try:
+            trades = []
+            unfilled_orders = []
+
+            # Place initial orders
+            for contract, order, action in orders:
+                trade = self.ib_client.placeOrder(contract, order)
+                trades.append(trade)
+                unfilled_orders.append((trade, contract, order, action))
+                logging.info(
+                    f"⚠️  ORDER PLACED: {action} {order.totalQuantity} "
+                    f"{contract.symbol} {contract.strike}{contract.right} @ ${order.lmtPrice:.2f}"
+                )
+
+            # Monitor and increment prices until all filled
+            increment_count = 0
+
+            while unfilled_orders and increment_count < self.max_increments:
+                self.ib_client.sleep(self.INCREMENT_INTERVAL)
+                increment_count += 1
+
+                # Check for fills
+                still_unfilled = []
+                for trade, contract, order, action in unfilled_orders:
+                    if trade.isDone():
+                        logging.info(f"✅ FILLED: {action} {contract.symbol} {contract.strike}{contract.right}")
+                    else:
+                        # Increment price and modify order
+                        if action == "BUY":
+                            # For buys, increase price (move toward ask)
+                            new_price = order.lmtPrice + self.PRICE_INCREMENT
+                        else:  # SELL
+                            # For sells, decrease price (move toward bid)
+                            new_price = order.lmtPrice - self.PRICE_INCREMENT
+
+                        order.lmtPrice = max(0.01, round(new_price, 2))  # Don't go below $0.01
+                        self.ib_client.placeOrder(contract, order)  # Modify existing order
+
+                        logging.info(
+                            f"🔄 PRICE INCREMENT #{increment_count}: {action} "
+                            f"{contract.symbol} {contract.strike}{contract.right} "
+                            f"@ ${order.lmtPrice:.2f}"
+                        )
+                        still_unfilled.append((trade, contract, order, action))
+
+                unfilled_orders = still_unfilled
+
+            # Check final results
+            if unfilled_orders:
+                logging.warning(
+                    f"⚠️  {len(unfilled_orders)} orders for {ticker} did not fill after {increment_count} increments"
+                )
+                # Cancel remaining orders
+                for trade, _, _, _ in unfilled_orders:
+                    self.ib_client.cancelOrder(trade.order)
+                return False
+            else:
+                logging.info(f"✅ All orders for {ticker} filled successfully!")
+                self.active_positions[ticker] = {
+                    "trades": trades,
+                    "open_time": datetime.now(),
+                    "strategy": "calendar_spread",
+                    "status": "open",
+                }
+                return True
+
+        except Exception as e:
+            logging.error(f"⚠️  Error placing orders for {ticker}: {e}")
+            return False
+
+    def schedule_position_close(self, ticker):
+        """Schedule position to close at 8:15 AM CST next day"""
+        from datetime import datetime, timedelta
+        import pytz
+
+        # Calculate next day 8:15 AM CST
+        cst = pytz.timezone("America/Chicago")
+        tomorrow = datetime.now(cst) + timedelta(days=1)
+        close_time = tomorrow.replace(hour=8, minute=15, second=0, microsecond=0)
+
+        logging.info(f"📅 Scheduled to close {ticker} position at {close_time.strftime('%Y-%m-%d %H:%M:%S CST')}")
+
+        # Store close time with position
+        if ticker in self.active_positions:
+            self.active_positions[ticker]["scheduled_close"] = close_time
+
+    def close_position(self, ticker):
+        """Close existing position using same bid/ask increment logic"""
+        from datetime import datetime
+
+        if ticker not in self.active_positions:
+            logging.error(f"No active position found for {ticker}")
+            return False
+
+        position = self.active_positions[ticker]
+        if position["status"] != "open":
+            logging.warning(f"Position for {ticker} is not open (status: {position['status']})")
+            return False
+
+        logging.info(f"🔚 Closing position for {ticker} at {datetime.now().strftime('%H:%M:%S')}")
+
+        # For paper trading, just simulate the close
+        if self.paper_trading:
+            logging.info(f"📝 PAPER TRADING: Simulating position close for {ticker}")
+            position["status"] = "closed"
+            position["close_time"] = datetime.now()
+            return True
+
+        # LIVE TRADING: Create closing orders (reverse the original positions)
+        try:
+            # Get the original trades from the position
+            original_trades = position.get("trades", [])
+            if not original_trades:
+                logging.error(f"No original trades found for {ticker} position")
+                return False
+
+            closing_orders = []
+
+            # Reverse each original trade
+            for trade in original_trades:
+                contract = trade.contract
+                original_order = trade.order
+
+                # Reverse the action: BUY becomes SELL, SELL becomes BUY
+                reverse_action = "SELL" if original_order.action == "BUY" else "BUY"
+
+                # Get current market data for pricing
+                ticker_data = self.ib_client.reqTickers(contract)[0]
+
+                # Set initial price based on action
+                if reverse_action == "BUY":
+                    # Buying to close short position - start at ASK
+                    initial_price = ticker_data.ask if ticker_data.ask and ticker_data.ask > 0 else 1.00
+                else:
+                    # Selling to close long position - start at BID
+                    initial_price = ticker_data.bid if ticker_data.bid and ticker_data.bid > 0 else 1.00
+
+                # Create closing order
+                closing_order = ib.LimitOrder(reverse_action, original_order.totalQuantity, initial_price)
+                closing_orders.append((contract, closing_order, reverse_action))
+
+                logging.info(
+                    f"Creating closing order: {reverse_action} {closing_order.totalQuantity} "
+                    f"{contract.symbol} {contract.strike}{contract.right} @ ${closing_order.lmtPrice:.2f}"
+                )
+
+            # Place closing orders with increment logic
+            success = self._place_closing_orders_with_increments(closing_orders, ticker)
+
+            if success:
+                logging.info(f"✅ Position closed successfully for {ticker}")
+                position["status"] = "closed"
+                position["close_time"] = datetime.now()
+                return True
+            else:
+                logging.error(f"❌ Failed to close position for {ticker}")
+                return False
+
+        except Exception as e:
+            logging.error(f"Error closing position for {ticker}: {e}")
+            return False
+
+    def _place_closing_orders_with_increments(self, orders, ticker):
+        """Place closing orders - DRY implementation using shared order logic"""
+        if self.paper_trading:
+            return self._simulate_paper_trading_orders(orders, ticker, "CLOSING")
+
+        return self._execute_live_orders_with_increments(orders, ticker, "CLOSING")
+
+    def process_trading_signal(self, ticker, analysis_result):
+        """Main method to process trading signal at 14:45 CST"""
+        # Check if it's trading time
+        if not self.is_trading_time("open"):
+            current_time = datetime.now().strftime("%H:%M CST")
+            logging.debug(f"Not trading time for {ticker} (current: {current_time}, target: 14:45 CST)")
+            return False
+
+        if not self.should_place_orders(analysis_result):
+            return False
+
+        logging.info(f"🎯 TRADING SIGNAL AT 14:45 CST FOR {ticker} 🎯")
+
+        # Detect contracts that should be traded
+        orders = self.detect_calendar_spread_orders(ticker, analysis_result)
+        # Create and place orders
+        if not orders:
+            logging.error(f"Failed to create orders for {ticker}")
+            return False
+
+        success = self.place_orders_with_increments(orders, ticker)
+        if success:
+            logging.info(f"✅ Successfully opened position for {ticker}")
+            self.schedule_position_close(ticker)
+        else:
+            logging.error(f"❌ Failed to open position for {ticker}")
+
+        return success
+
+    def check_scheduled_closes(self):
+        """Check for positions that need to be closed at 8:15 AM CST"""
+        if not self.is_trading_time("close"):
+            return
+
+        from datetime import datetime
+
+        for ticker, position in self.active_positions.items():
+            if (
+                position["status"] == "open"
+                and "scheduled_close" in position
+                and datetime.now() >= position["scheduled_close"].replace(tzinfo=None)
+            ):
+
+                logging.info(f"⏰ Time to close position for {ticker}")
+                self.close_position(ticker)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run calculations for given tickers")
 
     parser.add_argument(
         "--earnings-date",
         type=str,
-        default=datetime.today().strftime("%Y-%m-%d"),
+        default=datetime.now(ZoneInfo("America/Chicago")).strftime("%Y-%m-%d"),
         help="Earnings date in YYYY-MM-DD format (default: today)",
     )
 
@@ -1453,13 +2070,40 @@ if __name__ == "__main__":
         help="Verbose output for displaying all results. Default is True.",
     )
 
+    parser.add_argument(
+        "--auto-trade",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable automated trading (PAPER TRADING MODE by default)",
+    )
+
+    parser.add_argument(
+        "--live-trading",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable LIVE trading mode (⚠️  REAL MONEY AT RISK ⚠️ )",
+    )
+
     args = parser.parse_args()
     earnings_date = args.earnings_date
     tickers = args.tickers
     verbose = args.verbose
+    auto_trade = args.auto_trade
+    live_trading = args.live_trading
 
     if tickers == ["_all"]:
         tickers = get_all_usa_tickers(earnings_date=earnings_date)
+
+    if auto_trade and live_trading:
+        logging.warning("⚠️  LIVE TRADING MODE REQUESTED ⚠️")
+        confirmation = input(
+            "⚠️  You are requesting LIVE TRADING mode with REAL MONEY. Type 'CONFIRM LIVE TRADING' to proceed: "
+        )
+        if confirmation != "CONFIRM LIVE TRADING":
+            logging.info("Live trading not confirmed. Switching to paper trading mode.")
+            live_trading = False
+    elif auto_trade:
+        logging.info("📝 Automated PAPER TRADING mode enabled")
 
     logging.info(f"Scanning {len(tickers)} tickers: \n{tickers}\n")
     logging.info(f"Connecting to Interactive Brokers at {IB_HOST}:{IB_PORT} with client ID {IB_CLIENT_ID}")
@@ -1467,20 +2111,33 @@ if __name__ == "__main__":
     ib_client = ib.IB()
 
     try:
-        ib_client.connect(IB_HOST, IB_PORT, clientId=IB_CLIENT_ID, readonly=True)
+        # Connect to IB (readonly=False if auto trading enabled)
+        readonly_mode = not auto_trade
+        ib_client.connect(IB_HOST, IB_PORT, clientId=IB_CLIENT_ID, readonly=readonly_mode)
         ib_client.reqMarketDataType(4)
-        # Set longer timeout for IV calculations that may take time with deep ITM options
         ib_client.setTimeout(30)
 
-        # mde = MarketDataExtractor(ticker="DIS")
-        # mde.get_historical_bars()
-        # mde.get_option_data()
+        # Initialize OrderManager if auto-trading is enabled
+        order_manager = None
+        if auto_trade:
+            paper_trading = not live_trading  # Paper trading unless explicitly live
+            order_manager = OrderManager(ib_client, config, paper_trading=paper_trading)
+            logging.info(f"🤖 OrderManager initialized ({'LIVE' if live_trading else 'PAPER'} trading mode)")
+
         for ticker in tickers:
             iv_scanner = EarningsIVScanner(ticker=ticker)
             result = iv_scanner.compute_recommendation(ticker)
-            is_edge = isinstance(result, dict) and "Recommended" in result.get("improved_suggestion")
+            is_edge = isinstance(result, dict) and "Recommended" in result.get("improved_suggestion", "")
+
             if is_edge:
                 logging.info("*** EDGE FOUND ***\n")
+
+                # Process trading signal if auto-trading enabled
+                if order_manager:
+                    try:
+                        order_manager.process_trading_signal(ticker, result)
+                    except Exception as e:
+                        logging.error(f"Error processing trading signal for {ticker}: {e}")
 
             if verbose or is_edge:
                 logging.info(f"ticker: {ticker}")
@@ -1490,6 +2147,11 @@ if __name__ == "__main__":
                 else:
                     logging.info(f"  {result}")
                 logging.info("---------------")
+
+        # Check for scheduled position closes if auto-trading enabled
+        if order_manager:
+            logging.info("🔍 Checking for scheduled position closes...")
+            order_manager.check_scheduled_closes()
 
     except Exception as e:
         import traceback

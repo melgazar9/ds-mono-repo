@@ -3,7 +3,7 @@
 # Interactive Brokers Connection Settings
 ib:
   host: "127.0.0.1"
-  port: 4001  # Live trading: 7496, Gateway paper trading: 4002
+  port: 4002  # Live trading: 4001 for IB Gateway and 7496 for TWS, IB Gateway paper trading: 4002
   client_id: 1
 
 # Market Data Configuration
@@ -52,6 +52,15 @@ tier_3:
   max_ts_slope_0_45: -0.005
   min_share_price: 25
   max_spread_pct: 0.0125  # % of underlying price
+
+# Order Management Settings
+order_management:
+  order_size: 1  # Number of contracts per leg
+  price_increment: 0.03  # Dollar amount to increment prices
+  increment_interval: 5  # Seconds between price adjustments
+  max_increments: 60  # Maximum number of price adjustments (5 minutes)
+  open_time_cst: [14, 45]  # Hour, minute for opening trades (2:45 PM CST)
+  close_time_cst: [8, 15]  # Hour, minute for closing trades (8:15 AM CST next day)
 
 # Other Settings
 settings:

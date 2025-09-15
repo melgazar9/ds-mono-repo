@@ -12,6 +12,7 @@ import logging
 import os
 import threading
 import yaml
+from zoneinfo import ZoneInfo
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -286,7 +287,7 @@ class MarketDataExtractor:
         if not self.chain:
             self.get_option_chain()
 
-        today = datetime.today().date()
+        today = datetime.now(ZoneInfo("America/Chicago")).date()
         max_date = today + timedelta(days=max_days_out)
         self.valid_expirations = []
 

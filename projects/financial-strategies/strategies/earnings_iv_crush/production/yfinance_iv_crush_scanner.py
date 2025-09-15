@@ -9,6 +9,7 @@ import os
 import requests
 import plotly.express as px
 from dateutil.relativedelta import relativedelta
+from zoneinfo import ZoneInfo
 
 warnings.filterwarnings("ignore", message="Not enough unique days to interpolate for ticker")
 
@@ -61,7 +62,7 @@ TIER_3_MAX_SPREAD_PCT = 0.0125  # % of underlying price
 
 
 def filter_dates(dates):
-    today = datetime.today().date()
+    today = datetime.now(ZoneInfo("America/Chicago")).date()
     cutoff_date = today + timedelta(days=45)
 
     sorted_dates = sorted(datetime.strptime(date, "%Y-%m-%d").date() for date in dates)
@@ -187,7 +188,7 @@ def calc_kelly_bet(
     return round(bet_amount, 2)
 
 
-def get_all_usa_tickers(use_yf_db=True, earnings_date=datetime.today().strftime("%Y-%m-%d")):
+def get_all_usa_tickers(use_yf_db=True, earnings_date=datetime.now(ZoneInfo("America/Chicago")).strftime("%Y-%m-%d")):
     ### FMP ###
 
     try:
@@ -683,7 +684,9 @@ def compute_recommendation(
     i = 0
     while i < n_tries:
         df_history = stock.history(
-            start=(datetime.today() - timedelta(days=EARNINGS_LOOKBACK_DAYS_FOR_AGG)).strftime("%Y-%m-%d")
+            start=(datetime.now(ZoneInfo("America/Chicago")) - timedelta(days=EARNINGS_LOOKBACK_DAYS_FOR_AGG)).strftime(
+                "%Y-%m-%d"
+            )
         )
         if df_history is not None and not df_history.empty:
             break
@@ -779,7 +782,7 @@ def compute_recommendation(
     if not atm_iv:
         return "Error: Could not determine ATM IV for any expiration dates."
 
-    today = datetime.today().date()
+    today = datetime.now(ZoneInfo("America/Chicago")).date()
     dtes = []
     ivs = []
     for exp_date, iv in atm_iv.items():
@@ -937,7 +940,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--earnings-date",
         type=str,
-        default=datetime.today().strftime("%Y-%m-%d"),
+        default=datetime.now(ZoneInfo("America/Chicago")).strftime("%Y-%m-%d"),
         help="Earnings date in YYYY-MM-DD format (default: today)",
     )
 
