@@ -68,29 +68,29 @@ restore_tap_states() {
     fi
 
     # Check if tap backup directory exists
-    local tap_backup_dir="saved_states/${tap}_${environment}"
+    local tap_backup_dir="saved_states/$tap"
     if [[ ! -d "$tap_backup_dir" ]]; then
         echo "  No backup directory found for $tap (${tap_backup_dir})"
         return 0
     fi
 
-    # Check for backup files for this tap
-    local state_files=(${tap_backup_dir}/*.json)
+    # Check for backup files for this tap and environment
+    local state_files=(${tap_backup_dir}/*_${environment}.json)
     if [[ ! -f "${state_files[0]}" ]]; then
-        echo "  No backup files found for $tap"
+        echo "  No backup files found for $tap with environment $environment"
         return 0
     fi
 
-    # Filter out state list files, only process actual state files
+    # All files matching the pattern are actual state files
     local actual_state_files=()
     for file in "${state_files[@]}"; do
-        if [[ -f "$file" && "$(basename "$file")" != "state_list.json" ]]; then
+        if [[ -f "$file" ]]; then
             actual_state_files+=("$file")
         fi
     done
 
     if [[ ${#actual_state_files[@]} -eq 0 ]]; then
-        echo "  No state backup files found for $tap"
+        echo "  No state backup files found for $tap with environment $environment"
         return 0
     fi
 
@@ -101,9 +101,10 @@ restore_tap_states() {
     local states_restored=0
     for state_file in "${actual_state_files[@]}"; do
         if [[ -f "../$state_file" ]]; then
-            # Extract state ID from filename (just the basename without .json)
+            # Extract state ID from filename by removing the environment suffix
+            # Format: state_id_environment.json -> state_id
             local filename=$(basename "$state_file")
-            local state_id="${filename%.json}"
+            local state_id="${filename%_${environment}.json}"
 
             echo "    Restoring state: $state_id"
 
@@ -204,12 +205,12 @@ for tap in "${SELECTED_TAPS[@]}"; do
     if restore_tap_states "$tap" "$ENVIRONMENT"; then
         ((TOTAL_TAPS_PROCESSED++))
         # Count restored states for this tap
-        local tap_backup_dir="saved_states/${tap}_${ENVIRONMENT}"
+        local tap_backup_dir="saved_states/$tap"
         if [[ -d "$tap_backup_dir" ]]; then
-            TAP_RESTORED_FILES=(${tap_backup_dir}/*.json)
+            TAP_RESTORED_FILES=(${tap_backup_dir}/*_${ENVIRONMENT}.json)
             local tap_states=0
             for file in "${TAP_RESTORED_FILES[@]}"; do
-                if [[ -f "$file" && "$(basename "$file")" != "state_list.json" ]]; then
+                if [[ -f "$file" ]]; then
                     ((tap_states++))
                 fi
             done

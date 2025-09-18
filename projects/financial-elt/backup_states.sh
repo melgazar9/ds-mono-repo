@@ -67,8 +67,8 @@ backup_tap_states() {
         return 1
     fi
 
-    # Create tap-specific backup directory with environment suffix
-    local tap_backup_dir="saved_states/${tap}_${environment}"
+    # Create tap-specific backup directory
+    local tap_backup_dir="saved_states/$tap"
     mkdir -p "$tap_backup_dir"
 
     # Change to tap directory
@@ -76,7 +76,7 @@ backup_tap_states() {
 
     # Get state list for this tap
     echo "  Getting state list for $tap..."
-    local state_list_file="../${tap_backup_dir}/state_list.json"
+    local state_list_file="../${tap_backup_dir}/state_list_${environment}.json"
 
     if ! meltano --environment "$environment" state list > "$state_list_file" 2>/dev/null; then
         echo "  Warning: Failed to get state list for $tap, skipping..."
@@ -96,7 +96,7 @@ backup_tap_states() {
     while read -r state_id; do
         if [[ ! -z "$state_id" && "$state_id" != "null" ]]; then
             echo "    Backing up state: $state_id"
-            local state_file="../${tap_backup_dir}/${state_id}.json"
+            local state_file="../${tap_backup_dir}/${state_id}_${environment}.json"
 
             if meltano --environment "$environment" state get "$state_id" > "$state_file" 2>/dev/null; then
                 ((states_backed_up++))
@@ -189,10 +189,16 @@ echo ""
 # Process each selected tap
 for tap in "${SELECTED_TAPS[@]}"; do
     echo "=========================================="
-    if backup_tap_states "$tap" "$ENVIRONMENT"; then
+    # Temporarily disable set -e for this function call to prevent script exit
+    set +e
+    backup_tap_states "$tap" "$ENVIRONMENT"
+    local backup_result=$?
+    set -e
+
+    if [[ $backup_result -eq 0 ]]; then
         ((TOTAL_TAPS_PROCESSED++))
         # Count states for this tap
-        TAP_STATES=$(ls saved_states/${tap}_${ENVIRONMENT}/*.json 2>/dev/null | grep -v "state_list.json" | wc -l || echo 0)
+        TAP_STATES=$(ls saved_states/${tap}/*_${ENVIRONMENT}.json 2>/dev/null | wc -l || echo 0)
         TOTAL_STATES_BACKED_UP=$((TOTAL_STATES_BACKED_UP + TAP_STATES))
     fi
 
@@ -208,13 +214,13 @@ echo "Backup files saved to: saved_states/"
 echo ""
 echo "Directory structure:"
 for tap in "${SELECTED_TAPS[@]}"; do
-    local tap_dir="saved_states/${tap}_${ENVIRONMENT}"
+    tap_dir="saved_states/$tap"
     if [[ -d "$tap_dir" ]]; then
         echo "  $tap_dir/"
-        echo "    ├── state_list.json"
-        local state_files=(${tap_dir}/*.json)
+        echo "    ├── state_list_${ENVIRONMENT}.json"
+        state_files=(${tap_dir}/*_${ENVIRONMENT}.json)
         for file in "${state_files[@]}"; do
-            if [[ -f "$file" && "$(basename "$file")" != "state_list.json" ]]; then
+            if [[ -f "$file" ]]; then
                 echo "    └── $(basename "$file")"
             fi
         done
