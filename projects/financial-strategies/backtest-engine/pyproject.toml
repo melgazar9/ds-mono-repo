@@ -1,18 +1,18 @@
-[tool.poetry]
+[project]
 name = "bt_engine"
 version = "0.1.0"
 description = "Backtesting engine for trading strategies"
-authors = ["melgazar9 <melgazar9@gmail.com>"]
-
-[tool.poetry.dependencies]
-python = "^3.11,<4.0"
-ds_core = { path = "../../../ds-core/", develop = true }
-polars = "^1.30.0"
-sqlalchemy = "^2.0.41"
+authors = [{name = "melgazar9", email = "melgazar9@gmail.com"}]
+requires-python = ">=3.11"
+dependencies = [
+    "ds_core @ file:///Users/melgazar9/code/github/personal/ds-mono-repo/ds-core/",
+    "polars>=1.30.0",
+    "sqlalchemy>=2.0.41"
+]
 
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
 
-[[tool.poetry.packages]]
-include = "bt_engine"
+[tool.setuptools]
+py-modules = []

@@ -4,7 +4,7 @@
 - Docker standalone:
   - `./run.sh`
 - Run natively
-  - `poetry install && poetry run python host.py`
+  - `uv sync && uv run financial-elt`
 
 ### Note
 - If running this tap for all tickers and streams (e.g. stocks, crypto, futures, forex, and financials across different intervals), Yahoo will likely block your IP because they assume their server is being spammed given there are hundreds of thousands of requests. A workaround is to run `setup.sh` prior to building the docker image. Although this is setup for NordVPN, you can modify it to work for other vpn services. In `setup.sh` I have also turned on meshnet, which will allow a more secure ssh without port forward (22) while staying connected to a VPN and avoid being flagged as a spam user by Yahoo.
@@ -20,3 +20,4 @@
 
 **Installation**
   - Simply install docker (or docker-compose) and build the image.
+  - This project is designed to be orchestrated from the root directory.

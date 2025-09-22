@@ -1,19 +1,21 @@
-[tool.poetry]
+[project]
 name = "vectorbt-backtest"
 version = "0.1.0"
 description = "VectorBT backtesting strategies"
-authors = ["melgazar9 <melgazar9@gmail.com>"]
-package-mode = false
+authors = [{name = "melgazar9", email = "melgazar9@gmail.com"}]
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.24.0,<2.0.0",
+    "vectorbt>=0.27.3",
+    "bt_engine @ file:///Users/melgazar9/code/github/personal/ds-mono-repo/projects/financial-strategies/backtest-engine",
+    "ds_core @ file:///Users/melgazar9/code/github/personal/ds-mono-repo/ds-core/",
+    "psycopg2>=2.9.10",
+    "paramiko>=3.5.1"
+]
 
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
 
-[tool.poetry.dependencies]
-python = "^3.11,<4.0"
-numpy = "^1.24.0,<2.0.0"
-vectorbt = "^0.27.3"
-bt_engine = { path = "../../../../financial-strategies/backtest-engine", develop = true }
-ds_core = { path = "../../../../../ds-core/",  develop = true}
-psycopg2 = "^2.9.10"
-paramiko = "^3.5.1"
+[tool.setuptools]
+py-modules = []

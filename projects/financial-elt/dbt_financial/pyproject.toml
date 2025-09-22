@@ -1,20 +1,20 @@
-[tool.poetry]
+[project]
 name = "dbt-financial"
 version = "0.1.0"
 description = ""
-authors = ["melgazar9 <melgazar9@gmail.com>"]
+authors = [{name = "melgazar9", email = "melgazar9@gmail.com"}]
 readme = "README.md"
-package-mode = false
+requires-python = ">=3.10"
 
-[tool.poetry.dependencies]
-python = "^3.10"
-dbt = "^1.0.0.34.17"
-#dbt-bigquery = "^1.7.2"  # not used anymore
-#dbt-snowflake = "^1.7.0"  # not used anymore
-dbt-core = "^1.7.3"
-dbt-postgres = "^1.9.0"
+dependencies = [
+    "dbt>=1.0.0.34.17",
+    "dbt-core>=1.7.3",
+    "dbt-postgres>=1.9.0",
+]
 
+[tool.hatch.build.targets.wheel]
+only-include = []
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"

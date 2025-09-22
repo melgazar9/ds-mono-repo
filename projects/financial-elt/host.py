@@ -3,8 +3,8 @@ import logging
 import signal
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from routes import *
-from utils import *
+from financial_elt.routes import *
+from financial_elt.utils import *
 from waitress import serve
 
 ENVIRONMENT = os.getenv("ENVIRONMENT")
@@ -13,7 +13,7 @@ signal.signal(signal.SIGINT, critical_shutdown_handler)
 signal.signal(signal.SIGTERM, critical_shutdown_handler)
 
 
-if __name__ == "__main__":
+def main():
     # Note: Setting mp.set_start_method("spawn") tells multiprocessing to create new Python interpreter processes from
     # scratch, rather than duplicating the current process's memory. This prevents child processes from inheriting the
     # Flask application's state, open file descriptors, or locks, which are common causes of deadlocks.
@@ -62,3 +62,7 @@ if __name__ == "__main__":
 
     scheduler.start()
     serve(app, host=HOST, port=PORT, threads=2)  # waitress wsgi production server
+
+
+if __name__ == "__main__":
+    main()
