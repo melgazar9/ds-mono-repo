@@ -59,3 +59,5 @@ logs/
 *.python-version
 
 ./projects/financial-elt/dbt_financial/logs/*
+
+projects/financial-elt/saved_states/*
