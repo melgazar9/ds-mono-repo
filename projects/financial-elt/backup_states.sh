@@ -3,8 +3,8 @@
 # Enhanced Meltano states backup script with argument parsing
 # Usage:
 #   ./backup_states.sh --all
-#   ./backup_states.sh --extractors tap-fmp tap-polygon
-#   ./backup_states.sh --extractors tap-yfinance
+#   ./backup_states.sh --taps tap-fmp tap-polygon
+#   ./backup_states.sh --taps tap-yfinance
 
 set -e
 
@@ -18,7 +18,7 @@ usage() {
     echo ""
     echo "Options:"
     echo "  --all                      Backup states for all available taps"
-    echo "  --extractors TAP1 TAP2     Backup states for specified taps"
+    echo "  --taps TAP1 TAP2           Backup states for specified taps"
     echo "  --environment ENV          Meltano environment (dev or production)"
     echo "  -h, --help                Show this help message"
     echo ""
@@ -27,7 +27,7 @@ usage() {
     echo ""
     echo "Examples:"
     echo "  $0 --all --environment dev"
-    echo "  $0 --extractors tap-fmp tap-polygon --environment production"
+    echo "  $0 --taps tap-fmp tap-polygon --environment production"
     exit 1
 }
 
@@ -126,16 +126,16 @@ while [[ $# -gt 0 ]]; do
             SELECTED_TAPS=("${AVAILABLE_TAPS[@]}")
             shift
             ;;
-        --extractors)
+        --taps)
             shift
-            # Collect all tap names after --extractors
+            # Collect all tap names after --taps
             while [[ $# -gt 0 && ! "$1" =~ ^-- ]]; do
                 validate_tap "$1"
                 SELECTED_TAPS+=("$1")
                 shift
             done
             if [[ ${#SELECTED_TAPS[@]} -eq 0 ]]; then
-                echo "Error: --extractors requires at least one tap name"
+                echo "Error: --taps requires at least one tap name"
                 usage
             fi
             ;;
