@@ -1,20 +1,20 @@
 networks:
   elastic:
-    name: ds_elastic_${ENVIRONMENT:-dev}
+    name: ds_elastic_dev
     driver: bridge
 
 volumes:
   elasticsearch_data:
-    name: ds_elasticsearch_data_${ENVIRONMENT:-dev}
+    name: ds_elasticsearch_data_dev
   kibana_data:
-    name: ds_kibana_data_${ENVIRONMENT:-dev}
+    name: ds_kibana_data_dev
   filebeat_data:
-    name: ds_filebeat_data_${ENVIRONMENT:-dev}
+    name: ds_filebeat_data_dev
 
 services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
-    container_name: elasticsearch-${ENVIRONMENT}
+    container_name: elasticsearch-dev
     platform: linux/amd64
     environment:
       - discovery.type=single-node
@@ -23,8 +23,8 @@ services:
     networks:
       - elastic
     ports:
-      - "${ELASTICSEARCH_PORT:-9200}:9200"
-      - "${ELASTICSEARCH_TRANSPORT_PORT:-9300}:9300"
+      - "9200:9200"
+      - "9300:9300"
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
     env_file:
@@ -32,14 +32,14 @@ services:
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.13.4
-    container_name: kibana-${ENVIRONMENT}
+    container_name: kibana-dev
     platform: linux/amd64
     environment:
-      - ELASTICSEARCH_HOSTS=["http://elasticsearch-${ENVIRONMENT}:9200"]
+      - ELASTICSEARCH_HOSTS=["http://elasticsearch-dev:9200"]
     networks:
       - elastic
     ports:
-      - "${KIBANA_PORT:-5601}:5601"
+      - "5601:5601"
     volumes:
       - kibana_data:/usr/share/kibana/data
     depends_on:
@@ -50,7 +50,7 @@ services:
   filebeat:
     image: docker.elastic.co/beats/filebeat:8.12.0
     user: root
-    container_name: filebeat-${ENVIRONMENT}
+    container_name: filebeat-dev
     platform: linux/amd64
     networks:
       - elastic
@@ -64,7 +64,7 @@ services:
       - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
       - ./filebeat/filebeat-5d-policy.json:/usr/share/filebeat/filebeat-5d-policy.json:ro
     environment:
-      - ELASTICSEARCH_HOSTS=http://elasticsearch-${ENVIRONMENT}:9200
+      - ELASTICSEARCH_HOSTS=http://elasticsearch-dev:9200
     env_file:
       - .env
 
@@ -74,7 +74,7 @@ services:
       dockerfile: Dockerfile
       args:
         CI: "true"
-    container_name: tap-yfinance-${ENVIRONMENT}
+    container_name: tap-yfinance-dev
     platform: linux/amd64
     networks:
       - elastic
@@ -96,7 +96,7 @@ services:
         soft: 65536
         hard: 65536
     ports:
-      - "${TAP_YFINANCE_PORT:-5000}:5000"
+      - "5000:5000"
 
   tap-yahooquery:
     build:
@@ -104,7 +104,7 @@ services:
       dockerfile: Dockerfile
       args:
         CI: "true"
-    container_name: tap-yahooquery-${ENVIRONMENT}
+    container_name: tap-yahooquery-dev
     platform: linux/amd64
     networks:
       - elastic
@@ -126,7 +126,7 @@ services:
         soft: 65536
         hard: 65536
     ports:
-      - "${TAP_YAHOOQUERY_PORT:-5001}:5000"
+      - "5001:5000"
 
   tap-polygon:
     build:
@@ -134,7 +134,7 @@ services:
       dockerfile: Dockerfile
       args:
         CI: "true"
-    container_name: tap-polygon-${ENVIRONMENT}
+    container_name: tap-polygon-dev
     platform: linux/amd64
     networks:
       - elastic
@@ -156,7 +156,7 @@ services:
         soft: 65536
         hard: 65536
     ports:
-      - "${TAP_POLYGON_PORT:-5002}:5000"
+      - "5002:5000"
 
   tap-fmp:
     build:
@@ -164,7 +164,7 @@ services:
       dockerfile: Dockerfile
       args:
         CI: "true"
-    container_name: tap-fmp-${ENVIRONMENT}
+    container_name: tap-fmp-dev
     platform: linux/amd64
     networks:
       - elastic
@@ -186,4 +186,4 @@ services:
         soft: 65536
         hard: 65536
     ports:
-      - "${TAP_FMP_PORT:-5003}:5000"
+      - "5003:5000"

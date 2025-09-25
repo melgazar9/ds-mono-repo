@@ -2,6 +2,8 @@
 *.git_credentials
 *.env
 credentials
+**/.claude/*
+CLAUDE.md
 
 *state.json
 
