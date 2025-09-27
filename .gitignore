@@ -2,6 +2,8 @@
 *.git_credentials
 *.env
 credentials
+**/.claude/*
+CLAUDE.md
 
 *state.json
 
@@ -59,3 +61,5 @@ logs/
 *.python-version
 
 ./projects/financial-elt/dbt_financial/logs/*
+
+projects/financial-elt/saved_states/*

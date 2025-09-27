@@ -79,8 +79,8 @@ class MeltanoTap:
                 f"You must set at least one of {env_prefix}_DB_TARGET or {env_prefix}_FILE_TARGET in your environment."
             )
 
-        self.base_run_command = f"meltano --environment={ENVIRONMENT} el {self.tap_name}"
-        self.cwd = os.path.join(app.root_path, project_dir)
+        self.base_run_command = f"meltano --environment {ENVIRONMENT} el {self.tap_name}"
+        self.cwd = os.path.join(os.path.dirname(app.root_path), project_dir)
 
         self.task_chunks = get_task_chunks(num_workers, self.tap_name) if num_workers > 1 else None
 
