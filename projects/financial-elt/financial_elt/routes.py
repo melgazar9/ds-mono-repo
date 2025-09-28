@@ -37,6 +37,13 @@ TAP_CONFIGS = {
         "parallelism_method": os.getenv("TAP_FMP_PARALLELISM_METHOD"),
         "semaphore": int(os.getenv("TAP_FMP_MP_SEMAPHORE", "8")),
     },
+    "tap-fred": {
+        "file_target": os.getenv("TAP_FRED_FILE_TARGET"),
+        "db_target": os.getenv("TAP_FRED_DB_TARGET"),
+        "num_workers": int(os.getenv("TAP_FRED_NUM_WORKERS")),
+        "parallelism_method": os.getenv("TAP_FRED_PARALLELISM_METHOD"),
+        "semaphore": int(os.getenv("TAP_FRED_MP_SEMAPHORE", "8")),
+    },
 }
 
 

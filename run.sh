@@ -16,6 +16,7 @@ if [ "$ENVIRONMENT" = "production" ]; then
     export TAP_YAHOOQUERY_PORT=5011
     export TAP_POLYGON_PORT=5012
     export TAP_FMP_PORT=5013
+    export TAP_FRED_PORT=5014
 else
     export ELASTICSEARCH_PORT=9200
     export ELASTICSEARCH_TRANSPORT_PORT=9300
@@ -24,6 +25,7 @@ else
     export TAP_YAHOOQUERY_PORT=5001
     export TAP_POLYGON_PORT=5002
     export TAP_FMP_PORT=5003
+    export TAP_FRED_PORT=5004
 fi
 
 export ENVIRONMENT
@@ -36,10 +38,40 @@ echo "Starting $ENVIRONMENT environment..."
 
 COMPOSE_FILE="docker-compose-${ENVIRONMENT}.yml"
 
+# Extract FINANCIAL_ELT_TAPS_TO_RUN from .env safely
+TAPS_TO_RUN=""
+if [ -f .env ]; then
+    TAPS_TO_RUN=$(grep "^FINANCIAL_ELT_TAPS_TO_RUN=" .env | cut -d'=' -f2)
+fi
+
+# Always start core services
+CORE_SERVICES="elasticsearch kibana filebeat"
+
+# Parse FINANCIAL_ELT_TAPS_TO_RUN to get tap services
+if [ -n "$TAPS_TO_RUN" ]; then
+    TAP_SERVICES=$(echo "$TAPS_TO_RUN" | tr ',' ' ')
+    SERVICES="$CORE_SERVICES $TAP_SERVICES"
+    echo "Selected taps from .env: $TAP_SERVICES"
+else
+    echo "Warning: FINANCIAL_ELT_TAPS_TO_RUN not set in .env, starting all services"
+    SERVICES=""
+fi
+
 echo "Building containers using $COMPOSE_FILE..."
-sudo docker compose -f $COMPOSE_FILE build
+if [ -n "$SERVICES" ]; then
+    echo "Building only selected services: $SERVICES"
+    sudo docker compose -p ds-mono-repo-$ENVIRONMENT -f $COMPOSE_FILE build $SERVICES
+else
+    sudo docker compose -p ds-mono-repo-$ENVIRONMENT -f $COMPOSE_FILE build
+fi
+
 echo "Build completed. Starting containers..."
-sudo docker compose -f $COMPOSE_FILE up -d
+if [ -n "$SERVICES" ]; then
+    echo "Starting only selected services: $SERVICES"
+    sudo docker compose -p ds-mono-repo-$ENVIRONMENT -f $COMPOSE_FILE up -d $SERVICES
+else
+    sudo docker compose -p ds-mono-repo-$ENVIRONMENT -f $COMPOSE_FILE up -d
+fi
 echo "Containers started."
 
 sleep 3
