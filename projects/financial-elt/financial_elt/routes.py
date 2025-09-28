@@ -191,3 +191,8 @@ def tap_polygon():
 @app.route(f"/financial-elt/tap-fmp-{ENVIRONMENT}", methods=["GET"])
 def tap_fmp():
     return run_tap_route("tap-fmp")
+
+
+@app.route(f"/financial-elt/tap-fred-{ENVIRONMENT}", methods=["GET"])
+def tap_fred():
+    return run_tap_route("tap-fred")
