@@ -177,28 +177,31 @@ plugins:
     config:
       api_key: ${FRED_API_KEY}
       api_url: https://api.stlouisfed.org/fred
-      start_date: '2015-01-01'             # Historical data from 2015 for production testing
-      max_requests_per_minute: 120
-      min_throttle_seconds: 0.5
+      start_date: '1776-01-01'             # All historical data from beginning of time
+      max_requests_per_minute: 60
+      min_throttle_seconds: 1.0
 
-      series_ids: ["GDP", "UNRATE"]
-      category_ids: ["125", "32992"]
-      release_ids: ["53", "151"]
-      source_ids: ["1", "3"]
-      tag_names: ["gdp", "unemployment"]
-      search_text: "gdp"
+      series_ids: ["*"]                     # Wildcard: discover all FRED series
+      category_ids: ["*"]                   # Wildcard: discover all categories
+      release_ids: ["*"]                    # Wildcard: discover all releases
+      source_ids: ["*"]                     # Wildcard: discover all sources
+      tag_names: ["*"]                      # Wildcard: discover all tags
+      # search_text: "gdp"                   # Optional: search term for series search streams
 
-      # GeoFRED Maps Configuration
+      # GeoFRED Maps Configuration - Wildcard support validated
       geofred_regional_params:
         - series_group: "882"
-          region_type: "state"
-          season: "SA"
-      geofred_series_ids: ["CAHOWN", "TXHOWN"]
+          region_type: "*"
+          season: "*"
+          date: "2020-01-01"
+          units: "Dollars"
+          frequency: "a"
+      geofred_series_ids: ["*"]             # Wildcard: discover all GeoFRED series
 
-      # ALFRED Mode Configuration - Historical vintage data for production backtesting
-      data_mode: ALFRED                    # Historical vintage data (backtesting mode)
-      realtime_start: '2020-01-01'         # Historical vintage date for testing
-      realtime_end: '2020-01-01'           # Point-in-time accuracy
+      # FRED Mode Configuration - Current data for GeoFRED testing
+      data_mode: ALFRED                      # Current revised data
+      # realtime_start: '2020-01-01'         # Historical vintage date for testing
+      # realtime_end: '2020-01-01'           # Point-in-time accuracy
 
       default_params:
         query_params:
