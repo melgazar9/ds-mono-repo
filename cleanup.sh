@@ -17,8 +17,15 @@ cleanup_environment() {
 
     if [ -f "$compose_file" ]; then
         echo "Stopping and removing $env environment..."
-        $DOCKER compose -f $compose_file down -v
-        echo "$env environment cleaned up."
+        echo "Will run: $DOCKER compose -p ds-mono-repo-$env -f $compose_file down -v"
+        read -p "Continue? (y/N): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            $DOCKER compose -p ds-mono-repo-$env -f $compose_file down -v
+            echo "$env environment cleaned up."
+        else
+            echo "Cancelled."
+        fi
     else
         echo "Warning: $compose_file not found, skipping $env environment"
     fi

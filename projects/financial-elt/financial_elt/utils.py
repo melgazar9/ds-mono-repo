@@ -312,7 +312,7 @@ def execute_command_stg(run_command, cwd):
     Each run gets its own temp MELTANO_PROJECT_ROOT for lock/deadlock prevention.
     .meltano/state is symlinked to the shared, persistent state directory.
     """
-    project_name = run_command[3]
+    project_name = run_command[4]
     subprocess_log_dir = os.path.join(find_monorepo_root(), "logs", f"{project_name}")
     ensure_dir(subprocess_log_dir)
 

@@ -31,13 +31,17 @@ RUN meltano install
 WORKDIR $APP_HOME/tap-fmp
 RUN meltano install
 
+WORKDIR $APP_HOME/tap-fred
+RUN meltano install
+
 
 WORKDIR $APP_HOME
 
 RUN mkdir -p /app/tap-yfinance/state && \
     mkdir -p /app/tap-yahooquery/state && \
     mkdir -p /app/tap-polygon/state && \
-    mkdir -p /app/tap-fmp/state
+    mkdir -p /app/tap-fmp/state && \
+    mkdir -p /app/tap-fred/state
 
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh

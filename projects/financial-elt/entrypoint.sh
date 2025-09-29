@@ -1,6 +1,6 @@
 #!/bin/bash
 
-TAPS="tap-polygon|tap-yfinance|tap-yahooquery|tap-fmp"
+TAPS="tap-polygon|tap-yfinance|tap-yahooquery|tap-fmp|tap-fred"
 
 for arg in "$@"; do
   if [[ "$arg" =~ ^($TAPS)$ ]]; then
