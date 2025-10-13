@@ -326,8 +326,10 @@ def execute_command_stg(run_command, cwd):
         arg = run_command[i]
         if arg.startswith("tap-") and "target-" not in arg and "--state-id" not in arg:
             tap_name = arg.replace("-", "_")
-        elif arg.startswith("--environment="):
-            environment = arg.split("=")[1]
+        elif arg == "--environment":
+            if i + 1 < len(run_command):
+                environment = run_command[i + 1]
+                i += 1
         elif arg == "--select":
             if i + 1 < len(run_command):
                 selected_streams.append(run_command[i + 1])
