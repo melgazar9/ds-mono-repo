@@ -1,7 +1,6 @@
 #!/bin/bash
 
-# PostgreSQL pgBackRest Common Library
-# Shared functions for backup and restore scripts
+# PostgreSQL pgBackRest Common Library --> Shared functions for backup and restore scripts
 
 set -e
 
@@ -12,6 +11,7 @@ OS=$([[ "$OSTYPE" == "darwin"* ]] && echo "mac" || echo "ubuntu")
 # Colors and print functions
 print_status() { echo -e "\033[0;32m✅ $1\033[0m"; }
 print_warning() { echo -e "\033[1;33m⚠️  $1\033[0m"; }
+
 print_error() { echo -e "\033[0;31m❌ $1\033[0m"; }
 print_info() { echo -e "\033[0;34mℹ️  $1\033[0m"; }
 
@@ -28,7 +28,7 @@ else
     CONFIG_PATH="/etc/pgbackrest"
     BACKUP_DIR="/var/lib/pgbackrest"
     BACKUP_DIR_REMOTE="/mnt/backup/pg_backups/pg_backrest_backups"
-    PGDATA="/var/lib/postgresql/15/main"
+    PGDATA="/var/lib/postgresql/16/main"
     PG_SERVICE_CMD="sudo systemctl"
     PG_SERVICE_NAME="postgresql"
 fi
@@ -45,14 +45,25 @@ validate_pgbackrest() {
 
 validate_pgdata() {
     [[ -z "$PGDATA" ]] && { print_error "PGDATA variable is empty"; exit 1; }
-    [[ ! -d "$PGDATA" ]] && { print_error "PostgreSQL data directory does not exist: $PGDATA"; exit 1; }
-    [[ ! -f "$PGDATA/PG_VERSION" ]] && { print_error "Not a valid PostgreSQL data directory (missing PG_VERSION): $PGDATA"; exit 1; }
+
+    # Check if directory exists (using sudo for permission)
+    if ! sudo test -d "$PGDATA"; then
+        print_error "PostgreSQL data directory does not exist: $PGDATA"
+        exit 1
+    fi
+
+    # Check if PG_VERSION exists (using sudo for permission)
+    if ! sudo test -f "$PGDATA/PG_VERSION"; then
+        print_error "Not a valid PostgreSQL data directory (missing PG_VERSION): $PGDATA"
+        exit 1
+    fi
+
     print_status "PostgreSQL data directory validated: $PGDATA"
 }
 
 check_postgres_connection() {
     print_info "Checking PostgreSQL connection..."
-    if ! psql -d postgres -c "SELECT version();" > /dev/null 2>&1; then
+    if ! sudo -u $USER psql -d postgres -c "SELECT version();" > /dev/null 2>&1; then
         print_error "Cannot connect to PostgreSQL"
         print_info "Start PostgreSQL: $([[ "$OS" == "mac" ]] && echo "$PG_SERVICE_CMD start $PG_SERVICE_NAME" || echo "$PG_SERVICE_CMD start $PG_SERVICE_NAME")"
         exit 1
@@ -91,7 +102,7 @@ start_postgres() {
     local attempt=1
 
     while [[ $attempt -le $max_attempts ]]; do
-        if psql -d postgres -c "SELECT version();" > /dev/null 2>&1; then
+        if sudo -u $USER psql -d postgres -c "SELECT version();" > /dev/null 2>&1; then
             print_status "PostgreSQL started successfully"
             return 0
         else

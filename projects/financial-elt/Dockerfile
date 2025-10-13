@@ -5,8 +5,11 @@ ARG ENVIRONMENT
 ENV PATH="/root/.local/bin:$PATH"
 ENV APP_HOME=/app
 ENV PYTHONUNBUFFERED=1
-WORKDIR $APP_HOME
 
+# Set Meltano ELT buffer size to 500MB to prevent asyncio.LimitOverrunError
+ENV MELTANO_ELT_BUFFER_SIZE=524288000
+
+WORKDIR $APP_HOME
 COPY . .
 
 RUN apt-get update && \
@@ -27,13 +30,12 @@ RUN meltano install
 
 WORKDIR $APP_HOME/tap-polygon
 RUN meltano install
-
 WORKDIR $APP_HOME/tap-fmp
+
 RUN meltano install
 
 WORKDIR $APP_HOME/tap-fred
 RUN meltano install
-
 
 WORKDIR $APP_HOME
 

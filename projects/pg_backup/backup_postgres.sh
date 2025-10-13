@@ -35,11 +35,11 @@ perform_backup() {
     print_info "Starting $BACKUP_TYPE backup..."
 
     # Check if this is the first backup (stanza exists)
-    if ! $PGBACKREST_BIN --config-path="$CONFIG_PATH" --stanza="$STANZA" info 2>/dev/null | grep -q "status: ok"; then
+    if ! sudo -u postgres $PGBACKREST_BIN --stanza="$STANZA" info 2>/dev/null | grep -q "status: ok"; then
         print_warning "Stanza not found. This appears to be the first backup."
         print_info "Creating stanza..."
 
-        $PGBACKREST_BIN --config-path="$CONFIG_PATH" --stanza="$STANZA" --log-level-console=info stanza-create || {
+        sudo -u postgres $PGBACKREST_BIN --stanza="$STANZA" --log-level-console=info stanza-create || {
             print_error "Failed to create stanza"
             exit 1
         }
@@ -49,39 +49,25 @@ perform_backup() {
         BACKUP_TYPE="full"
     fi
 
-    local backup_cmd="$PGBACKREST_BIN --config-path=\"$CONFIG_PATH\" --stanza=\"$STANZA\" --log-level-console=info backup"
+    local backup_cmd="sudo -u postgres $PGBACKREST_BIN --stanza=\"$STANZA\" --log-level-console=info backup"
     [[ "$BACKUP_TYPE" == "full" ]] && backup_cmd="$backup_cmd --type=full"
 
     print_info "Executing: $backup_cmd"
 
     if eval "$backup_cmd"; then
-        print_status "$BACKUP_TYPE backup to primary location completed"
-
-        # For Ubuntu: Copy to remote location and verify - REQUIRED for success
-        if [[ "$OS" == "ubuntu" ]]; then
-            print_info "Copying to remote location (REQUIRED)..."
-            copy_to_remote || {
-                print_error "CRITICAL: Remote backup copy failed - backup considered FAILED"
-                print_error "Database backup is incomplete without both copies"
-                exit 1
-            }
-
-            verify_backup_integrity || exit 1
-        fi
-
-        print_status "✅ $BACKUP_TYPE backup completed successfully on ALL locations"
+        print_status "$BACKUP_TYPE backup completed successfully"
 
         # Verify backup integrity
         print_info "Verifying backup integrity..."
 
-        if ! $PGBACKREST_BIN --config-path="$CONFIG_PATH" --stanza="$STANZA" check > /dev/null 2>&1; then
+        if ! sudo -u postgres $PGBACKREST_BIN --stanza="$STANZA" check > /dev/null 2>&1; then
             print_error "CRITICAL: Backup integrity check FAILED"
             print_error "The backup may be corrupted or incomplete"
             exit 1
         fi
 
         # Verify latest backup is accessible
-        local latest_backup=$(($PGBACKREST_BIN --config-path="$CONFIG_PATH" --stanza="$STANZA" info --output=json 2>/dev/null || echo "{}") | python3 -c "
+        local latest_backup=$((sudo -u postgres $PGBACKREST_BIN --stanza="$STANZA" info --output=json 2>/dev/null || echo "{}") | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
@@ -102,7 +88,7 @@ except:
         print_status "✅ Latest backup: $latest_backup"
 
         print_info "Backup information:"
-        $PGBACKREST_BIN --config-path="$CONFIG_PATH" --stanza="$STANZA" --log-level-console=info info || {
+        sudo -u postgres $PGBACKREST_BIN --stanza="$STANZA" --log-level-console=info info || {
             print_error "Failed to display backup information"
             exit 1
         }
