@@ -63,7 +63,7 @@ validate_pgdata() {
 
 check_postgres_connection() {
     print_info "Checking PostgreSQL connection..."
-    if ! sudo -u melgazar9 psql -d postgres -c "SELECT version();" > /dev/null 2>&1; then
+    if ! sudo -u $USER psql -d postgres -c "SELECT version();" > /dev/null 2>&1; then
         print_error "Cannot connect to PostgreSQL"
         print_info "Start PostgreSQL: $([[ "$OS" == "mac" ]] && echo "$PG_SERVICE_CMD start $PG_SERVICE_NAME" || echo "$PG_SERVICE_CMD start $PG_SERVICE_NAME")"
         exit 1
@@ -102,7 +102,7 @@ start_postgres() {
     local attempt=1
 
     while [[ $attempt -le $max_attempts ]]; do
-        if sudo -u melgazar9 psql -d postgres -c "SELECT version();" > /dev/null 2>&1; then
+        if sudo -u $USER psql -d postgres -c "SELECT version();" > /dev/null 2>&1; then
             print_status "PostgreSQL started successfully"
             return 0
         else

@@ -201,8 +201,8 @@ plugins:
       # Point-in-Time ALFRED Mode - PRODUCTION CONFIGURATION
       data_mode: ALFRED                      # Enable vintage historical data mode
       point_in_time_mode: true               # Create partitions per vintage date (per series)
-      point_in_time_start: '2025-01-01'      # PRODUCTION: Vintage dates from 2025-01-01
-      point_in_time_end: '2025-10-06'        # PRODUCTION: Vintage dates through today
+      point_in_time_start: '1900-01-01'      # PRODUCTION: Vintage dates from 1900-01-01
+      point_in_time_end: '2099-12-31'        # PRODUCTION: Vintage dates in the future
 
       default_params:
         query_params:
