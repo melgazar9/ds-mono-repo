@@ -1,7 +1,6 @@
 #!/bin/bash
 
-# PostgreSQL pgBackRest Common Library
-# Shared functions for backup and restore scripts
+# PostgreSQL pgBackRest Common Library --> Shared functions for backup and restore scripts
 
 set -e
 
@@ -12,6 +11,7 @@ OS=$([[ "$OSTYPE" == "darwin"* ]] && echo "mac" || echo "ubuntu")
 # Colors and print functions
 print_status() { echo -e "\033[0;32m✅ $1\033[0m"; }
 print_warning() { echo -e "\033[1;33m⚠️  $1\033[0m"; }
+
 print_error() { echo -e "\033[0;31m❌ $1\033[0m"; }
 print_info() { echo -e "\033[0;34mℹ️  $1\033[0m"; }
 

@@ -55,21 +55,7 @@ perform_backup() {
     print_info "Executing: $backup_cmd"
 
     if eval "$backup_cmd"; then
-        print_status "$BACKUP_TYPE backup to primary location completed"
-
-        # For Ubuntu: Copy to remote location and verify - REQUIRED for success
-        if [[ "$OS" == "ubuntu" ]]; then
-            print_info "Copying to remote location (REQUIRED)..."
-            copy_to_remote || {
-                print_error "CRITICAL: Remote backup copy failed - backup considered FAILED"
-                print_error "Database backup is incomplete without both copies"
-                exit 1
-            }
-
-            verify_backup_integrity || exit 1
-        fi
-
-        print_status "✅ $BACKUP_TYPE backup completed successfully on ALL locations"
+        print_status "$BACKUP_TYPE backup completed successfully"
 
         # Verify backup integrity
         print_info "Verifying backup integrity..."
