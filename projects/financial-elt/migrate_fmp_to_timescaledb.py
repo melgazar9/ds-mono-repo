@@ -196,9 +196,9 @@ class TimescaleDBMigrator:
         time_col, segment_col, chunk_interval, compress_interval, hash_partitions, requires_index = config
         full_table = f"{SCHEMA}.{table}"
 
-        self.log(f"\n{'='*80}", "INFO")
+        self.log(f"\n{'=' * 80}", "INFO")
         self.log(f"Migrating table: {full_table}", "INFO")
-        self.log(f"{'='*80}", "INFO")
+        self.log(f"{'=' * 80}", "INFO")
 
         # Step 1: Validate table exists
         if not self.dry_run and not self.check_table_exists(table):
@@ -227,52 +227,30 @@ class TimescaleDBMigrator:
                 time_col=time_col,
                 segment_col=segment_col,
             )
-            self.execute_sql(
-                sql,
-                f"Creating index on ({time_col}, {segment_col})",
-                ignore_errors=True
-            )
+            self.execute_sql(sql, f"Creating index on ({time_col}, {segment_col})", ignore_errors=True)
 
         # Step 5: Run ANALYZE before migration (helps TimescaleDB optimize chunks)
         sql = ANALYZE_TABLE.format(full_table=full_table)
         self.execute_sql(sql, "Analyzing table statistics")
 
         # Step 6: Convert to hypertable
-        sql = CREATE_HYPERTABLE.format(
-            full_table=full_table, time_col=time_col, chunk_interval=chunk_interval
-        )
+        sql = CREATE_HYPERTABLE.format(full_table=full_table, time_col=time_col, chunk_interval=chunk_interval)
         self.execute_sql(sql, f"Converting to hypertable with {chunk_interval} chunks")
 
         # Step 7: Add space partitioning (hash dimension)
         if hash_partitions > 1:
-            sql = ADD_DIMENSION.format(
-                full_table=full_table, segment_col=segment_col, hash_partitions=hash_partitions
-            )
+            sql = ADD_DIMENSION.format(full_table=full_table, segment_col=segment_col, hash_partitions=hash_partitions)
             self.execute_sql(
-                sql,
-                f"Adding space partitioning on {segment_col} ({hash_partitions} partitions)",
-                ignore_errors=True
+                sql, f"Adding space partitioning on {segment_col} ({hash_partitions} partitions)", ignore_errors=True
             )
 
         # Step 8: Enable compression
-        sql = SET_COMPRESSION.format(
-            full_table=full_table, segment_col=segment_col, time_col=time_col
-        )
-        self.execute_sql(
-            sql,
-            f"Enabling compression (segmentby={segment_col}, orderby={time_col})",
-            ignore_errors=True
-        )
+        sql = SET_COMPRESSION.format(full_table=full_table, segment_col=segment_col, time_col=time_col)
+        self.execute_sql(sql, f"Enabling compression (segmentby={segment_col}, orderby={time_col})", ignore_errors=True)
 
         # Step 9: Add compression policy
-        sql = ADD_COMPRESSION_POLICY.format(
-            full_table=full_table, compress_interval=compress_interval
-        )
-        self.execute_sql(
-            sql,
-            f"Adding compression policy (compress after {compress_interval})",
-            ignore_errors=True
-        )
+        sql = ADD_COMPRESSION_POLICY.format(full_table=full_table, compress_interval=compress_interval)
+        self.execute_sql(sql, f"Adding compression policy (compress after {compress_interval})", ignore_errors=True)
 
         self.log(f"✓ Successfully migrated {table}", "SUCCESS")
         return True
@@ -281,11 +259,11 @@ class TimescaleDBMigrator:
         """Run migration for specified tables or all configured tables."""
         tables_to_migrate = target_tables if target_tables else list(MIGRATION_TABLES.keys())
 
-        self.log(f"\n{'#'*80}", "INFO")
+        self.log(f"\n{'#' * 80}", "INFO")
         self.log(f"TimescaleDB Migration - tap_fmp_{ENV}", "INFO")
         self.log(f"Mode: {'DRY-RUN' if self.dry_run else 'LIVE MIGRATION'}", "INFO")
         self.log(f"Tables to migrate: {len(tables_to_migrate)}", "INFO")
-        self.log(f"{'#'*80}\n", "INFO")
+        self.log(f"{'#' * 80}\n", "INFO")
 
         if self.dry_run:
             self.log("DRY-RUN MODE: No changes will be made to the database", "WARNING")
@@ -313,14 +291,14 @@ class TimescaleDBMigrator:
                     failed_count += 1
                     if not self.dry_run:
                         # Ask whether to continue
-                        response = input(f"\nContinue with remaining tables? (y/n): ")
-                        if response.lower() != 'y':
+                        response = input("\nContinue with remaining tables? (y/n): ")
+                        if response.lower() != "y":
                             break
 
         # Summary
-        self.log(f"\n{'#'*80}", "INFO")
-        self.log(f"Migration Summary", "INFO")
-        self.log(f"{'#'*80}", "INFO")
+        self.log(f"\n{'#' * 80}", "INFO")
+        self.log("Migration Summary", "INFO")
+        self.log(f"{'#' * 80}", "INFO")
         self.log(f"Successfully migrated: {success_count}", "SUCCESS")
         self.log(f"Failed: {failed_count}", "ERROR" if failed_count > 0 else "INFO")
 
@@ -345,24 +323,10 @@ class TimescaleDBMigrator:
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Migrate tap_fmp_production tables to TimescaleDB hypertables"
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Preview migration without making changes"
-    )
-    parser.add_argument(
-        "--table",
-        type=str,
-        help="Migrate a specific table (default: migrate all configured tables)"
-    )
-    parser.add_argument(
-        "--list",
-        action="store_true",
-        help="List tables configured for migration"
-    )
+    parser = argparse.ArgumentParser(description="Migrate tap_fmp_production tables to TimescaleDB hypertables")
+    parser.add_argument("--dry-run", action="store_true", help="Preview migration without making changes")
+    parser.add_argument("--table", type=str, help="Migrate a specific table (default: migrate all configured tables)")
+    parser.add_argument("--list", action="store_true", help="List tables configured for migration")
 
     args = parser.parse_args()
 
