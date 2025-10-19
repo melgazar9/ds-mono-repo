@@ -14,7 +14,7 @@ print_info "=== pgBackRest Setup for PostgreSQL Backup ==="
 
 # Configuration
 STANZA="main"
-BACKUP_PATH="/mnt/backup/pg_backups"
+BACKUP_PATH="/mnt/backup/pg_backups/pg_backrest_backups"
 CONFIG_DIR="/etc/pgbackrest"
 CONFIG_FILE="$CONFIG_DIR/pgbackrest.conf"
 PGDATA="/var/lib/postgresql/16/main"
@@ -67,7 +67,7 @@ print_status "Spool directory created"
 print_info "Creating pgBackRest configuration at $CONFIG_FILE"
 cat > "$CONFIG_FILE" <<EOF
 [global]
-repo1-path=/mnt/backup/pg_backups
+repo1-path=/mnt/backup/pg_backups/pg_backrest_backups
 repo1-retention-full=2
 log-level-console=info
 log-level-file=debug

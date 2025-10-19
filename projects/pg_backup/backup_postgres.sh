@@ -3,6 +3,41 @@
 # PostgreSQL Backup Script
 # Usage: ./backup_postgres.sh [--type full|incremental]
 
+# Check if we should log to file and redirect all output
+if [[ -z "$BACKUP_LOGGING_ACTIVE" ]]; then
+    export BACKUP_LOGGING_ACTIVE=1
+    SCRIPT_DIR="$(dirname "$0")"
+    LOGFILE="$SCRIPT_DIR/pg_backup_$(date +%Y%m%d_%H%M%S).log"
+
+    # Track start time
+    START_TIME=$(date +%s)
+
+    # Re-run this script with output redirected to log file
+    "$0" "$@" > "$LOGFILE" 2>&1
+    EXIT_CODE=$?
+
+    # Calculate execution time
+    END_TIME=$(date +%s)
+    DURATION=$((END_TIME - START_TIME))
+    HOURS=$((DURATION / 3600))
+    MINUTES=$(((DURATION % 3600) / 60))
+    SECONDS=$((DURATION % 60))
+
+    # Append execution time to log
+    echo "" >> "$LOGFILE"
+    echo "========================================" >> "$LOGFILE"
+    echo "Backup execution completed at: $(date)" >> "$LOGFILE"
+    printf "Total execution time: %02d:%02d:%02d (%d seconds)\n" $HOURS $MINUTES $SECONDS $DURATION >> "$LOGFILE"
+    echo "========================================" >> "$LOGFILE"
+
+    # Copy log to /mnt/backup if on Ubuntu
+    if [[ "$OSTYPE" != "darwin"* ]] && [[ -d "/mnt/backup/pg_backups" ]]; then
+        cp "$LOGFILE" /mnt/backup/pg_backups/ 2>/dev/null || true
+    fi
+
+    exit $EXIT_CODE
+fi
+
 # Load common functions
 source "$(dirname "$0")/pgbackrest_common.sh"
 
