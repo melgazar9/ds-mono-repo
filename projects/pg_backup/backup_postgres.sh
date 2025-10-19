@@ -7,7 +7,8 @@
 if [[ -z "$BACKUP_LOGGING_ACTIVE" ]]; then
     export BACKUP_LOGGING_ACTIVE=1
     SCRIPT_DIR="$(dirname "$0")"
-    LOGFILE="$SCRIPT_DIR/pg_backup_$(date +%Y%m%d_%H%M%S).log"
+    mkdir -p "$SCRIPT_DIR/logs"
+    LOGFILE="$SCRIPT_DIR/logs/pg_backup_$(date +%Y%m%d_%H%M%S).log"
 
     # Track start time
     START_TIME=$(date +%s)
@@ -32,7 +33,8 @@ if [[ -z "$BACKUP_LOGGING_ACTIVE" ]]; then
 
     # Copy log to /mnt/backup if on Ubuntu
     if [[ "$OSTYPE" != "darwin"* ]] && [[ -d "/mnt/backup/pg_backups" ]]; then
-        cp "$LOGFILE" /mnt/backup/pg_backups/ 2>/dev/null || true
+        mkdir -p /mnt/backup/pg_backups/logs 2>/dev/null || true
+        cp "$LOGFILE" /mnt/backup/pg_backups/logs/ 2>/dev/null || true
     fi
 
     exit $EXIT_CODE
