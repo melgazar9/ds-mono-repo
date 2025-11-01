@@ -154,8 +154,8 @@ class GapBacktestRunner(BacktestEngine):
         self.num_workers = num_workers
         self.max_cached_files = max_cached_files
         self.processor = StreamingFileProcessor(
-            os.getenv("NORDVPN_MESHNET_IP"),
-            os.getenv("NORDVPN_USER"),
+            os.getenv("REMOTE_HOST"),
+            os.getenv("REMOTE_USER"),
             max_concurrent_downloads=6,
             max_cached_files=max_cached_files,
         )

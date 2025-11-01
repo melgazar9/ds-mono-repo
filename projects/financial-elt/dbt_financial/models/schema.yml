@@ -1,4 +1,23 @@
 sources:
+  - name: tap_fmp_production
+    schema: tap_fmp_production
+    database: financial_elt
+    loaded_at_field: _sdc_batched_at
+    config:
+      freshness:
+        warn_after:
+          count: 12
+          period: hour
+        error_after:
+          count: 1
+          period: day
+    tables:
+      - name: earnings_calendar
+      - name: stock_split_details
+      - name: dividends_company
+      - name: symbol_changes
+      - name: sec_filings_by_symbol
+
   - name: tap_yfinance_production
     schema: tap_yfinance_production
     database: financial_elt

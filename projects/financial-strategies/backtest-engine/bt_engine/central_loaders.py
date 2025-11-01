@@ -104,15 +104,13 @@ class StreamingFileProcessor:
     async def get_files(self, remote_files_or_path, pattern="*"):
         """Stream files as they become ready, in order"""
         # Handle both list of files and directory + pattern
-        if isinstance(remote_files_or_path, list):
+        if isinstance(remote_files_or_path, list) and len(remote_files_or_path):
             files = sorted(remote_files_or_path)
             logging.info(f"📋 Processing {len(files)} provided files")
         else:
             files = await self.list_remote_files(remote_files_or_path, pattern)
-
         if not files:
-            logging.warning("No files found!")
-            return
+            raise ValueError("No files found!")
 
         # Start downloading initial batch
         await self.start_downloads(files)
@@ -196,6 +194,7 @@ class PolygonBarLoader(DataLoader):
         cur_day_file=None,
         df_prev=None,
         remove_ma_tickers_from_intraday_bars=True,
+        remove_earnings_calendar_dates_from_intraday_bars=False,
         remove_low_quality_tickers=False,
     ):
         self.load_method = load_method
@@ -205,6 +204,7 @@ class PolygonBarLoader(DataLoader):
 
         self.df_corporate_actions = None
         self.remove_ma_tickers_from_intraday_bars = remove_ma_tickers_from_intraday_bars
+        self.remove_earnings_calendar_dates_from_intraday_bars = remove_earnings_calendar_dates_from_intraday_bars
 
         if self.load_method not in ["pandas", "polars"]:
             raise NotImplementedError(f"Unknown load method {self.load_method}. Must be 'pandas' or 'polars'")
@@ -235,7 +235,7 @@ class PolygonBarLoader(DataLoader):
                             data_quality_score,
                             row_number() over (partition by ticker, event_date order by data_quality_score desc nulls last) as rn
                         from
-                            financial_analytics.corporate_actions
+                            financial_analytics.gap_strategy_exclusions
                     ),
                     cte_agg as (
                         select
@@ -279,7 +279,7 @@ class PolygonBarLoader(DataLoader):
                 """,
                     df_type=self.load_method,
                 )
-                logging.info("✅ Corporate actions data loaded - will be across tests.")
+                logging.info("✅ Gap strategy exclusions data loaded - will be cached across tests.")
 
             if self.load_method == "pandas":
                 self.df_corporate_actions["event_date_raw"] = self.df_corporate_actions["event_date"]
@@ -308,11 +308,131 @@ class PolygonBarLoader(DataLoader):
             & (~self.df_corporate_actions["event_type"].isin(["dividend", "split", "reverse_split"]))
         ][["ticker", "event_date"]]
 
+    def _get_earnings_calendar_dates(self):
+        """Get earnings calendar dates for tickers.
+
+        Fetches earnings dates from the unified earnings_calendar table (FMP + yfinance).
+        The table includes pre/post-market timing and filter dates for backtesting.
+
+        Filter logic:
+        - Pre-market earnings: filter_date_primary = earnings_date (filter that day)
+        - Post-market earnings: filter_date_primary = earnings_date + 1 (filter next day)
+        - Unknown timing: both filter_date_primary and filter_date_secondary set (filter both days)
+        """
+        if hasattr(self, "df_earnings_events"):
+            return
+
+        logging.info("Fetching earnings calendar dates from database.")
+        with PostgresConnect(database="financial_elt") as db:
+            self.df_earnings_events = db.run_sql(
+                """
+                SELECT
+                    ticker,
+                    earnings_date,
+                    source,
+                    release_timing,
+                    filter_date_primary,
+                    filter_date_secondary,
+                    data_quality
+                FROM financial_analytics.earnings_calendar
+                WHERE ticker IS NOT NULL
+                  AND (filter_date_primary IS NOT NULL OR filter_date_secondary IS NOT NULL)
+                ORDER BY ticker, earnings_date
+                """,
+                df_type=self.load_method,
+            )
+
+            total_events = len(self.df_earnings_events)
+            if self.load_method == "pandas":
+                n_with_timing = self.df_earnings_events["release_timing"].notna().sum()
+                n_pre = (self.df_earnings_events["release_timing"] == "pre-market").sum()
+                n_post = (self.df_earnings_events["release_timing"] == "post-market").sum()
+            else:
+                n_with_timing = self.df_earnings_events.filter(pl.col("release_timing").is_not_null()).height
+                n_pre = self.df_earnings_events.filter(pl.col("release_timing") == "pre-market").height
+                n_post = self.df_earnings_events.filter(pl.col("release_timing") == "post-market").height
+
+            logging.info(
+                f"✅ Fetched {total_events} earnings events. "
+                f"Timing breakdown: {n_pre} pre-market, {n_post} post-market, "
+                f"{total_events - n_with_timing} unknown (will filter conservatively)."
+            )
+
+        # Convert dates to timezone-aware datetime to match intraday bars
+        if self.load_method == "pandas":
+            self.df_earnings_events["filter_date_primary"] = pd.to_datetime(
+                self.df_earnings_events["filter_date_primary"]
+            ).dt.tz_localize("America/Chicago")
+
+            # Handle secondary filter date (for unknown timing)
+            if "filter_date_secondary" in self.df_earnings_events.columns:
+                self.df_earnings_events["filter_date_secondary"] = pd.to_datetime(
+                    self.df_earnings_events["filter_date_secondary"]
+                ).dt.tz_localize("America/Chicago")
+
+        elif self.load_method == "polars":
+            self.df_earnings_events = self.df_earnings_events.with_columns(
+                [
+                    pl.col("filter_date_primary")
+                    .str.to_datetime(format="%Y-%m-%d")
+                    .dt.replace_time_zone("America/Chicago")
+                    .alias("filter_date_primary"),
+                    pl.col("filter_date_secondary")
+                    .str.to_datetime(format="%Y-%m-%d")
+                    .dt.replace_time_zone("America/Chicago")
+                    .alias("filter_date_secondary"),
+                ]
+            )
+
     def _remove_ma_records(self):
         filter_keys = self.df_ma_events[["ticker", "event_date"]].rename(columns={"event_date": "date"})
         merged = self.df.merge(filter_keys, on=["ticker", "date"], how="left", indicator=True)
         removed_records = merged[merged["_merge"] == "both"].drop(columns=["_merge"])
         logging.info(f"Removed {len(removed_records)} records from df from M&A corporate actions.")
+        self.df = merged[merged["_merge"] == "left_only"].drop(columns=["_merge"])
+        self.df = self.df.sort_values(by=["timestamp", "ticker"])
+
+    def _remove_earnings_calendar_records(self):
+        """Remove records on earnings calendar dates.
+
+        Removes intraday bars based on earnings timing:
+        - Pre-market earnings: removes bars on earnings_date
+        - Post-market earnings: removes bars on earnings_date + 1
+        - Unknown timing: removes bars on BOTH dates (conservative approach)
+        """
+        if self.df_earnings_events.empty:
+            logging.warning("df_earnings_events is empty, no earnings records to filter.")
+            return
+
+        # Create filter keys for primary filter dates
+        filter_keys_primary = self.df_earnings_events[["ticker", "filter_date_primary"]].rename(
+            columns={"filter_date_primary": "date"}
+        )
+        filter_keys_primary = filter_keys_primary[filter_keys_primary["date"].notna()]
+
+        # Create filter keys for secondary filter dates (for unknown timing)
+        filter_keys_secondary = self.df_earnings_events[["ticker", "filter_date_secondary"]].rename(
+            columns={"filter_date_secondary": "date"}
+        )
+        filter_keys_secondary = filter_keys_secondary[filter_keys_secondary["date"].notna()]
+
+        # Combine both filter sets
+        filter_keys = pd.concat([filter_keys_primary, filter_keys_secondary], ignore_index=True).drop_duplicates()
+
+        # Merge with intraday bars
+        merged = self.df.merge(filter_keys, on=["ticker", "date"], how="left", indicator=True)
+        removed_records = merged[merged["_merge"] == "both"]
+
+        # Log removal stats
+        n_removed = len(removed_records)
+        n_tickers = removed_records["ticker"].nunique() if n_removed > 0 else 0
+        n_dates = removed_records["date"].nunique() if n_removed > 0 else 0
+
+        logging.info(
+            f"Removed {n_removed:,} intraday bar records on earnings dates " f"({n_tickers} tickers, {n_dates} unique dates)."
+        )
+
+        # Keep only records that didn't match (left_only)
         self.df = merged[merged["_merge"] == "left_only"].drop(columns=["_merge"])
         self.df = self.df.sort_values(by=["timestamp", "ticker"])
 
@@ -385,6 +505,10 @@ class PolygonBarLoader(DataLoader):
         if self.remove_ma_tickers_from_intraday_bars:
             self._get_ma_ticker_dates()
             self._remove_ma_records()
+
+        if self.remove_earnings_calendar_dates_from_intraday_bars:
+            self._get_earnings_calendar_dates()
+            self._remove_earnings_calendar_records()
 
         rows_before = self.df.shape[0]
         self.df = self._add_prev_us_ohlcv()

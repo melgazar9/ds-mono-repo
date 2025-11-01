@@ -5,16 +5,10 @@ description = ""
 authors = [{name = "melgazar9", email = "melgazar9@gmail.com"}]
 readme = "README.md"
 requires-python = ">=3.10"
+package-mode = false
 
 dependencies = [
     "dbt>=1.0.0.34.17",
     "dbt-core>=1.7.3",
     "dbt-postgres>=1.9.0",
 ]
-
-[tool.hatch.build.targets.wheel]
-only-include = []
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
